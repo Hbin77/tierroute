@@ -45,6 +45,9 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+tierroute = ["data/*.json", "data/*.license"]
+
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
@@ -55,4 +58,3 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "RUF", "UP"]
-

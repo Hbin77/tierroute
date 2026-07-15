@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "name": "tierroute synthetic smoke dataset",
+  "license": "Apache-2.0",
+  "provenance": "Project-authored synthetic prompts, outputs, costs, and quality scores; not benchmark evidence.",
+  "tier_specs": [
+    {"tier": "fast", "budget_limit": "0.35", "weight": 0.5},
+    {"tier": "balanced", "budget_limit": "0.70", "weight": 0.3},
+    {"tier": "premium", "budget_limit": "1.00", "weight": 0.2}
+  ],
+  "examples": [
+    {
+      "example_id": "synthetic-general-001",
+      "prompt": "Summarize why leaves appear green in one sentence.",
+      "domain": "general",
+      "outcomes": [
+        {"model_id": "swift", "output": "Leaves look green because chlorophyll reflects green light.", "cost": "0.20", "quality": 0.85},
+        {"model_id": "steady", "output": "Leaves appear green because chlorophyll absorbs mostly red and blue light while reflecting green wavelengths.", "cost": "0.60", "quality": 0.88},
+        {"model_id": "expert", "output": "Chlorophyll pigments absorb red and blue wavelengths for photosynthesis and reflect more green light, so leaves appear green.", "cost": "1.00", "quality": 0.90}
+      ]
+    },
+    {
+      "example_id": "synthetic-general-002",
+      "prompt": "Compare two approaches to resolving a disagreement in a student project team, including trade-offs and a concrete next step.",
+      "domain": "general",
+      "outcomes": [
+        {"model_id": "swift", "output": "Discuss both ideas and vote on one.", "cost": "0.20", "quality": 0.55},
+        {"model_id": "steady", "output": "Compare a quick majority vote with a short evidence-based trial; voting is fast, while a trial reduces uncertainty. Agree on one success criterion and test both ideas for a day.", "cost": "0.60", "quality": 0.78},
+        {"model_id": "expert", "output": "Use either consent-based discussion or a time-boxed experiment. Discussion preserves alignment but can stall; an experiment creates evidence but costs time. Define one measurable criterion, run both options on a small task, and reconvene tomorrow to decide from results.", "cost": "1.00", "quality": 0.92}
+      ]
+    },
+    {
+      "example_id": "synthetic-code-001",
+      "prompt": "Write a Python function that returns the sum of a list of integers.",
+      "domain": "code",
+      "outcomes": [
+        {"model_id": "swift", "output": "def total(values): return sum(values)", "cost": "0.20", "quality": 0.75},
+        {"model_id": "steady", "output": "def total(values: list[int]) -> int:\n    return sum(values)", "cost": "0.60", "quality": 0.90},
+        {"model_id": "expert", "output": "def total(values: list[int]) -> int:\n    \"\"\"Return the arithmetic sum of values; an empty list returns zero.\"\"\"\n    return sum(values)", "cost": "1.00", "quality": 0.94}
+      ]
+    },
+    {
+      "example_id": "synthetic-code-002",
+      "prompt": "Debug this asynchronous worker design: jobs may be retried after a timeout, yet a payment must never be charged twice. Explain the race and propose an idempotent implementation with failure handling.",
+      "domain": "code",
+      "outcomes": [
+        {"model_id": "swift", "output": "Add a lock before charging and retry failed jobs.", "cost": "0.20", "quality": 0.30},
+        {"model_id": "steady", "output": "A timed-out worker can finish after a retry starts, so both may charge. Store a unique job key and check it before charging in a transaction; retries reuse the key.", "cost": "0.60", "quality": 0.72},
+        {"model_id": "expert", "output": "The timeout does not cancel the original side effect, so the original and retry can race. Give each logical payment an idempotency key, enforce a unique database constraint, and atomically move a payment record from pending to charged before calling an idempotent provider. Persist provider responses, reconcile ambiguous timeouts, and let retries return the stored result rather than issuing another charge.", "cost": "1.00", "quality": 0.96}
+      ]
+    },
+    {
+      "example_id": "synthetic-math-001",
+      "prompt": "Solve 3x + 6 = 18.",
+      "domain": "math",
+      "outcomes": [
+        {"model_id": "swift", "output": "x = 4", "cost": "0.20", "quality": 0.80},
+        {"model_id": "steady", "output": "Subtract 6: 3x = 12. Divide by 3, so x = 4.", "cost": "0.60", "quality": 0.86},
+        {"model_id": "expert", "output": "From 3x + 6 = 18, subtract 6 from both sides to get 3x = 12, then divide by 3: x = 4.", "cost": "1.00", "quality": 0.90}
+      ]
+    },
+    {
+      "example_id": "synthetic-math-002",
+      "prompt": "Prove that the square root of 2 is irrational, and identify exactly where the contradiction occurs.",
+      "domain": "math",
+      "outcomes": [
+        {"model_id": "swift", "output": "Assume it is rational; this leads to a contradiction because both numbers are even.", "cost": "0.20", "quality": 0.35},
+        {"model_id": "steady", "output": "Assume sqrt(2)=a/b in lowest terms. Then a squared is twice b squared, so a is even. Substitution shows b is even too, contradicting that the fraction was reduced.", "cost": "0.60", "quality": 0.75},
+        {"model_id": "expert", "output": "Suppose sqrt(2)=a/b with coprime positive integers a and b. Squaring gives a^2=2b^2, so a^2 and hence a are even; write a=2k. Then 4k^2=2b^2, hence b^2=2k^2 and b is even. The contradiction is that 2 divides both a and b despite gcd(a,b)=1, so the original rationality assumption is false.", "cost": "1.00", "quality": 0.97}
+      ]
+    },
+    {
+      "example_id": "synthetic-science-001",
+      "prompt": "What gas do plants take in during photosynthesis?",
+      "domain": "science",
+      "outcomes": [
+        {"model_id": "swift", "output": "Carbon dioxide.", "cost": "0.20", "quality": 0.78},
+        {"model_id": "steady", "output": "Plants take in carbon dioxide during photosynthesis.", "cost": "0.60", "quality": 0.85},
+        {"model_id": "expert", "output": "Plants absorb carbon dioxide through their stomata and use its carbon during photosynthesis.", "cost": "1.00", "quality": 0.89}
+      ]
+    },
+    {
+      "example_id": "synthetic-science-002",
+      "prompt": "Explain why increasing atmospheric carbon dioxide warms the lower atmosphere, distinguish absorption from re-emission, and mention one important feedback without overstating certainty.",
+      "domain": "science",
+      "outcomes": [
+        {"model_id": "swift", "output": "Carbon dioxide traps heat, making the atmosphere warmer.", "cost": "0.20", "quality": 0.45},
+        {"model_id": "steady", "output": "Carbon dioxide absorbs some outgoing infrared radiation and emits infrared radiation in all directions, reducing net energy loss to space. Water-vapor feedback can amplify the initial warming.", "cost": "0.60", "quality": 0.77},
+        {"model_id": "expert", "output": "Additional carbon dioxide increases infrared optical depth: molecules absorb outgoing radiation in specific bands and then exchange energy through collisions and re-emission. The effective altitude from which Earth radiates to space rises to colder air, temporarily reducing outgoing energy until the surface and lower atmosphere warm. Water vapor generally amplifies this response, while the exact magnitude remains a quantified source of uncertainty rather than an all-or-nothing claim.", "cost": "1.00", "quality": 0.93}
+      ]
+    }
+  ]
+}
+
