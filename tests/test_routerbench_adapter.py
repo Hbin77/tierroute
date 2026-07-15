@@ -241,6 +241,23 @@ def test_typed_conversion_filters_unmapped_domains_and_keeps_cost_exact() -> Non
     assert included is not None and included.domain == "unmapped:abstract2title"
 
 
+def test_no_correct_model_oracle_sentinel_is_accepted_but_not_exposed() -> None:
+    row = {
+        "sample_id": "q1",
+        "prompt": "A question no candidate answered.",
+        "eval_name": "hellaswag",
+        "oracle_model_to_route_to": "no_model_correct",
+        "model-a": 0.0,
+        "model-a|model_response": "wrong",
+        "model-a|total_cost": 0.1,
+    }
+
+    example = routerbench.routerbench_row_to_example(row, row_number=0)
+
+    assert example is not None
+    assert not hasattr(example, "oracle_model_to_route_to")
+
+
 def test_schema_rejects_incomplete_model_triplet() -> None:
     dataframe = FakeDataFrame(
         (

@@ -38,6 +38,7 @@ ROUTERBENCH_SHA256 = "ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e
 _REQUIRED_COLUMNS = frozenset({"sample_id", "prompt", "eval_name", "oracle_model_to_route_to"})
 _RESPONSE_SUFFIX = "|model_response"
 _COST_SUFFIX = "|total_cost"
+_NO_CORRECT_MODEL = "no_model_correct"
 
 
 class RouterBenchError(RuntimeError):
@@ -225,7 +226,7 @@ def validate_routerbench_row(
             row_number,
             non_negative=True,
         )
-    if row["oracle_model_to_route_to"] not in model_ids:
+    if row["oracle_model_to_route_to"] not in {*model_ids, _NO_CORRECT_MODEL}:
         raise RouterBenchSchemaError(f"RouterBench row {row_number} names an unknown oracle model")
 
 
