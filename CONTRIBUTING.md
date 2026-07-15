@@ -13,7 +13,7 @@ Python 3.10 or newer is required.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
+make install-dev PYTHON=python
 ruff check .
 ruff format --check .
 HF_HUB_OFFLINE=1 pytest
@@ -27,6 +27,10 @@ tierroute train --output artifacts/synthetic-bilinear.json \
 tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
   --policy-artifact artifacts/synthetic-policy.json --json
 ```
+
+`install-dev` removes any setuptools copy left by Python 3.10's `ensurepip` before
+installing the exact lock. Setuptools is not part of tierroute's reviewed build graph;
+use a dedicated virtual environment for this target.
 
 All tests and demos must pass without network access. A preparation script may access
 the network only when the user runs it explicitly; routing, feature extraction,

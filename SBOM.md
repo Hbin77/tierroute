@@ -2,7 +2,7 @@
 
 # Software Bill of Materials
 
-Last audited: 2026-07-15. Update this file in the same commit whenever a dependency,
+Last audited: 2026-07-16. Update this file in the same commit whenever a dependency,
 model, dataset, font, media asset, or CI action is added or upgraded.
 
 The core `tierroute` runtime has no third-party Python dependency. The pinned
@@ -14,7 +14,10 @@ standard-library centered-ridge solver and adds no distribution dependency.
 
 | Component | Version | License | Source | Purpose | Distribution |
 |---|---:|---|---|---|---|
-| setuptools | 83.0.0 | MIT | https://github.com/pypa/setuptools | PEP 517 build backend | Build time only |
+| flit_core | 3.12.0 | BSD-3-Clause | https://github.com/pypa/flit | PEP 517/660 build backend | Build and editable-install time only |
+| Tomli (vendored by flit_core) | 1.2.3 | MIT | https://github.com/hukkin/tomli | Parse `pyproject.toml` on older Python versions | Bundled build-time component; not a separate distribution |
+| packaging version regex (vendored by flit_core) | flit_core 3.12.0 snapshot | BSD-2-Clause | https://github.com/pypa/packaging | Normalize PEP 440 versions | Bundled build-time code fragment; not a separate distribution |
+| SPDX License List identifiers (vendored by flit_core) | flit_core 3.12.0 snapshot | CC0-1.0 | https://github.com/spdx/license-list-data | Validate PEP 639 license expressions | Generated build-time data; not a separate distribution |
 
 ## Development and CI dependencies
 
@@ -25,8 +28,10 @@ Exact versions are recorded in `requirements-dev.lock`.
 | pytest | 8.4.2 | MIT | https://github.com/pytest-dev/pytest | Test runner | Direct |
 | ruff | 0.15.21 | MIT | https://github.com/astral-sh/ruff | Lint and format checks | Direct |
 | pip-licenses | 5.5.5 | MIT | https://github.com/raimon49/pip-licenses | CI license gate | Direct |
+| flit_core | 3.12.0 | BSD-3-Clause | https://github.com/pypa/flit | Locked no-build-isolation editable installs | Direct build tool |
 | iniconfig | 2.3.0 | MIT | https://github.com/pytest-dev/iniconfig | pytest configuration | Transitive |
 | packaging | 26.2 | Apache-2.0 OR BSD-2-Clause | https://github.com/pypa/packaging | Version/specifier handling | Transitive |
+| pip | 26.1.2 | MIT | https://github.com/pypa/pip | Deterministic environment installer and wheel frontend | Direct development/CI tool; not shipped at runtime |
 | pluggy | 1.6.0 | MIT | https://github.com/pytest-dev/pluggy | pytest plugin system | Transitive |
 | Pygments | 2.20.0 | BSD-2-Clause | https://github.com/pygments/pygments | pytest trace highlighting | Transitive |
 | prettytable | 3.18.0 | BSD-3-Clause | https://github.com/prettytable/prettytable | pip-licenses output | Transitive |
@@ -64,11 +69,14 @@ license the separate Hugging Face dataset. tierroute contains no copied RouterBe
 
 ## License gate
 
-CI installs the exact development lock, then scans that clean environment with
-`pip-licenses`. It rejects distributions whose package
-metadata declares GPL, LGPL, or AGPL family terms and permits only the reviewed
-allowlist. CI also installs the base wheel into a separate fresh environment and
-asserts that neither pandas nor NumPy is present. Package metadata cannot enumerate
-every library bundled inside a binary wheel, so this scan does not replace manual
-review of wheel license files, models, datasets, vendored files, or GitHub Actions.
-Those assets must also be added to this SBOM before adoption.
+CI installs the exact development lock, scans top-level distribution metadata with
+`pip-licenses`, and separately inspects installed license documents plus nested
+vendored `.dist-info/METADATA`. Either layer rejects GPL, LGPL, or AGPL family terms;
+top-level metadata must also match the reviewed allowlist. CI installs the base wheel
+into a fresh environment and asserts that flit_core, setuptools, pandas, and NumPy are
+absent. Document-level exceptions are exact reviewed PSF-family license evidence for
+`typing_extensions==4.16.0` and pip's vendored `distlib==0.4.0`; their hashes and audit
+trail are recorded in `docs/dependency-license-audit.md`, and modified evidence is
+scanned normally. This automated scan still does not replace pre-adoption review of
+native binary linkage, models, datasets, vendored files, or GitHub Actions. Those
+assets must also be added to this SBOM before adoption.
