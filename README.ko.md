@@ -165,6 +165,9 @@ ID는 계속 fail-closed 처리합니다.
   다른 pathname 전체에 대한 전원 장애 atomicity는 지원하지 않습니다.
 - 모든 outer domain을 predictor fitting·calibration·lambda tuning에서 제외하는 true
   nested LODO orchestration
+- domain table을 각 outer 학습 부분에서만 맞추고 fold 근거를 기록한 뒤, 6개 방법을
+  같은 원본 순서 행에서 한 번씩 replay하는 쿼리별 outer-LODO 베이스라인 suite. 실제
+  replay에 쓰는 ledger가 선언대로 쿼리마다 reset·charge·report하는지도 guard가 검증
 - tier 가중 품질, oracle gap 회수율, 결정론적 leave-one-domain-out(LODO). random
   split 도우미는 의도적으로 제공하지 않음
 - 엄격한 JSON 로더와 opt-in 방식의 고정 RouterBench 경계 어댑터
@@ -186,8 +189,10 @@ state(prompt, budget_tier, remaining_budget, call_history, candidate_models)
 토큰 단위가 내장되어 있지 않으며, 어댑터가 대회 단위를 하나의 음이 아닌 값으로
 정규화합니다. 정책에는 호출 전 견적 비용만 보이고 실제 청구액은 호출을 replay할
 때까지 private outcome에 남습니다. 데이터셋 ID와 split 전용 domain label도 일반
-라우터 상태에서 제외합니다. 배포 불가한 oracle만 명시적인 평가 전용 경계를 통해
-비공개 example key를 받습니다.
+라우터 상태에서 제외합니다. 배포 불가한 oracle과 outer-fold replay
+schedule만 명시적인 평가 전용 경계를 통해 비공개 example key를 받습니다.
+schedule은 outer 학습 행과 호출 전에 관찰 가능한 metadata로 낸 결정만 담으며,
+split label을 정책 상태에 주입하지 않습니다.
 
 ```text
 JSON / RouterBench 경계 ──> typed replay examples ──> OfflineSimulator
@@ -242,7 +247,7 @@ planner는 쿼리별 예산에서만 상한입니다. 누적 스트림의 oracle
 | `random` | 예산 내 모델 중 seed 기반·순서 독립 선택 |
 | `length-heuristic` | 긴 프롬프트 또는 코드/수식이면 예산 내 strong 모델 |
 | `oracle` | 정답을 사용하는 쿼리별 예산 내 품질 상한 |
-| `domain-best-table` | 학습 도메인의 tier별 평균 품질표, 미등록 도메인은 cheapest |
+| `domain-best-table` | 학습 행의 관찰 가능한 tag로 맞춘 tier별 평균 품질표, 미등록 tag는 cheapest |
 
 Lambda 튜닝은 proxy loss가 아니라 이 실제 지표를 직접 최대화합니다. 각 프롬프트에서
 모델 utility는 lambda의 affine 함수이므로 선택은 exact 품질/비용 교차점에서만 바뀔 수
@@ -254,11 +259,18 @@ exact 유한 joint 최적임을 보장하는 것은 후보 집합이 `exhaustive
 truncated bounded 탐색은 근사로 남습니다. 증명·동률 규칙·누수 경계는
 [docs/lambda-tuning.md](docs/lambda-tuning.md)에 설명합니다.
 
-`tierroute evaluate`는 작은 합성 데이터에서 end-to-end 배선만 확인하기 위해 같은
-샘플로 domain table을 맞추며 출력에도 이를 경고합니다. 보고 가능한 실험은 각 LODO
-fold의 학습 부분에서만 적합하고 완전히 제외한 도메인에서 평가해야 합니다. 데이터셋
-domain은 어댑터가 호출 전에 관찰 가능한 label로 명시한 경우에만 `RouterState`에
-전달되며, split 전용 label은 비공개로 유지합니다.
+`tierroute evaluate`는 `evaluate_per_query_lodo_baselines`를 호출합니다. 각 outer
+fold에서 학습 행만으로 domain table을 맞춘 다음 해당 fold의 test 결정만
+남깁니다. 그런 다음 6개 방법을 같은 원본 행 순서로 한 번씩 replay하고 동일한
+쿼리별 회계 계약을 검증합니다. 동봉 데이터와 tier 가중치는 여전히 합성 smoke
+입력이므로 그 숫자는 벤치마크 근거가 아닙니다.
+
+데이터셋 domain은 어댑터가 호출 전에 유효한 tag를 `router_metadata["domain"]`에
+명시한 경우에만 `RouterState`에 전달되며, split 전용 label은 비공개로 유지합니다.
+관찰 tag가 LODO split domain과 같으면 held-out tag는 학습에서 보지 못했으므로
+domain-table은 의도대로 cheapest fallback, 즉 always-cheapest와 같아집니다. split domain을
+넘어 공유되는 별도의 관찰 tag가 있을 때만 domain table이 일반화할 수 있습니다.
+누적 비교는 sequence-level oracle가 있어야 하므로 계속 보류합니다.
 
 ## 데이터와 모델 자산
 

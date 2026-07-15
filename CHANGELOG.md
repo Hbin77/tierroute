@@ -36,12 +36,17 @@ the public API is pre-1.0.
   organizer-recommended inference-time generation materials, plus a targeted
   2025–2026 routing landscape check, with implemented, planned, and officially gated
   claims separated.
+- A leakage-free per-query outer-LODO suite for all six required baselines. It records
+  fold train/test evidence, replays one shared original-order population, verifies the
+  actual ledger's reset/charge/report behavior, and keeps cumulative oracle claims gated.
 
 ### Changed
 
-- Clarify that the bundled oracle and six-baseline CLI are illustrative per-query
-  infrastructure: cumulative oracle-gap reporting needs a sequence-level oracle, and
-  reportable domain-table comparisons must fit only on each outer training fold.
+- Make the bundled six-baseline CLI use outer-training-only domain tables and a shared
+  original-order outer-LODO replay. Domain-table fitting now reads only observable
+  pre-call metadata tags, never validation-only split domains; unseen tags use the
+  cheapest fallback. The synthetic inputs remain illustrative, and cumulative
+  oracle-gap reporting still needs a sequence-level oracle.
 - Replace setuptools with the dependency-free `flit_core` build backend after a
   wheel-content audit found vendored LGPL code that top-level metadata did not report.
   The license gate now scans bundled license documents and nested vendored metadata in
