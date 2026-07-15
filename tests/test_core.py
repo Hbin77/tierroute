@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the stable router contract."""
 
+from decimal import Decimal
+
 import pytest
 
 from tierroute.core import (
@@ -11,25 +13,29 @@ from tierroute.core import (
     RouterState,
     RoutingContractError,
     SelectOutput,
+    as_cost,
     validate_action,
 )
 
 
-def make_state(*, remaining_budget: float = 2.0) -> RouterState:
+def make_state(*, remaining_budget: Decimal = Decimal("2")) -> RouterState:
     return RouterState(
         prompt="Explain why the sky is blue.",
         budget_tier=BudgetTier.BALANCED,
         remaining_budget=remaining_budget,
-        call_history=(CallRecord("small", 1.0, "Rayleigh scattering"),),
-        candidate_models=(ModelSpec("small", 1.0), ModelSpec("large", 2.0)),
+        call_history=(CallRecord("small", Decimal("1"), "Rayleigh scattering"),),
+        candidate_models=(
+            ModelSpec("small", Decimal("1")),
+            ModelSpec("large", Decimal("2")),
+        ),
     )
 
 
 def test_state_copies_sequences_to_immutable_tuples() -> None:
-    history = [CallRecord("small", 1.0, "answer")]
-    candidates = [ModelSpec("small", 1.0)]
+    history = [CallRecord("small", Decimal("1"), "answer")]
+    candidates = [ModelSpec("small", Decimal("1"))]
 
-    state = RouterState("prompt", BudgetTier.FAST, 1.0, history, candidates)
+    state = RouterState("prompt", BudgetTier.FAST, Decimal("1"), history, candidates)
 
     assert state.call_history == tuple(history)
     assert state.candidate_models == tuple(candidates)
@@ -38,10 +44,10 @@ def test_state_copies_sequences_to_immutable_tuples() -> None:
 @pytest.mark.parametrize(
     ("factory", "message"),
     [
-        (lambda: ModelSpec("", 1.0), "model_id"),
-        (lambda: ModelSpec("small", -1.0), "non-negative"),
-        (lambda: RouterState("", BudgetTier.FAST, 1.0), "prompt"),
-        (lambda: RouterState("prompt", BudgetTier.FAST, float("inf")), "finite"),
+        (lambda: ModelSpec("", Decimal("1")), "model_id"),
+        (lambda: ModelSpec("small", Decimal("-1")), "non-negative"),
+        (lambda: RouterState("", BudgetTier.FAST, Decimal("1")), "prompt"),
+        (lambda: RouterState("prompt", BudgetTier.FAST, Decimal("Infinity")), "finite"),
     ],
 )
 def test_invalid_schemas_fail_early(factory: object, message: str) -> None:
@@ -58,7 +64,7 @@ def test_validate_action_accepts_affordable_call_and_existing_output() -> None:
 
 def test_validate_action_rejects_over_budget_call() -> None:
     with pytest.raises(RoutingContractError, match="only 1 remains"):
-        validate_action(make_state(remaining_budget=1.0), CallModel("large"))
+        validate_action(make_state(remaining_budget=Decimal("1")), CallModel("large"))
 
 
 def test_validate_action_rejects_unknown_model_and_history_index() -> None:
@@ -69,3 +75,8 @@ def test_validate_action_rejects_unknown_model_and_history_index() -> None:
     with pytest.raises(RoutingContractError, match="unavailable"):
         validate_action(state, SelectOutput(1))
 
+
+def test_as_cost_rejects_inexact_floats() -> None:
+    assert as_cost("0.1") + as_cost("0.2") == as_cost("0.3")
+    with pytest.raises(TypeError, match="not exact"):
+        as_cost(0.1)

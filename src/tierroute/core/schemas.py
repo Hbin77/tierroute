@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import Enum
 from typing import TypeAlias
 
@@ -28,10 +29,30 @@ def _require_non_empty(value: str, field_name: str) -> None:
         raise ValueError(f"{field_name} must be a non-empty string")
 
 
-def _require_non_negative_finite(value: float, field_name: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"{field_name} must be a real number")
-    if not math.isfinite(value) or value < 0:
+Cost: TypeAlias = Decimal
+
+
+def as_cost(value: Decimal | int | str) -> Cost:
+    """Convert an exact value to the internal cost representation.
+
+    Floats are intentionally rejected because binary rounding at a budget boundary can
+    change whether a call is accepted. Dataset adapters should use ``str(raw_float)``.
+    """
+
+    if isinstance(value, bool) or isinstance(value, float):
+        raise TypeError("cost values must be Decimal, int, or str; floats are not exact")
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(value)
+    except Exception as error:  # Decimal raises several input-specific exceptions.
+        raise ValueError(f"invalid cost value: {value!r}") from error
+    _require_non_negative_finite_cost(result, "cost")
+    return result
+
+
+def _require_non_negative_finite_cost(value: Cost, field_name: str) -> None:
+    if not isinstance(value, Decimal):
+        raise TypeError(f"{field_name} must be a Decimal")
+    if not value.is_finite() or value < 0:
         raise ValueError(f"{field_name} must be finite and non-negative")
 
 
@@ -40,13 +61,13 @@ class ModelSpec:
     """A candidate model and its normalized one-call cost."""
 
     model_id: str
-    cost: float
+    cost: Cost
     display_name: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict, compare=False)
 
     def __post_init__(self) -> None:
         _require_non_empty(self.model_id, "model_id")
-        _require_non_negative_finite(self.cost, "cost")
+        _require_non_negative_finite_cost(self.cost, "cost")
         if self.display_name is not None:
             _require_non_empty(self.display_name, "display_name")
 
@@ -60,13 +81,13 @@ class CallRecord:
     """
 
     model_id: str
-    cost: float
+    cost: Cost
     output: str
     metadata: Mapping[str, object] = field(default_factory=dict, compare=False)
 
     def __post_init__(self) -> None:
         _require_non_empty(self.model_id, "model_id")
-        _require_non_negative_finite(self.cost, "cost")
+        _require_non_negative_finite_cost(self.cost, "cost")
         if not isinstance(self.output, str):
             raise TypeError("output must be a string")
 
@@ -77,7 +98,7 @@ class RouterState:
 
     prompt: str
     budget_tier: BudgetTier
-    remaining_budget: float
+    remaining_budget: Cost
     call_history: tuple[CallRecord, ...] = ()
     candidate_models: tuple[ModelSpec, ...] = ()
     metadata: Mapping[str, object] = field(default_factory=dict, compare=False)
@@ -86,7 +107,7 @@ class RouterState:
         _require_non_empty(self.prompt, "prompt")
         if not isinstance(self.budget_tier, BudgetTier):
             raise TypeError("budget_tier must be a BudgetTier")
-        _require_non_negative_finite(self.remaining_budget, "remaining_budget")
+        _require_non_negative_finite_cost(self.remaining_budget, "remaining_budget")
         object.__setattr__(self, "call_history", tuple(self.call_history))
         object.__setattr__(self, "candidate_models", tuple(self.candidate_models))
         model_ids = [model.model_id for model in self.candidate_models]
