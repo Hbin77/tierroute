@@ -14,26 +14,12 @@ from tierroute.core import (
     Cost,
     ModelSpec,
     RouterState,
-    sum_costs,
     validate_action,
-)
-from tierroute.eval import (
-    EvaluationReport,
-    OfflineSimulator,
-    ScoreSummary,
-    build_per_query_oracle_plan,
-    fit_per_query_domain_table,
-    oracle_gap_recovery,
-    summarize_report,
 )
 from tierroute.features import SurfaceFeatures, extract_surface_features
 from tierroute.policies import (
-    AlwaysCheapestRouter,
-    AlwaysPremiumRouter,
-    DomainBestRouter,
-    LengthHeuristicRouter,
-    OracleRouter,
-    RandomRouter,
+    BaselineResult,
+    evaluate_per_query_lodo_baselines,
 )
 from tierroute.policies.lambda_threshold import LambdaInput, LambdaThresholdRouter, as_lambda
 from tierroute.predictors import QualityPredictor
@@ -97,27 +83,18 @@ class RouteDecision:
     lambda_observed_breakpoint_count: int | None
 
 
-@dataclass(frozen=True, slots=True)
-class BaselineResult:
-    """One row in the bundled six-baseline scorecard."""
-
-    name: str
-    report: EvaluationReport
-    score: ScoreSummary
-    gap_recovery: float | None
-    total_cost: Cost
-
-
 def model_catalogue(dataset: EvaluationDataset) -> tuple[ModelSpec, ...]:
-    """Return a catalogue after verifying constant model IDs and replay costs."""
+    """Return a canonical catalogue after verifying stable model IDs and quotes."""
 
+    if not dataset.examples:
+        raise ValueError("demo requires at least one evaluation example")
     catalogue = dataset.examples[0].candidate_models
-    signature = tuple((model.model_id, model.cost) for model in catalogue)
+    signature = {model.model_id: model.cost for model in catalogue}
     for example in dataset.examples[1:]:
-        current = tuple((model.model_id, model.cost) for model in example.candidate_models)
+        current = {model.model_id: model.cost for model in example.candidate_models}
         if current != signature:
             raise ValueError("demo requires a stable model catalogue and cost per model")
-    return catalogue
+    return tuple(sorted(catalogue, key=lambda model: model.model_id))
 
 
 def route_prompt(
@@ -193,41 +170,17 @@ def route_prompt(
 
 
 def evaluate_six_baselines(dataset: EvaluationDataset) -> tuple[BaselineResult, ...]:
-    """Run all required baselines on bundled or schema-compatible data."""
+    """Run the per-query outer-LODO suite on bundled or compatible data."""
 
     models = model_catalogue(dataset)
-    cheap = min(models, key=lambda model: (model.cost, model.model_id))
     premium = max(models, key=lambda model: (model.cost, model.model_id))
-    oracle_plan = build_per_query_oracle_plan(dataset.examples, dataset.tier_specs)
-    domain_plan = fit_per_query_domain_table(dataset.examples, dataset.tier_specs)
-    routers = (
-        ("always-cheapest", AlwaysCheapestRouter()),
-        ("always-premium", AlwaysPremiumRouter(premium.model_id)),
-        ("random", RandomRouter(seed=2026)),
-        (
-            "length-heuristic",
-            LengthHeuristicRouter(cheap.model_id, premium.model_id, character_threshold=120),
-        ),
-        ("oracle", OracleRouter(oracle_plan)),
-        ("domain-best-table", DomainBestRouter(domain_plan.table, domain_plan.fallback_model_id)),
+    evaluation = evaluate_per_query_lodo_baselines(
+        dataset.examples,
+        dataset.tier_specs,
+        PerQueryBudgetLedger,
+        premium_model_id=premium.model_id,
+        strong_model_id=premium.model_id,
+        random_seed=2026,
+        character_threshold=120,
     )
-    simulator = OfflineSimulator(PerQueryBudgetLedger)
-    reports = {
-        name: simulator.run(router, dataset.examples, dataset.tier_specs, router_name=name)
-        for name, router in routers
-    }
-    cheapest_report = reports["always-cheapest"]
-    oracle_report = reports["oracle"]
-    rows = []
-    for name, _ in routers:
-        report = reports[name]
-        rows.append(
-            BaselineResult(
-                name=name,
-                report=report,
-                score=summarize_report(report),
-                gap_recovery=oracle_gap_recovery(report, cheapest_report, oracle_report),
-                total_cost=sum_costs(query.cost for tier in report.tiers for query in tier.queries),
-            )
-        )
-    return tuple(rows)
+    return evaluation.baselines

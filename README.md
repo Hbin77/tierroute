@@ -174,6 +174,10 @@ solver, and unknown IDs still fail closed.
   supported.
 - True nested LODO orchestration keeps every outer domain out of predictor fitting,
   calibration, and lambda tuning.
+- A per-query outer-LODO six-baseline suite fits every domain table on its outer
+  training side, records fold evidence, and replays all methods once on the same
+  original-order rows. A live guard verifies that the actual ledger used by every
+  replay resets, charges, and reports per-query accounting as declared.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out
   (LODO) folds. No random-split helper is provided.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
@@ -196,7 +200,10 @@ no built-in currency or token unit: an adapter normalizes the challenge-specific
 before creating core objects. Policies see only pre-call quoted costs; realized charges
 remain private with logged outcomes until a call is replayed. Dataset IDs and
 split-only domain labels are also absent from ordinary router state. The non-deployable
-oracle alone receives a private example key through a nominal evaluation-only boundary.
+oracle and outer-fold replay schedule receive a private example key through a nominal
+evaluation-only boundary. The schedule contains only decisions fitted on outer training
+rows from pre-call observable metadata; it never injects the split label into policy
+state.
 
 ```text
 JSON / RouterBench boundary ──> typed replay examples ──> OfflineSimulator
@@ -253,7 +260,7 @@ implemented yet. The six baselines are:
 | `random` | Seeded, order-independent choice among affordable models |
 | `length-heuristic` | Strong model for long/code/math prompts when affordable |
 | `oracle` | Privileged per-query, budget-feasible quality upper bound |
-| `domain-best-table` | Per-tier mean-quality table fitted on training domains, with cheapest fallback |
+| `domain-best-table` | Per-tier mean-quality table fitted from observable training tags, with cheapest fallback |
 
 Lambda tuning maximizes this same realized metric, not a proxy loss. For each prompt,
 model utilities are affine functions of lambda, so decisions can change only at exact
@@ -267,11 +274,18 @@ marked exhaustive; a truncated bounded search remains approximate. See
 [docs/lambda-tuning.md](docs/lambda-tuning.md) for the proof, tie-breaks, and leakage
 boundary.
 
-`tierroute evaluate` fits the domain table on the tiny bundled sample only as an
-end-to-end smoke check, and says so in its output. Reportable experiments must fit on
-the training side of every LODO fold and evaluate only on the held-out domain. A dataset
-domain reaches `RouterState` only when its adapter explicitly marks that label as
-observable before routing; split-only labels remain private.
+`tierroute evaluate` calls `evaluate_per_query_lodo_baselines`. Each outer fold fits its
+domain table on training rows only; only that fold's test decisions are retained. All
+six methods are then replayed once over the identical original row order and checked
+against the same per-query accounting contract. The bundled data and tier weights are
+still synthetic smoke inputs, so their numbers are not benchmark evidence.
+
+A dataset domain reaches `RouterState` only when its adapter explicitly places a valid
+pre-call tag in `router_metadata["domain"]`; split-only labels remain private. If the
+observable tag is identical to the LODO split domain, the held-out tag is unseen and the
+domain-table baseline deliberately reduces to always-cheapest through its fallback.
+Cross-domain generalization is possible only when a separately observable tag is shared
+across split domains. Cumulative comparison remains gated on a sequence-level oracle.
 
 ## Data and model assets
 

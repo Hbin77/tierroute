@@ -290,7 +290,7 @@ does not assert that no external implementation could add it.
 | Cost control | Win-probability threshold controls strong-model call share; no hard dollar budget or named tier | Willingness-to-pay and cost-quality frontier | Explicit expected-budget service selection | Lambda for an expected-cost budget | **Implemented:** deterministically tuned per-tier lambda under the configured replay plus per-query/cumulative ledgers |
 | Quality signal | Preference win probability; several router models including MF | Logged scores and learned performance estimates | Query/response reliability score | Ex-ante and post-hoc estimators with uncertainty | **Implemented:** surface-feature bilinear scores plus per-model isotonic calibration; bge-m3 provider and GBM are **planned** |
 | Distribution-shift evidence | Conditional MMLU/GSM8K OOD weakness and in-domain recovery | Main predictive setup uses within-task 70/30 splits and also reports held-out-task plots | Main setup uses random 50/50 splits, calls out same/similar distributions, and studies synthetic label shift | Multiple benchmarks and estimator-noise studies; no tierroute-style nested LODO reported | **Implemented:** nested LODO covers predictor fit, calibration, lambda selection, and outer scoring |
-| Primary reporting | Call-share/performance curves, PGR/APGR/CPT | AIQ over a shared cost-quality frontier and oracle | Quality under budget and cost savings | Area under cost-quality curve | **Implemented:** configured tier-weighted quality; oracle-gap formula and per-query oracle helper. **Planned:** cumulative sequence oracle and same-outer-fold baseline report. |
+| Primary reporting | Call-share/performance curves, PGR/APGR/CPT | AIQ over a shared cost-quality frontier and oracle | Quality under budget and cost savings | Area under cost-quality curve | **Implemented:** configured tier-weighted quality, per-query oracle-gap formula, and same-outer-fold six-baseline report. **Planned:** cumulative sequence oracle. |
 | Offline replay | Can evaluate learned routes, but live provider integration is in scope | Core benefit of pre-generated outcomes | Built around commercial API calls in the paper | Mix of logged and real benchmark experiments | **Implemented:** no-network runtime, hidden labels until action replay, synthetic clone-first demo |
 | Budget-tier awareness | User-selected win-probability threshold and call share, not named challenge tiers | Continuous cost-quality evaluation | Budget is explicit, not the challenge's three-tier contract | Expected budget parameter | **Implemented:** Fast/Balanced/Premium are first-class state and policy keys; official weights remain **gated** |
 | Call-history contract | Not central to binary one-shot routing | Not a central predictive-router input | Earlier responses drive cascade decisions | Earlier outputs update sequential decisions | **Implemented:** typed history/action boundary; **not implemented:** history-adaptive policy |
@@ -317,10 +317,12 @@ invented cost-aware model routing:
 4. The learned-policy evaluator is nested LODO: no outer domain reaches predictor
    fitting, isotonic calibration, or lambda selection. Cumulative results are replayed
    once in original order rather than resetting the ledger at fold boundaries.
-5. The clone-first demo runs all six required baselines under illustrative per-query
-   accounting. Its oracle helper is a per-query upper bound. Leakage-free outer-fold
-   fitting for the domain table and a cumulative sequence-level oracle remain planned
-   before those comparisons are reportable.
+5. The clone-first demo runs all six required baselines on one original-order outer-LODO
+   population under illustrative per-query accounting. Each domain table sees only its
+   outer training rows and pre-call observable domain tags; fold evidence records the
+   exact train/test IDs. The ledger used by every replay is behaviorally checked for
+   per-query reset and accounting. The oracle remains a per-query upper bound, so a
+   cumulative sequence-level oracle is still planned.
 6. Runtime inference, the bundled demo, and CI operate without network access. External
    data and model assets use explicit preparation boundaries, fixed identities, and
    license review rather than implicit downloads.
@@ -354,8 +356,8 @@ invented cost-aware model routing:
   enumeration of tierroute's deterministic lambda candidates under the configured
   replay. It is not a claim of global optimality over randomized expected-budget
   policies; the unified formulation can require a randomized mixing coefficient.
-- The per-query oracle is not a cumulative-stream upper bound, and the current
-  six-baseline demo is not a same-outer-fold LODO comparison.
+- The per-query six-baseline comparison and oracle are not valid cumulative-stream
+  evidence. No cumulative oracle-gap claim is permitted without a sequence-level plan.
 
 ## Decision record and falsification plan
 
@@ -366,12 +368,13 @@ invented cost-aware model routing:
 | Supervised full-information learning, not offline RL | The current harness and RouterBench expose every candidate outcome offline, and the task page describes candidate outputs and quality in public data. Direct prediction is appropriate only if the released SK Telecom schema preserves that full-information supervision. | If the released data reveals only bandit feedback, the formulation must change. |
 | Latency is secondary | The task page says latency is a tie-break, while quality under weighted budgets is primary. | A later official scoring specification that assigns latency a non-tie score. |
 
-Before a reportable experiment, a new baseline orchestrator must fit the domain table
-only on each outer training side and evaluate every method on the same outer test rows
-and ledger. Per-query experiments may then report the existing oracle-gap metric. A
-cumulative experiment first needs a sequence-level oracle; the independent per-query
-plan is neither guaranteed feasible nor an upper bound for a stream. Every result must
-show per-tier feasibility and mean quality. Planned ablations are surface-only versus
+The implemented per-query baseline orchestrator fits each domain table only on its outer
+training side, retains decisions only for that fold's test rows, and replays every
+method once on the same original-order population and behaviorally verified per-query
+ledger. Per-query experiments may report the existing oracle-gap metric. A cumulative
+experiment first needs a sequence-level oracle; the independent per-query plan is
+neither guaranteed feasible nor an upper bound for a stream. Every result must show
+per-tier feasibility and mean quality. Planned ablations are surface-only versus
 local bge-m3 features, bilinear versus GBM, uncalibrated versus isotonic, shared versus
 tier-specific lambda, full versus curated model catalogues, and LODO versus a clearly
 labeled non-reportable random diagnostic. A new claim survives only if it holds on
@@ -387,6 +390,7 @@ pool, data split, cost model, and metric.
 | Per-query and cumulative budget uncertainty | [`adapters/budgets.py`](../src/tierroute/adapters/budgets.py) |
 | Exact one-shot tier policy | [`policies/lambda_threshold.py`](../src/tierroute/policies/lambda_threshold.py) |
 | Cross-fitted tuning and nested LODO | [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py), [`eval/validation.py`](../src/tierroute/eval/validation.py) |
+| Per-query outer-LODO six-baseline comparison | [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py), [`eval/planning.py`](../src/tierroute/eval/planning.py) |
 | Tier metric and oracle-gap recovery | [`eval/metrics.py`](../src/tierroute/eval/metrics.py) |
 | Bilinear fit and isotonic calibration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py) |
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
@@ -397,11 +401,9 @@ pool, data split, cost model, and metric.
 
 These are implementation tasks, not questions for the organizer:
 
-1. Add an outer-LODO baseline orchestrator that fits `domain-best-table` only on the
-   outer training side and evaluates all six methods on identical outer test rows.
-2. Add a sequence-level oracle before computing oracle-gap recovery under cumulative
+1. Add a sequence-level oracle before computing oracle-gap recovery under cumulative
    accounting. The independent per-query plan is valid only for per-query budgets.
-3. Report quote-versus-realized cost error. Runtime affordability uses a quoted cost;
+2. Report quote-versus-realized cost error. Runtime affordability uses a quoted cost;
    the replay ledger charges the realized outcome. Exact arithmetic detects infeasible
    replay but cannot promise ex-ante feasibility when those values differ.
 

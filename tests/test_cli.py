@@ -103,6 +103,17 @@ def test_evaluate_command_prints_all_required_baselines(capsys: object) -> None:
     assert "always-cheapest" in output
     assert "domain-best-table" in output
     assert "not benchmark claims" in output
+    assert "original-order outer-LODO" in output
+    assert "outer training side" in output
+
+
+def test_evaluate_json_declares_lodo_and_domain_fit_scope(capsys: object) -> None:
+    assert main(["evaluate", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+
+    assert payload["budget_scope"] == "per-query-illustrative"
+    assert payload["validation_scope"] == "outer-lodo-original-order"
+    assert payload["domain_table_fit"] == "outer-training-observable-tags-only"
 
 
 def test_train_then_route_with_canonical_artifact(

@@ -16,6 +16,7 @@ from tierroute.core import (
     RoutingContractError,
     SelectOutput,
 )
+from tierroute.eval.planning import observable_domain_tag
 from tierroute.eval.protocols import PrivilegedEvaluationRouter
 from tierroute.features import extract_surface_features
 
@@ -157,7 +158,10 @@ class DomainBestRouter:
     def route(self, state: RouterState) -> RouterAction:
         if selected := _finish_existing(state, "domain-table call completed"):
             return selected
-        domain = str(state.metadata.get("domain", ""))
+        try:
+            domain = observable_domain_tag(state.metadata) or ""
+        except ValueError as error:
+            raise RoutingContractError(str(error)) from error
         model_id = self.table.get((state.budget_tier, domain), self.fallback_model_id)
         configured = _by_id(state, model_id)
         if configured.cost > state.remaining_budget:
