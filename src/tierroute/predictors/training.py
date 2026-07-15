@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from tierroute.eval import DomainFold, EvaluationExample, leave_one_domain_out
+from tierroute.eval import (
+    DomainFold,
+    EvaluationExample,
+    evaluation_data_sha256,
+    leave_one_domain_out,
+)
 from tierroute.features import EmbeddingProvider, PromptFeatureEncoder
 from tierroute.predictors._ridge import fit_centered_ridge
 from tierroute.predictors.artifacts import BilinearPredictorArtifact
@@ -63,37 +66,7 @@ def _model_ids(examples: tuple[EvaluationExample, ...]) -> tuple[str, ...]:
 def training_data_sha256(examples: Sequence[EvaluationExample]) -> str:
     """Hash all fields that can influence predictor fitting."""
 
-    ordered = _ordered_examples(examples)
-    payload = []
-    for example in ordered:
-        outcomes = {outcome.model_id: outcome for outcome in example.outcomes}
-        payload.append(
-            {
-                "example_id": example.example_id,
-                "prompt": example.prompt,
-                "domain": example.domain,
-                "models": [
-                    {
-                        "model_id": model.model_id,
-                        "quoted_cost": format(model.cost, "f"),
-                        "realized_cost": format(outcomes[model.model_id].cost, "f"),
-                        "quality": outcomes[model.model_id].quality,
-                    }
-                    for model in sorted(
-                        example.candidate_models,
-                        key=lambda candidate: candidate.model_id,
-                    )
-                ],
-            }
-        )
-    document = json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode()
-    return hashlib.sha256(document).hexdigest()
+    return evaluation_data_sha256(examples)
 
 
 def _fit_base(
