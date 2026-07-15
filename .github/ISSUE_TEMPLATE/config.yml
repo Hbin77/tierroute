@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/Hbin77/tierroute/security/advisories/new
+    about: Do not disclose vulnerabilities publicly; use GitHub's private report form.
