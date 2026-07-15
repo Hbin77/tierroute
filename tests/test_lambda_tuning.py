@@ -10,9 +10,18 @@ from itertools import product
 
 import pytest
 
+import tierroute.eval.simulator as simulator_module
 from tierroute.adapters import CumulativeBudgetLedger, PerQueryBudgetLedger
 from tierroute.core import BudgetTier, CallModel, ModelSpec, RouterState
-from tierroute.eval import BudgetReport, CandidateOutcome, DomainFold, EvaluationExample, TierSpec
+from tierroute.eval import (
+    BudgetReport,
+    CandidateOutcome,
+    DomainFold,
+    EvaluationExample,
+    TierSpec,
+    evaluation_data_sha256,
+    evaluation_replay_sha256,
+)
 from tierroute.policies import lambda_tuning
 from tierroute.policies.lambda_threshold import route_from_predictions
 from tierroute.policies.lambda_tuning import (
@@ -168,6 +177,70 @@ def test_grid_tunes_distinct_lambdas_and_direct_weighted_metric() -> None:
 
     assert best_schedules == [(Fraction(3, 10), Fraction(3, 10), Fraction(0))]
     assert tuple(result.lambda_by_tier[spec.tier] for spec in specs) == best_schedules[0]
+
+
+def test_lambda_grid_prepares_and_hashes_scope_once_across_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = (
+        ModelSpec("cheap", Decimal("1")),
+        ModelSpec("premium", Decimal("2")),
+    )
+    examples = (_example("q1", "general", models, {"cheap": 0.5, "premium": 0.9}),)
+    spec = TierSpec(BudgetTier.FAST, Decimal("2.00"), 1)
+    predictions = _table(examples, {"cheap": 0.5, "premium": 0.9})
+    snapshot_calls = 0
+    hash_calls = 0
+    original_snapshot = simulator_module._snapshot_evaluation_scope
+    original_hash = simulator_module._evaluation_scope_sha256_from_snapshots
+
+    def counted_snapshot(*args: object, **kwargs: object):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return original_snapshot(*args, **kwargs)
+
+    def counted_hash(*args: object, **kwargs: object):
+        nonlocal hash_calls
+        hash_calls += 1
+        return original_hash(*args, **kwargs)
+
+    monkeypatch.setattr(simulator_module, "_snapshot_evaluation_scope", counted_snapshot)
+    monkeypatch.setattr(
+        simulator_module,
+        "_evaluation_scope_sha256_from_snapshots",
+        counted_hash,
+    )
+
+    result = tune_tier_lambdas(
+        examples,
+        (spec,),
+        predictions,
+        PerQueryBudgetLedger,
+        lambda_grids={BudgetTier.FAST: (0, Fraction(1, 10), Fraction(1, 5))},
+    )
+
+    assert snapshot_calls == 1
+    assert hash_calls == 1
+    assert result.report.tiers[0].tier_spec.budget_limit == Decimal("2")
+    assert type(result.report.tiers[0].tier_spec.weight) is float
+
+
+def test_tuning_keeps_legacy_integer_quality_artifact_hashes() -> None:
+    models = (ModelSpec("only", Decimal("1")),)
+    examples = (_example("q1", "general", models, {"only": 1}),)
+    spec = TierSpec(BudgetTier.FAST, Decimal("1"), 1.0)
+    predictions = _table(examples, {"only": 1.0})
+
+    result = tune_tier_lambdas(
+        examples,
+        (spec,),
+        predictions,
+        PerQueryBudgetLedger,
+        lambda_grids={BudgetTier.FAST: (0,)},
+    )
+
+    assert result.data_sha256 == evaluation_data_sha256(examples)
+    assert result.replay_sha256 == evaluation_replay_sha256(examples)
 
 
 def test_tuning_ties_use_lower_spend_then_smaller_lambda() -> None:

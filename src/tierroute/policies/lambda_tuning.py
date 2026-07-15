@@ -939,6 +939,11 @@ def tune_tier_lambdas(
             max_candidates_per_tier=max_candidates_per_tier,
             allow_large_exhaustive=allow_large_exhaustive,
         )
+    source_examples = ordered
+    simulator = OfflineSimulator(ledger_factory)
+    prepared = simulator._prepare_evaluation(tuple(ordered), specs)
+    ordered = prepared.examples
+    specs = prepared.tier_specs
     candidates_by_tier = _candidate_map(
         specs,
         lambda_grids,
@@ -947,7 +952,6 @@ def tune_tier_lambdas(
         max_candidates_per_tier,
         allow_large_exhaustive,
     )
-    simulator = OfflineSimulator(ledger_factory)
     selections = []
     for spec in specs:
         best: tuple[tuple[Fraction, Decimal, Fraction], TierResult] | None = None
@@ -957,7 +961,7 @@ def tune_tier_lambdas(
                 predictions,
                 MappingProxyType({spec.tier: lambda_cost}),
             )
-            report = simulator.run_tier(router, ordered, spec)
+            report = simulator._run_tier(router, ordered, spec)
             quality = _mean_quality_fraction(report)
             if quality is None:
                 continue
@@ -982,6 +986,7 @@ def tune_tier_lambdas(
     combined = EvaluationReport(
         "tier-lambda-tuning",
         tuple(selection.report for selection in selections),
+        prepared.identity,
     )
     score = summarize_report(combined)
     if score.weighted_quality is None:
@@ -990,11 +995,11 @@ def tune_tier_lambdas(
         selections=tuple(selections),
         report=combined,
         score=score,
-        data_sha256=evaluation_data_sha256(ordered),
-        replay_sha256=evaluation_replay_sha256(ordered),
-        prediction_sha256=predictions.sha256(ordered),
-        example_count=len(ordered),
-        domains=tuple(sorted({example.domain for example in ordered})),
+        data_sha256=evaluation_data_sha256(source_examples),
+        replay_sha256=evaluation_replay_sha256(source_examples),
+        prediction_sha256=predictions.sha256(source_examples),
+        example_count=len(source_examples),
+        domains=tuple(sorted({example.domain for example in source_examples})),
     )
 
 

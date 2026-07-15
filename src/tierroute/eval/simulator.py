@@ -19,14 +19,29 @@ from tierroute.core import (
 )
 from tierroute.eval.budgets import BudgetLedger, BudgetLedgerFactory
 from tierroute.eval.protocols import PrivilegedEvaluationRouter
+from tierroute.eval.provenance import (
+    EVALUATION_SCOPE_ALGORITHM,
+    _evaluation_scope_sha256_from_snapshots,
+    _snapshot_evaluation_scope,
+)
 from tierroute.eval.schemas import (
     EvaluationExample,
     EvaluationReport,
+    EvaluationScopeIdentity,
     QueryResult,
     ReplayCall,
     TierResult,
     TierSpec,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedEvaluation:
+    """One immutable replay scope that internal repeated runs can safely share."""
+
+    examples: tuple[EvaluationExample, ...]
+    tier_specs: tuple[TierSpec, ...]
+    identity: EvaluationScopeIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,9 +52,7 @@ class OfflineSimulator:
     max_calls_per_query: int = 1
 
     def __post_init__(self) -> None:
-        if isinstance(self.max_calls_per_query, bool) or not isinstance(
-            self.max_calls_per_query, int
-        ):
+        if type(self.max_calls_per_query) is not int:
             raise TypeError("max_calls_per_query must be an integer")
         if self.max_calls_per_query < 1:
             raise ValueError("max_calls_per_query must be positive")
@@ -52,7 +65,20 @@ class OfflineSimulator:
     ) -> TierResult:
         """Simulate every example in the supplied, recorded order."""
 
-        examples = tuple(examples)
+        snapshot_examples, snapshot_specs = _snapshot_evaluation_scope(
+            examples,
+            (tier_spec,),
+        )
+        return self._run_tier(router, snapshot_examples, snapshot_specs[0])
+
+    def _run_tier(
+        self,
+        router: Router,
+        examples: tuple[EvaluationExample, ...],
+        tier_spec: TierSpec,
+    ) -> TierResult:
+        """Replay one already-normalized immutable evaluation snapshot."""
+
         if not examples:
             raise ValueError("examples must not be empty")
         example_ids = [example.example_id for example in examples]
@@ -79,14 +105,47 @@ class OfflineSimulator:
     ) -> EvaluationReport:
         """Simulate a router independently at each configured tier."""
 
-        tier_specs = tuple(tier_specs)
-        if not tier_specs:
-            raise ValueError("tier_specs must not be empty")
-        tiers = [tier_spec.tier for tier_spec in tier_specs]
-        if len(tiers) != len(set(tiers)):
-            raise ValueError("tier_specs must contain unique tiers")
-        results = tuple(self.run_tier(router, examples, spec) for spec in tier_specs)
-        return EvaluationReport(router_name or type(router).__name__, results)
+        prepared = self._prepare_evaluation(examples, tier_specs)
+        return self._run_prepared(router, prepared, router_name=router_name)
+
+    def _prepare_evaluation(
+        self,
+        examples: tuple[EvaluationExample, ...],
+        tier_specs: tuple[TierSpec, ...],
+    ) -> _PreparedEvaluation:
+        """Validate, freeze, and hash a replay before any router is invoked."""
+
+        snapshot_examples, snapshot_specs = _snapshot_evaluation_scope(examples, tier_specs)
+        identity = EvaluationScopeIdentity(
+            EVALUATION_SCOPE_ALGORITHM,
+            _evaluation_scope_sha256_from_snapshots(
+                snapshot_examples,
+                snapshot_specs,
+                self.max_calls_per_query,
+            ),
+            self.max_calls_per_query,
+        )
+        return _PreparedEvaluation(snapshot_examples, snapshot_specs, identity)
+
+    def _run_prepared(
+        self,
+        router: Router,
+        prepared: _PreparedEvaluation,
+        *,
+        router_name: str | None = None,
+    ) -> EvaluationReport:
+        """Replay a scope created by this simulator's trusted preparation path."""
+
+        if prepared.identity.max_calls_per_query != self.max_calls_per_query:
+            raise ValueError("prepared evaluation call cap does not match simulator")
+        results = tuple(
+            self._run_tier(router, prepared.examples, spec) for spec in prepared.tier_specs
+        )
+        return EvaluationReport(
+            router_name or type(router).__name__,
+            results,
+            prepared.identity,
+        )
 
     def _run_query(
         self,

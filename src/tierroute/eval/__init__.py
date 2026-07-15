@@ -19,12 +19,18 @@ from tierroute.eval.planning import (
     build_per_query_oracle_plan,
     fit_per_query_domain_table,
 )
-from tierroute.eval.provenance import evaluation_data_sha256, evaluation_replay_sha256
+from tierroute.eval.provenance import (
+    EVALUATION_SCOPE_ALGORITHM,
+    evaluation_data_sha256,
+    evaluation_replay_sha256,
+    evaluation_scope_sha256,
+)
 from tierroute.eval.schemas import (
     BudgetReport,
     CandidateOutcome,
     EvaluationExample,
     EvaluationReport,
+    EvaluationScopeIdentity,
     QueryResult,
     ReplayCall,
     TierResult,
@@ -34,6 +40,7 @@ from tierroute.eval.simulator import OfflineSimulator
 from tierroute.eval.validation import DomainFold, leave_one_domain_out
 
 __all__ = [
+    "EVALUATION_SCOPE_ALGORITHM",
     "BudgetLedger",
     "BudgetLedgerFactory",
     "BudgetReport",
@@ -42,6 +49,7 @@ __all__ = [
     "DomainTablePlan",
     "EvaluationExample",
     "EvaluationReport",
+    "EvaluationScopeIdentity",
     "ExactCostDifference",
     "OfflineSimulator",
     "QueryResult",
@@ -56,6 +64,7 @@ __all__ = [
     "build_per_query_oracle_plan",
     "evaluation_data_sha256",
     "evaluation_replay_sha256",
+    "evaluation_scope_sha256",
     "fit_per_query_domain_table",
     "leave_one_domain_out",
     "oracle_gap_recovery",

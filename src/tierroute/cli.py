@@ -284,6 +284,11 @@ def _baseline_payload(result: BaselineResult) -> dict[str, Any]:
         }
     return {
         "name": result.name,
+        "evaluation_scope": {
+            "algorithm": result.report.evaluation_scope_algorithm,
+            "sha256": result.report.evaluation_scope_sha256,
+            "max_calls_per_query": result.report.max_calls_per_query,
+        },
         "tier_quality": {
             tier.value: None if quality is None else round(quality, 6)
             for tier, quality in result.score.tier_quality.items()
@@ -342,6 +347,11 @@ def _training_payload(
         {
             "policy_artifact": str(policy_output),
             "accounting_scope": accounting_scope,
+            "evaluation_scope": {
+                "algorithm": tuning.report.evaluation_scope_algorithm,
+                "sha256": tuning.report.evaluation_scope_sha256,
+                "max_calls_per_query": tuning.report.max_calls_per_query,
+            },
             "lambda_by_tier": {
                 selection.tier.value: _fraction_payload(selection.lambda_cost)
                 for selection in tuning.selections
@@ -367,8 +377,15 @@ def _training_payload(
 
 
 def _print_scorecard(dataset_name: str, results: tuple[BaselineResult, ...]) -> None:
+    if not results:
+        raise ValueError("scorecard requires at least one baseline result")
     print(f"Dataset: {dataset_name}")
     print("Budget scope: illustrative per-query limits (official SKT scope unresolved)")
+    print(
+        f"Evaluation scope: {results[0].report.evaluation_scope_algorithm}:"
+        f"{results[0].report.evaluation_scope_sha256} "
+        f"(max calls/query={results[0].report.max_calls_per_query})"
+    )
     header = (
         f"{'baseline':<20} {'fast':>7} {'balanced':>9} {'premium':>8} {'weighted':>9} {'gap':>7}"
     )
@@ -593,12 +610,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "evaluate":
         results = evaluate_six_baselines(dataset)
         if args.json:
+            evaluation_scope = {
+                "algorithm": results[0].report.evaluation_scope_algorithm,
+                "sha256": results[0].report.evaluation_scope_sha256,
+                "max_calls_per_query": results[0].report.max_calls_per_query,
+            }
             payload = {
                 "dataset": dataset.name,
                 "provenance": dataset.provenance,
                 "budget_scope": "per-query-illustrative",
                 "validation_scope": "outer-lodo-original-order",
                 "domain_table_fit": "outer-training-observable-tags-only",
+                "evaluation_scope": evaluation_scope,
                 "baselines": [_baseline_payload(result) for result in results],
             }
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))

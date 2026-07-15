@@ -27,7 +27,11 @@ class CandidateOutcome:
         ModelSpec(self.model_id, self.cost)
         if isinstance(self.quality, bool) or not isinstance(self.quality, (int, float)):
             raise TypeError("quality must be a real number")
-        if not math.isfinite(self.quality):
+        try:
+            quality = float(self.quality)
+        except OverflowError as error:
+            raise ValueError("quality must be finite") from error
+        if not math.isfinite(quality):
             raise ValueError("quality must be finite")
 
 
@@ -77,7 +81,11 @@ class TierSpec:
         ModelSpec("budget-validation", self.budget_limit)
         if isinstance(self.weight, bool) or not isinstance(self.weight, (int, float)):
             raise TypeError("weight must be a real number")
-        if not math.isfinite(self.weight) or self.weight <= 0:
+        try:
+            weight = float(self.weight)
+        except OverflowError as error:
+            raise ValueError("weight must be finite and positive") from error
+        if not math.isfinite(weight) or weight <= 0:
             raise ValueError("weight must be finite and positive")
 
 
@@ -127,6 +135,35 @@ class QueryResult:
     selected_call_index: int | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.example_id, str) or not self.example_id.strip():
+            raise ValueError("example_id must be a non-empty string")
+        if not isinstance(self.tier, BudgetTier):
+            raise TypeError("tier must be a BudgetTier")
+        if not isinstance(self.feasible, bool):
+            raise TypeError("feasible must be a boolean")
+        if self.selected_model_id is not None and (
+            not isinstance(self.selected_model_id, str) or not self.selected_model_id.strip()
+        ):
+            raise ValueError("selected_model_id must be a non-empty string or None")
+        if self.output is not None and not isinstance(self.output, str):
+            raise TypeError("output must be a string or None")
+        for field_name in ("quality", "predicted_quality"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{field_name} must be a real number or None")
+            try:
+                normalized = float(value)
+            except OverflowError as error:
+                raise ValueError(f"{field_name} must be finite when provided") from error
+            if not math.isfinite(normalized):
+                raise ValueError(f"{field_name} must be finite when provided")
+            object.__setattr__(self, field_name, normalized)
+        if not isinstance(self.decision_reason, str):
+            raise TypeError("decision_reason must be a string")
+        if self.error is not None and not isinstance(self.error, str):
+            raise TypeError("error must be a string or None")
         object.__setattr__(self, "calls", tuple(self.calls))
         if any(not isinstance(call, ReplayCall) for call in self.calls):
             raise TypeError("calls must contain ReplayCall values")
@@ -174,6 +211,26 @@ class BudgetReport:
     over_budget_calls: int
     query_order: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.adapter_name, str) or not self.adapter_name.strip():
+            raise ValueError("adapter_name must be a non-empty string")
+        for field_name in ("configured_limit", "effective_total_limit", "spent"):
+            ModelSpec(f"budget-{field_name}", getattr(self, field_name))
+        if isinstance(self.over_budget_calls, bool) or not isinstance(self.over_budget_calls, int):
+            raise TypeError("over_budget_calls must be an integer")
+        if self.over_budget_calls < 0:
+            raise ValueError("over_budget_calls must be non-negative")
+        query_order = tuple(self.query_order)
+        if not query_order:
+            raise ValueError("budget query_order must not be empty")
+        if any(
+            not isinstance(example_id, str) or not example_id.strip() for example_id in query_order
+        ):
+            raise ValueError("budget query_order must contain non-empty strings")
+        if len(query_order) != len(set(query_order)):
+            raise ValueError("budget query_order must contain unique example IDs")
+        object.__setattr__(self, "query_order", query_order)
+
 
 @dataclass(frozen=True, slots=True)
 class TierResult:
@@ -183,6 +240,26 @@ class TierResult:
     queries: tuple[QueryResult, ...]
     budget: BudgetReport
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.tier_spec, TierSpec):
+            raise TypeError("tier_spec must be a TierSpec")
+        queries = tuple(self.queries)
+        if not queries:
+            raise ValueError("tier queries must not be empty")
+        if any(not isinstance(query, QueryResult) for query in queries):
+            raise TypeError("queries must contain QueryResult values")
+        if not isinstance(self.budget, BudgetReport):
+            raise TypeError("budget must be a BudgetReport")
+        tier = self.tier_spec.tier
+        if any(query.tier is not tier for query in queries):
+            raise ValueError("query tiers must match tier_spec")
+        query_order = tuple(query.example_id for query in queries)
+        if query_order != self.budget.query_order:
+            raise ValueError("tier queries must match budget query_order")
+        if self.budget.configured_limit != self.tier_spec.budget_limit:
+            raise ValueError("budget configured_limit must match tier_spec")
+        object.__setattr__(self, "queries", queries)
+
     @property
     def feasible(self) -> bool:
         return bool(self.queries) and all(query.feasible for query in self.queries)
@@ -191,9 +268,43 @@ class TierResult:
     def mean_quality(self) -> float | None:
         if not self.feasible or any(query.quality is None for query in self.queries):
             return None
-        return sum(query.quality for query in self.queries if query.quality is not None) / len(
-            self.queries
-        )
+        try:
+            mean = sum(query.quality for query in self.queries if query.quality is not None) / len(
+                self.queries
+            )
+        except OverflowError as error:
+            raise ValueError("tier mean quality must remain finite") from error
+        if not math.isfinite(mean):
+            raise ValueError("tier mean quality must remain finite")
+        return mean
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationScopeIdentity:
+    """Versioned replay/protocol identity shared by comparable reports."""
+
+    algorithm: str
+    sha256: str
+    max_calls_per_query: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.algorithm) is not str
+            or not self.algorithm
+            or not self.algorithm.isascii()
+            or any(not (character.isalnum() or character in "-._") for character in self.algorithm)
+        ):
+            raise ValueError("evaluation scope algorithm must be a non-empty ASCII identifier")
+        if (
+            type(self.sha256) is not str
+            or len(self.sha256) != 64
+            or any(character not in "0123456789abcdef" for character in self.sha256)
+        ):
+            raise ValueError("evaluation scope sha256 must be lowercase SHA-256 hex")
+        if type(self.max_calls_per_query) is not int:
+            raise TypeError("max_calls_per_query must be an integer")
+        if self.max_calls_per_query < 1:
+            raise ValueError("max_calls_per_query must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +313,37 @@ class EvaluationReport:
 
     router_name: str
     tiers: tuple[TierResult, ...]
+    evaluation_scope: EvaluationScopeIdentity
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.router_name, str) or not self.router_name.strip():
+            raise ValueError("router_name must be a non-empty string")
+        tiers = tuple(self.tiers)
+        if not tiers:
+            raise ValueError("evaluation report must contain at least one tier")
+        if any(not isinstance(result, TierResult) for result in tiers):
+            raise TypeError("tiers must contain TierResult values")
+        if type(self.evaluation_scope) is not EvaluationScopeIdentity:
+            raise TypeError("evaluation_scope must be an EvaluationScopeIdentity")
+        if any(
+            len(query.calls) > self.max_calls_per_query
+            for result in tiers
+            for query in result.queries
+        ):
+            raise ValueError("query call evidence exceeds max_calls_per_query")
+        object.__setattr__(self, "tiers", tiers)
+
+    @property
+    def evaluation_scope_algorithm(self) -> str:
+        return self.evaluation_scope.algorithm
+
+    @property
+    def evaluation_scope_sha256(self) -> str:
+        return self.evaluation_scope.sha256
+
+    @property
+    def max_calls_per_query(self) -> int:
+        return self.evaluation_scope.max_calls_per_query
 
     def by_tier(self) -> dict[BudgetTier, TierResult]:
         indexed: dict[BudgetTier, TierResult] = {}

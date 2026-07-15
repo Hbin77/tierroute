@@ -3,16 +3,24 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from decimal import Decimal
 
 import pytest
 
+import tierroute.eval.simulator as simulator_module
 import tierroute.policies.baseline_evaluation as baseline_evaluation_module
 from tierroute.adapters import CumulativeBudgetLedger, EvaluationDataset, PerQueryBudgetLedger
 from tierroute.core import BudgetTier, ModelSpec
 from tierroute.demo import evaluate_six_baselines
-from tierroute.eval import BudgetLedger, CandidateOutcome, EvaluationExample, TierSpec
+from tierroute.eval import (
+    BudgetLedger,
+    CandidateOutcome,
+    EvaluationExample,
+    TierSpec,
+    summarize_report,
+)
 from tierroute.policies import (
     BASELINE_NAMES,
     LodoSixBaselineEvaluation,
@@ -135,6 +143,168 @@ def test_baseline_row_rejects_quote_evidence_from_another_report() -> None:
 
     with pytest.raises(ValueError, match="derived from its replay report"):
         replace(rows["always-cheapest"], quote_error=rows["always-premium"].quote_error)
+
+
+def test_baseline_row_recomputes_score_name_cost_and_gap_representation() -> None:
+    rows = _evaluate(_interleaved_examples()).by_name()
+    cheapest = rows["always-cheapest"]
+
+    with pytest.raises(ValueError, match="score must be derived"):
+        replace(cheapest, score=rows["always-premium"].score)
+    with pytest.raises(ValueError, match="name must match"):
+        replace(cheapest, name="renamed")
+    with pytest.raises(TypeError, match="Decimal"):
+        replace(cheapest, total_cost=1)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="float or None"):
+        replace(cheapest, gap_recovery=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="finite"):
+        replace(cheapest, gap_recovery=float("nan"))
+
+
+def test_suite_rejects_mixed_scope_or_fabricated_derived_gap() -> None:
+    evaluation = _evaluate(_interleaved_examples())
+    changed_examples = tuple(
+        replace(
+            example,
+            outcomes=tuple(
+                replace(outcome, quality=outcome.quality + 0.01) for outcome in example.outcomes
+            ),
+        )
+        for example in _interleaved_examples()
+    )
+    changed = _evaluate(changed_examples)
+    mixed_rows = list(evaluation.baselines)
+    mixed_rows[2] = changed.baselines[2]
+
+    with pytest.raises(ValueError, match="share one evaluation scope"):
+        replace(evaluation, baselines=tuple(mixed_rows))
+
+    wrong_rows = list(evaluation.baselines)
+    random_row = wrong_rows[2]
+    assert random_row.gap_recovery is not None
+    wrong_rows[2] = replace(
+        random_row,
+        gap_recovery=math.nextafter(random_row.gap_recovery, math.inf),
+    )
+    with pytest.raises(ValueError, match="gap_recovery must be derived"):
+        replace(evaluation, baselines=tuple(wrong_rows))
+
+    missing_gap = list(evaluation.baselines)
+    missing_gap[2] = replace(random_row, gap_recovery=None)
+    with pytest.raises(ValueError, match="gap_recovery must be derived"):
+        replace(evaluation, baselines=tuple(missing_gap))
+
+
+def test_suite_requires_canonical_rows_population_and_fold_partition() -> None:
+    evaluation = _evaluate(_interleaved_examples())
+
+    with pytest.raises(ValueError, match="canonical names and order"):
+        replace(evaluation, baselines=tuple(reversed(evaluation.baselines)))
+    with pytest.raises(ValueError, match="canonical names and order"):
+        replace(evaluation, baselines=evaluation.baselines[:-1])
+    with pytest.raises(ValueError, match="example_ids must be unique"):
+        replace(evaluation, example_ids=(*evaluation.example_ids[:-1], evaluation.example_ids[0]))
+    bad_fold = replace(
+        evaluation.folds[0],
+        test_example_ids=(evaluation.example_ids[0],),
+    )
+    with pytest.raises(ValueError, match="partition"):
+        replace(evaluation, folds=(bad_fold, *evaluation.folds[1:]))
+
+
+def test_suite_binds_fold_scope_models_table_keys_and_tiers() -> None:
+    evaluation = _evaluate(_interleaved_examples())
+    changed = _evaluate(
+        tuple(
+            replace(example, domain=f"{example.domain}-changed")
+            for example in _interleaved_examples()
+        )
+    )
+    with pytest.raises(ValueError, match=r"fold evidence.*evaluation scope"):
+        replace(evaluation, folds=(changed.folds[0], *evaluation.folds[1:]))
+
+    fold = evaluation.folds[0]
+    with pytest.raises(ValueError, match="candidate model IDs"):
+        replace(
+            evaluation,
+            folds=(replace(fold, fallback_model_id="not-a-candidate"), *evaluation.folds[1:]),
+        )
+
+    entry = fold.fitted_domain_table_entries[0]
+    duplicate_entries = (entry, entry, *fold.fitted_domain_table_entries[1:])
+    with pytest.raises(ValueError, match="table keys must be unique"):
+        replace(
+            evaluation,
+            folds=(
+                replace(fold, fitted_domain_table_entries=duplicate_entries),
+                *evaluation.folds[1:],
+            ),
+        )
+
+    with pytest.raises(ValueError, match="tiers must exist"):
+        replace(
+            evaluation,
+            folds=(
+                replace(
+                    fold,
+                    fitted_domain_table_entries=(
+                        replace(entry, tier=BudgetTier.BALANCED),
+                        *fold.fitted_domain_table_entries[1:],
+                    ),
+                ),
+                *evaluation.folds[1:],
+            ),
+        )
+
+
+def test_suite_revalidates_the_per_query_oracle_upper_bound() -> None:
+    evaluation = _evaluate(_interleaved_examples())
+    rows = list(evaluation.baselines)
+    oracle_index = tuple(result.name for result in rows).index("oracle")
+    oracle = rows[oracle_index]
+    tier = oracle.report.tiers[0]
+    lowered_query = replace(tier.queries[0], quality=0.0)
+    lowered_tier = replace(tier, queries=(lowered_query, *tier.queries[1:]))
+    lowered_report = replace(oracle.report, tiers=(lowered_tier, *oracle.report.tiers[1:]))
+    rows[oracle_index] = replace(
+        oracle,
+        report=lowered_report,
+        score=summarize_report(lowered_report),
+    )
+
+    with pytest.raises(ValueError, match="exceeds the per-query oracle"):
+        replace(evaluation, baselines=tuple(rows))
+
+
+def test_six_baselines_prepare_and_hash_the_replay_scope_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot_calls = 0
+    hash_calls = 0
+    original_snapshot = simulator_module._snapshot_evaluation_scope
+    original_hash = simulator_module._evaluation_scope_sha256_from_snapshots
+
+    def counted_snapshot(*args: object, **kwargs: object):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return original_snapshot(*args, **kwargs)
+
+    def counted_hash(*args: object, **kwargs: object):
+        nonlocal hash_calls
+        hash_calls += 1
+        return original_hash(*args, **kwargs)
+
+    monkeypatch.setattr(simulator_module, "_snapshot_evaluation_scope", counted_snapshot)
+    monkeypatch.setattr(
+        simulator_module,
+        "_evaluation_scope_sha256_from_snapshots",
+        counted_hash,
+    )
+
+    _evaluate(_interleaved_examples())
+
+    assert snapshot_calls == 1
+    assert hash_calls == 1
 
 
 def test_held_out_outcomes_cannot_change_that_folds_domain_decisions() -> None:

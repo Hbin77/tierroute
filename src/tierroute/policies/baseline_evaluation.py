@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -26,6 +27,7 @@ from tierroute.eval import (
     BudgetReport,
     EvaluationExample,
     EvaluationReport,
+    EvaluationScopeIdentity,
     OfflineSimulator,
     QuoteErrorReport,
     ScoreSummary,
@@ -70,6 +72,22 @@ class BaselineResult:
     quote_error: QuoteErrorReport
 
     def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("baseline name must be a non-empty string")
+        if not isinstance(self.report, EvaluationReport):
+            raise TypeError("baseline report must be an EvaluationReport")
+        if self.report.router_name != self.name:
+            raise ValueError("baseline name must match its report router_name")
+        if not isinstance(self.score, ScoreSummary):
+            raise TypeError("baseline score must be a ScoreSummary")
+        if self.score != summarize_report(self.report):
+            raise ValueError("baseline score must be derived from its replay report")
+        if self.gap_recovery is not None:
+            if type(self.gap_recovery) is not float:
+                raise TypeError("baseline gap_recovery must be a float or None")
+            if not math.isfinite(self.gap_recovery):
+                raise ValueError("baseline gap_recovery must be finite when provided")
+        ModelSpec("baseline-total-cost", self.total_cost)
         expected_quote_error = summarize_quote_error(self.report)
         if self.quote_error != expected_quote_error:
             raise ValueError("baseline quote evidence must be derived from its replay report")
@@ -85,6 +103,14 @@ class DomainTableEntry:
     observable_domain_tag: str
     model_id: str
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.tier, BudgetTier):
+            raise TypeError("domain-table tier must be a BudgetTier")
+        for field_name in ("observable_domain_tag", "model_id"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field_name} must be a non-empty string")
+
 
 @dataclass(frozen=True, slots=True)
 class OuterFoldBaselineEvidence:
@@ -95,6 +121,29 @@ class OuterFoldBaselineEvidence:
     test_example_ids: tuple[str, ...]
     fitted_domain_table_entries: tuple[DomainTableEntry, ...]
     fallback_model_id: str
+    evaluation_scope: EvaluationScopeIdentity
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.held_out_domain, str) or not self.held_out_domain.strip():
+            raise ValueError("held_out_domain must be a non-empty string")
+        training_ids = tuple(self.training_example_ids)
+        test_ids = tuple(self.test_example_ids)
+        entries = tuple(self.fitted_domain_table_entries)
+        if any(
+            not isinstance(value, str) or not value.strip() for value in (*training_ids, *test_ids)
+        ):
+            raise ValueError("fold example IDs must contain non-empty strings")
+        if len(training_ids) != len(set(training_ids)) or len(test_ids) != len(set(test_ids)):
+            raise ValueError("fold training and test example IDs must each be unique")
+        if any(not isinstance(entry, DomainTableEntry) for entry in entries):
+            raise TypeError("fitted_domain_table_entries must contain DomainTableEntry values")
+        if not isinstance(self.fallback_model_id, str) or not self.fallback_model_id.strip():
+            raise ValueError("fallback_model_id must be a non-empty string")
+        if type(self.evaluation_scope) is not EvaluationScopeIdentity:
+            raise TypeError("fold evaluation_scope must be an EvaluationScopeIdentity")
+        object.__setattr__(self, "training_example_ids", training_ids)
+        object.__setattr__(self, "test_example_ids", test_ids)
+        object.__setattr__(self, "fitted_domain_table_entries", entries)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +153,117 @@ class LodoSixBaselineEvaluation:
     folds: tuple[OuterFoldBaselineEvidence, ...]
     baselines: tuple[BaselineResult, ...]
     example_ids: tuple[str, ...]
+    candidate_model_ids: tuple[str, ...]
     accounting_scope: str = field(default="per-query", init=False)
+
+    def __post_init__(self) -> None:
+        folds = tuple(self.folds)
+        baselines = tuple(self.baselines)
+        example_ids = tuple(self.example_ids)
+        candidate_model_ids = tuple(self.candidate_model_ids)
+        if not folds or any(not isinstance(fold, OuterFoldBaselineEvidence) for fold in folds):
+            raise ValueError("outer-LODO evidence must contain at least one valid fold")
+        if any(not isinstance(result, BaselineResult) for result in baselines):
+            raise TypeError("baselines must contain BaselineResult values")
+        if tuple(result.name for result in baselines) != BASELINE_NAMES:
+            raise ValueError("baseline rows must use the six canonical names and order")
+        if not example_ids:
+            raise ValueError("baseline example_ids must not be empty")
+        if any(
+            not isinstance(example_id, str) or not example_id.strip() for example_id in example_ids
+        ):
+            raise ValueError("baseline example_ids must contain non-empty strings")
+        if len(example_ids) != len(set(example_ids)):
+            raise ValueError("baseline example_ids must be unique")
+        if (
+            not candidate_model_ids
+            or candidate_model_ids != tuple(sorted(set(candidate_model_ids)))
+            or any(
+                not isinstance(model_id, str) or not model_id.strip()
+                for model_id in candidate_model_ids
+            )
+        ):
+            raise ValueError("candidate_model_ids must be non-empty, sorted, and unique")
+
+        scopes = {result.report.evaluation_scope for result in baselines}
+        if len(scopes) != 1:
+            raise ValueError("all six baseline reports must share one evaluation scope")
+        evaluation_scope = baselines[0].report.evaluation_scope
+        for baseline in baselines:
+            for tier_result in baseline.report.tiers:
+                query_ids = tuple(query.example_id for query in tier_result.queries)
+                expected_total_limit = scale_cost(
+                    tier_result.tier_spec.budget_limit,
+                    len(example_ids),
+                )
+                if (
+                    query_ids != example_ids
+                    or tier_result.budget.query_order != example_ids
+                    or tier_result.budget.adapter_name != "per-query"
+                    or tier_result.budget.configured_limit != tier_result.tier_spec.budget_limit
+                    or tier_result.budget.effective_total_limit != expected_total_limit
+                    or tier_result.budget.spent
+                    != sum_costs(query.cost for query in tier_result.queries)
+                ):
+                    raise ValueError(
+                        "all six baseline reports must share example order and per-query scope"
+                    )
+
+        population = set(example_ids)
+        report_tiers = set(baselines[0].report.by_tier())
+        held_out_domains: set[str] = set()
+        observed_test_ids: list[str] = []
+        for fold in folds:
+            if fold.evaluation_scope != evaluation_scope:
+                raise ValueError("outer-fold evidence must share the baseline evaluation scope")
+            if (
+                not isinstance(fold.held_out_domain, str)
+                or not fold.held_out_domain.strip()
+                or fold.held_out_domain in held_out_domains
+            ):
+                raise ValueError("outer folds must have unique non-empty held-out domains")
+            held_out_domains.add(fold.held_out_domain)
+            training_ids = tuple(fold.training_example_ids)
+            test_ids = tuple(fold.test_example_ids)
+            if (
+                not training_ids
+                or not test_ids
+                or len(training_ids) != len(set(training_ids))
+                or len(test_ids) != len(set(test_ids))
+                or set(training_ids).intersection(test_ids)
+                or set(training_ids).union(test_ids) != population
+            ):
+                raise ValueError("each outer fold must partition the baseline population")
+            observed_test_ids.extend(test_ids)
+            entry_keys = tuple(
+                (entry.tier, entry.observable_domain_tag)
+                for entry in fold.fitted_domain_table_entries
+            )
+            if len(entry_keys) != len(set(entry_keys)):
+                raise ValueError("outer-fold fitted domain-table keys must be unique")
+            if any(entry.tier not in report_tiers for entry in fold.fitted_domain_table_entries):
+                raise ValueError("outer-fold domain-table tiers must exist in baseline reports")
+            if fold.fallback_model_id not in candidate_model_ids or any(
+                entry.model_id not in candidate_model_ids
+                for entry in fold.fitted_domain_table_entries
+            ):
+                raise ValueError("outer-fold model evidence must use candidate model IDs")
+        if len(observed_test_ids) != len(example_ids) or set(observed_test_ids) != population:
+            raise ValueError("outer-fold tests must cover every baseline example exactly once")
+
+        by_name = {result.name: result for result in baselines}
+        _validate_oracle_upper_bound({name: result.report for name, result in by_name.items()})
+        cheapest = by_name["always-cheapest"].report
+        oracle = by_name["oracle"].report
+        for baseline in baselines:
+            expected_gap = oracle_gap_recovery(baseline.report, cheapest, oracle)
+            if baseline.gap_recovery != expected_gap:
+                raise ValueError("baseline gap_recovery must be derived from this six-report suite")
+
+        object.__setattr__(self, "folds", folds)
+        object.__setattr__(self, "baselines", baselines)
+        object.__setattr__(self, "example_ids", example_ids)
+        object.__setattr__(self, "candidate_model_ids", candidate_model_ids)
 
     def by_name(self) -> dict[str, BaselineResult]:
         """Index the six unique rows by their stable baseline name."""
@@ -230,16 +389,6 @@ class _GuardedPerQueryLedgerFactory:
         )
 
 
-def _tier_specs(tier_specs: Sequence[TierSpec]) -> tuple[TierSpec, ...]:
-    specs = tuple(tier_specs)
-    if not specs:
-        raise ValueError("tier_specs must not be empty")
-    tiers = [spec.tier for spec in specs]
-    if len(tiers) != len(set(tiers)):
-        raise ValueError("tier_specs must contain unique tiers")
-    return specs
-
-
 def _stable_catalogue(examples: tuple[EvaluationExample, ...]) -> tuple[ModelSpec, ...]:
     """Require one model-ID/quote map while accepting irrelevant row order changes."""
 
@@ -292,6 +441,7 @@ def _preflight_per_query_ledger(
 def _domain_table_schedule(
     examples: tuple[EvaluationExample, ...],
     specs: tuple[TierSpec, ...],
+    evaluation_scope: EvaluationScopeIdentity,
 ) -> tuple[
     Mapping[tuple[BudgetTier, str], str],
     tuple[OuterFoldBaselineEvidence, ...],
@@ -337,6 +487,7 @@ def _domain_table_schedule(
                 test_example_ids=tuple(example.example_id for example in fold.test),
                 fitted_domain_table_entries=entries,
                 fallback_model_id=plan.fallback_model_id,
+                evaluation_scope=evaluation_scope,
             )
         )
 
@@ -384,13 +535,13 @@ def _validate_oracle_upper_bound(
             for query in result.queries:
                 oracle_query = oracle_queries[query.example_id]
                 if not oracle_query.feasible or oracle_query.quality is None:
-                    raise AssertionError("per-query oracle plan must be feasible and complete")
+                    raise ValueError("per-query oracle plan must be feasible and complete")
                 if (
                     query.feasible
                     and query.quality is not None
                     and query.quality > oracle_query.quality + tolerance
                 ):
-                    raise AssertionError(
+                    raise ValueError(
                         f"{name} exceeds the per-query oracle for {tier.value}/{query.example_id}"
                     )
 
@@ -419,16 +570,21 @@ def evaluate_per_query_lodo_baselines(
     strict LODO therefore makes this baseline equal always-cheapest on held-out rows.
     """
 
-    ordered = tuple(examples)
-    specs = _tier_specs(tier_specs)
-    if not ordered:
-        raise ValueError("examples must not be empty")
     guarded_ledger_factory = _GuardedPerQueryLedgerFactory(ledger_factory)
+    simulator = OfflineSimulator(guarded_ledger_factory)
+    prepared = simulator._prepare_evaluation(tuple(examples), tuple(tier_specs))
+    ordered = prepared.examples
+    specs = prepared.tier_specs
     _preflight_per_query_ledger(guarded_ledger_factory, specs, len(ordered))
     catalogue = _stable_catalogue(ordered)
     _require_model_role("premium_model_id", premium_model_id, catalogue)
     _require_model_role("strong_model_id", strong_model_id, catalogue)
-    domain_schedule, fold_evidence = _domain_table_schedule(ordered, specs)
+    evaluation_scope = prepared.identity
+    domain_schedule, fold_evidence = _domain_table_schedule(
+        ordered,
+        specs,
+        evaluation_scope,
+    )
     oracle_plan = build_per_query_oracle_plan(ordered, specs)
 
     cheap = min(catalogue, key=lambda model: (model.cost, model.model_id))
@@ -450,9 +606,9 @@ def evaluate_per_query_lodo_baselines(
             _ScheduledEvaluationRouter(domain_schedule, "outer-LODO domain-table decision"),
         ),
     )
-    simulator = OfflineSimulator(guarded_ledger_factory)
     reports = {
-        name: simulator.run(router, ordered, specs, router_name=name) for name, router in routers
+        name: simulator._run_prepared(router, prepared, router_name=name)
+        for name, router in routers
     }
     example_ids = tuple(example.example_id for example in ordered)
     for report in reports.values():
@@ -478,4 +634,9 @@ def evaluate_per_query_lodo_baselines(
         )
         for name in BASELINE_NAMES
     )
-    return LodoSixBaselineEvaluation(fold_evidence, rows, example_ids)
+    return LodoSixBaselineEvaluation(
+        fold_evidence,
+        rows,
+        example_ids,
+        tuple(model.model_id for model in catalogue),
+    )

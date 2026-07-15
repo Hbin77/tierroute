@@ -7,6 +7,7 @@ import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 
 from tierroute.core import (
     BudgetTier,
@@ -25,6 +26,45 @@ class ScoreSummary:
 
     tier_quality: Mapping[BudgetTier, float | None]
     weighted_quality: float | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.tier_quality, Mapping):
+            raise TypeError("tier_quality must be a mapping")
+        copied: dict[BudgetTier, float | None] = {}
+        for tier, quality in self.tier_quality.items():
+            if not isinstance(tier, BudgetTier):
+                raise TypeError("tier_quality keys must be BudgetTier values")
+            if quality is None:
+                copied[tier] = None
+                continue
+            if isinstance(quality, bool) or not isinstance(quality, (int, float)):
+                raise TypeError("tier quality values must be real numbers or None")
+            try:
+                normalized = float(quality)
+            except OverflowError as error:
+                raise ValueError("tier quality values must be finite") from error
+            if not math.isfinite(normalized):
+                raise ValueError("tier quality values must be finite")
+            copied[tier] = normalized
+        if not copied:
+            raise ValueError("tier_quality must not be empty")
+        weighted = self.weighted_quality
+        if weighted is None:
+            if all(quality is not None for quality in copied.values()):
+                raise ValueError("complete tier quality requires weighted_quality")
+        else:
+            if isinstance(weighted, bool) or not isinstance(weighted, (int, float)):
+                raise TypeError("weighted_quality must be a real number or None")
+            try:
+                weighted = float(weighted)
+            except OverflowError as error:
+                raise ValueError("weighted_quality must be finite when provided") from error
+            if not math.isfinite(weighted):
+                raise ValueError("weighted_quality must be finite when provided")
+            if any(quality is None for quality in copied.values()):
+                raise ValueError("incomplete tier quality requires weighted_quality=None")
+        object.__setattr__(self, "tier_quality", MappingProxyType(copied))
+        object.__setattr__(self, "weighted_quality", weighted)
 
 
 class QuoteCostDirection(str, Enum):
@@ -263,6 +303,16 @@ def _tier_comparison_signature(result: TierResult) -> tuple[object, ...]:
     )
 
 
+def _require_same_evaluation_scope(*reports: EvaluationReport) -> None:
+    """Require one replay snapshot and policy call cap before comparing reports."""
+
+    if not reports:
+        raise ValueError("at least one evaluation report is required")
+    expected = reports[0].evaluation_scope
+    if any(report.evaluation_scope != expected for report in reports[1:]):
+        raise ValueError("evaluation report scope mismatch")
+
+
 def summarize_quote_error(report: EvaluationReport) -> QuoteErrorReport:
     """Aggregate exact quote error while rejecting inconsistent replay evidence.
 
@@ -306,11 +356,12 @@ def _aligned_tiers(
 ]:
     """Reject comparisons across different populations or accounting semantics."""
 
+    _require_same_evaluation_scope(router, cheapest, oracle)
     router_tiers = router.by_tier()
     cheapest_tiers = cheapest.by_tier()
     oracle_tiers = oracle.by_tier()
-    if set(router_tiers) != set(cheapest_tiers) or set(router_tiers) != set(oracle_tiers):
-        raise ValueError("router, cheapest, and oracle reports must contain the same tiers")
+    if tuple(router_tiers) != tuple(cheapest_tiers) or tuple(router_tiers) != tuple(oracle_tiers):
+        raise ValueError("router, cheapest, and oracle reports must contain ordered matching tiers")
     for tier, router_result in router_tiers.items():
         signature = _tier_comparison_signature(router_result)
         if _tier_comparison_signature(cheapest_tiers[tier]) != signature:
@@ -342,8 +393,15 @@ def summarize_report(report: EvaluationReport) -> ScoreSummary:
         tier_quality[tier] = quality
         complete = complete and quality is not None
         if quality is not None:
-            numerator += result.tier_spec.weight * quality
+            contribution = result.tier_spec.weight * quality
+            if not math.isfinite(contribution):
+                raise ValueError("weighted quality contribution must be finite")
+            numerator += contribution
+            if not math.isfinite(numerator):
+                raise ValueError("weighted quality aggregate must be finite")
         denominator += result.tier_spec.weight
+        if not math.isfinite(denominator):
+            raise ValueError("tier weight aggregate must be finite")
     return ScoreSummary(tier_quality, numerator / denominator if complete else None)
 
 
@@ -360,6 +418,13 @@ def oracle_gap_recovery(
     ``None`` because the recovery ratio is undefined.
     """
 
+    _require_same_evaluation_scope(router, cheapest, oracle)
+    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)):
+        raise TypeError("tolerance must be a real number")
+    try:
+        tolerance = float(tolerance)
+    except OverflowError as error:
+        raise ValueError("tolerance must be finite and non-negative") from error
     if not math.isfinite(tolerance) or tolerance < 0:
         raise ValueError("tolerance must be finite and non-negative")
     router_tiers, cheapest_tiers, oracle_tiers = _aligned_tiers(router, cheapest, oracle)
@@ -381,19 +446,25 @@ def oracle_gap_recovery(
         weight = router_result.tier_spec.weight
         numerator += weight * (router_quality - cheap_quality)
         denominator += weight * (oracle_quality - cheap_quality)
+        if not math.isfinite(numerator) or not math.isfinite(denominator):
+            raise ValueError("oracle-gap aggregate must be finite")
 
     if abs(denominator) <= tolerance:
         return None
-    return numerator / denominator
+    recovery = numerator / denominator
+    if not math.isfinite(recovery):
+        raise ValueError("oracle-gap recovery must be finite")
+    return recovery
 
 
 def weighted_delta(router: EvaluationReport, reference: EvaluationReport) -> float | None:
     """Return weighted-quality delta, or ``None`` if either report is infeasible."""
 
+    _require_same_evaluation_scope(router, reference)
     router_tiers = router.by_tier()
     reference_tiers = reference.by_tier()
-    if set(router_tiers) != set(reference_tiers):
-        raise ValueError("router and reference reports must contain the same tiers")
+    if tuple(router_tiers) != tuple(reference_tiers):
+        raise ValueError("router and reference reports must contain ordered matching tiers")
     for tier, router_result in router_tiers.items():
         if _tier_comparison_signature(router_result) != _tier_comparison_signature(
             reference_tiers[tier]
@@ -403,4 +474,7 @@ def weighted_delta(router: EvaluationReport, reference: EvaluationReport) -> flo
     reference_score = summarize_report(reference).weighted_quality
     if router_score is None or reference_score is None:
         return None
-    return router_score - reference_score
+    delta = router_score - reference_score
+    if not math.isfinite(delta):
+        raise ValueError("weighted quality delta must be finite")
+    return delta
