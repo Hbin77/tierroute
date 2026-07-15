@@ -14,9 +14,10 @@ choose m = argmax_m [predicted_quality(prompt, m) - lambda(tier) * cost(m)]
 The project is being developed for the student division of the 2026 Open Source
 Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge.”**
 It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
-metrics, leakage-aware calibrated bilinear training, exact tier-lambda tuning, strict
-predictor/policy artifacts, and an external-data-free demo are implemented. The CLI
-selects a model but does **not** call an LLM or return a model completion.
+quality and exact quote-error metrics, leakage-aware calibrated bilinear training,
+exact tier-lambda tuning, strict predictor/policy artifacts, and an external-data-free
+demo are implemented. The CLI selects a model but does **not** call an LLM or return a
+model completion.
 
 ## Quickstart
 
@@ -46,6 +47,11 @@ tierroute route "Debug this Python function" --tier balanced --json
 tierroute evaluate --data src/tierroute/data/synthetic.json --json
 HF_HUB_OFFLINE=1 tierroute demo
 ```
+
+`route --json` is a pre-execution decision: `cost` remains a semantic alias for
+`quoted_cost`, while `realized_cost` is `null`. `evaluate --json` replays logged
+outcomes and adds per-tier and cross-tier `cost_evidence` for the calls that replay
+actually executed. Neither command makes a live provider call.
 
 The bundled prompts, costs, outputs, predicted qualities, and scorecard are
 project-authored **synthetic smoke-test values**. They verify wiring and are not a
@@ -151,8 +157,10 @@ solver, and unknown IDs still fail closed.
 - One-shot lambda routing with exact rational utility, immutable per-tier schedules,
   complete exhaustive breakpoint search or explicitly labeled truncated
   bounded-memory approximate search, and six reproducible baselines.
-- Full-information offline replay: labels stay hidden until a selected logged outcome
-  is replayed, so the policy cannot read ground truth through `RouterState`.
+- Full-information offline replay: ground-truth quality and uncalled outputs never
+  reach `RouterState`. Every simulated call that consumes a logged outcome records its
+  quote, realized charge, ledger balance snapshots, and ledger result. A realized
+  overspend is still an executed replay call and remains in exact spend evidence.
 - A fitted surface-feature schema (log-scaled counts, code/math signals, and
   prompt-derived domain tags), project-owned deterministic centered-ridge fitting,
   inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
@@ -179,7 +187,8 @@ solver, and unknown IDs still fail closed.
   original-order rows. A live guard verifies that the actual ledger used by every
   replay resets, charges, and reports per-query accounting as declared.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out
-  (LODO) folds. No random-split helper is provided.
+  (LODO) folds, plus exact per-tier and cross-tier quote-versus-realized diagnostics.
+  No random-split helper is provided.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
 
 Without `--artifact`, the no-download CLI uses a transparent synthetic demo predictor.
@@ -204,6 +213,15 @@ oracle and outer-fold replay schedule receive a private example key through a no
 evaluation-only boundary. The schedule contains only decisions fitted on outer training
 rows from pre-call observable metadata; it never injects the split label into policy
 state.
+
+`ReplayCall` evidence belongs only to evaluation results and does not create a new
+router label channel. `QueryResult.cost` is the exact sum of every executed call's
+realized charge, including a call whose ledger result is false. Calls rejected before
+an outcome is replayed are absent. `selected_call_index` identifies the returned logged
+call today (normally index 0 in one-shot replay); selecting a nonzero or earlier call is
+future cascade readiness, not a claim that a history-adaptive cascade is implemented.
+Balance snapshots and `within_budget` preserve the chosen adapter's semantics rather
+than deriving an official budget rule in core.
 
 ```text
 JSON / RouterBench boundary ──> typed replay examples ──> OfflineSimulator
@@ -237,6 +255,18 @@ An incomplete or budget-infeasible tier makes the weighted score unavailable; it
 weight is never redistributed. The bundled fixture uses Fast/Balanced/Premium weights
 `0.5/0.3/0.2` to exercise low-budget emphasis, but these are illustrative rather than
 official SK Telecom weights.
+
+Cost evidence is computed over executed logged replay calls. For one call,
+`underquoted` means `realized_cost > quoted_cost`, while `overquoted` means the reverse.
+The total absolute quote error sums each call's non-negative error magnitude, so equal
+and opposite errors cannot cancel. The separate net error reports the exact direction
+and magnitude of `sum(realized) - sum(quoted)` without float arithmetic or a
+division-by-zero-prone percentage. Every tier row also binds call-level realized cost
+to `BudgetReport.spent` and ledger over-budget counts. The overall row is only a
+cross-tier diagnostic: tiers have independent ledgers, so it is not a shared budget or
+a budget-compliance verdict. The legacy top-level `total_cost` and its explicit
+`total_realized_cost` alias both equal the overall realized total and have the same
+cross-tier-only meaning.
 
 Under the current per-query accounting, oracle-gap recovery measures how much of the
 weighted quality interval from always-cheapest to the independently budget-feasible

@@ -290,8 +290,8 @@ does not assert that no external implementation could add it.
 | Cost control | Win-probability threshold controls strong-model call share; no hard dollar budget or named tier | Willingness-to-pay and cost-quality frontier | Explicit expected-budget service selection | Lambda for an expected-cost budget | **Implemented:** deterministically tuned per-tier lambda under the configured replay plus per-query/cumulative ledgers |
 | Quality signal | Preference win probability; several router models including MF | Logged scores and learned performance estimates | Query/response reliability score | Ex-ante and post-hoc estimators with uncertainty | **Implemented:** surface-feature bilinear scores plus per-model isotonic calibration; bge-m3 provider and GBM are **planned** |
 | Distribution-shift evidence | Conditional MMLU/GSM8K OOD weakness and in-domain recovery | Main predictive setup uses within-task 70/30 splits and also reports held-out-task plots | Main setup uses random 50/50 splits, calls out same/similar distributions, and studies synthetic label shift | Multiple benchmarks and estimator-noise studies; no tierroute-style nested LODO reported | **Implemented:** nested LODO covers predictor fit, calibration, lambda selection, and outer scoring |
-| Primary reporting | Call-share/performance curves, PGR/APGR/CPT | AIQ over a shared cost-quality frontier and oracle | Quality under budget and cost savings | Area under cost-quality curve | **Implemented:** configured tier-weighted quality, per-query oracle-gap formula, and same-outer-fold six-baseline report. **Planned:** cumulative sequence oracle. |
-| Offline replay | Can evaluate learned routes, but live provider integration is in scope | Core benefit of pre-generated outcomes | Built around commercial API calls in the paper | Mix of logged and real benchmark experiments | **Implemented:** no-network runtime, hidden labels until action replay, synthetic clone-first demo |
+| Primary reporting | Call-share/performance curves, PGR/APGR/CPT | AIQ over a shared cost-quality frontier and oracle | Quality under budget and cost savings | Area under cost-quality curve | **Implemented:** configured tier-weighted quality, per-query oracle-gap formula, same-outer-fold six-baseline report, and exact quote-error evidence. **Planned:** cumulative sequence oracle. |
+| Offline replay | Can evaluate learned routes, but live provider integration is in scope | Core benefit of pre-generated outcomes | Built around commercial API calls in the paper | Mix of logged and real benchmark experiments | **Implemented:** no-network runtime, labels isolated from router state, executed-call cost evidence, synthetic clone-first demo |
 | Budget-tier awareness | User-selected win-probability threshold and call share, not named challenge tiers | Continuous cost-quality evaluation | Budget is explicit, not the challenge's three-tier contract | Expected budget parameter | **Implemented:** Fast/Balanced/Premium are first-class state and policy keys; official weights remain **gated** |
 | Call-history contract | Not central to binary one-shot routing | Not a central predictive-router input | Earlier responses drive cascade decisions | Earlier outputs update sequential decisions | **Implemented:** typed history/action boundary; **not implemented:** history-adaptive policy |
 | Audit and packaging focus | Research library | Dataset/benchmark tooling | Research prototype | Research code | **Implemented:** exact decimal/rational decisions, strict JSON, hashes, SPDX, license gate, offline CI |
@@ -313,7 +313,9 @@ invented cost-aware model routing:
    the bounded default can be approximate. The bundled weights are illustrative until
    SK Telecom publishes the official values. Feasibility is established on replayed
    outcomes; exact arithmetic detects an overspend but cannot guarantee an unseen
-   realized charge from a quoted-affordable call.
+   realized charge from a quoted-affordable call. Every executed logged call preserves
+   its quote, realized charge, adapter balance snapshots, and ledger result; exact
+   tier-level diagnostics retain both absolute and net quote error.
 4. The learned-policy evaluator is nested LODO: no outer domain reaches predictor
    fitting, isotonic calibration, or lambda selection. Cumulative results are replayed
    once in original order rather than resetting the ledger at fold boundaries.
@@ -358,6 +360,8 @@ invented cost-aware model routing:
   policies; the unified formulation can require a randomized mixing coefficient.
 - The per-query six-baseline comparison and oracle are not valid cumulative-stream
   evidence. No cumulative oracle-gap claim is permitted without a sequence-level plan.
+- The cross-tier quote-error total is a diagnostic over independent tier replays, not a
+  shared budget or proof of official budget compliance.
 
 ## Decision record and falsification plan
 
@@ -373,10 +377,13 @@ training side, retains decisions only for that fold's test rows, and replays eve
 method once on the same original-order population and behaviorally verified per-query
 ledger. Per-query experiments may report the existing oracle-gap metric. A cumulative
 experiment first needs a sequence-level oracle; the independent per-query plan is
-neither guaranteed feasible nor an upper bound for a stream. Every result must show
-per-tier feasibility and mean quality. Planned ablations are surface-only versus
-local bge-m3 features, bilinear versus GBM, uncalibrated versus isotonic, shared versus
-tier-specific lambda, full versus curated model catalogues, and LODO versus a clearly
+neither guaranteed feasible nor an upper bound for a stream. Every reportable JSON
+result must show per-tier feasibility, mean quality, executed-call quoted and realized
+totals, absolute quote error, and ledger over-budget counts. The cross-tier cost row
+must remain labeled as a diagnostic over independent ledgers. Planned ablations are
+surface-only versus local bge-m3 features, bilinear versus GBM, uncalibrated versus
+isotonic, shared versus tier-specific lambda, full versus curated model catalogues, and
+LODO versus a clearly
 labeled non-reportable random diagnostic. A new claim survives only if it holds on
 untouched outer domains and its artifact records the exact data, policy, and environment
 identity. No superiority over the broader systems is claimed without an aligned model
@@ -392,6 +399,8 @@ pool, data split, cost model, and metric.
 | Cross-fitted tuning and nested LODO | [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py), [`eval/validation.py`](../src/tierroute/eval/validation.py) |
 | Per-query outer-LODO six-baseline comparison | [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py), [`eval/planning.py`](../src/tierroute/eval/planning.py) |
 | Tier metric and oracle-gap recovery | [`eval/metrics.py`](../src/tierroute/eval/metrics.py) |
+| Executed-call quote/realized evidence | [`eval/schemas.py`](../src/tierroute/eval/schemas.py), [`eval/simulator.py`](../src/tierroute/eval/simulator.py) |
+| Exact quote-error aggregation and CLI report | [`eval/metrics.py`](../src/tierroute/eval/metrics.py), [`cli.py`](../src/tierroute/cli.py) |
 | Bilinear fit and isotonic calibration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py) |
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
 | Optional RouterBench boundary | [`adapters/routerbench.py`](../src/tierroute/adapters/routerbench.py), [`download_routerbench.py`](../scripts/download_routerbench.py) |
@@ -403,9 +412,12 @@ These are implementation tasks, not questions for the organizer:
 
 1. Add a sequence-level oracle before computing oracle-gap recovery under cumulative
    accounting. The independent per-query plan is valid only for per-query budgets.
-2. Report quote-versus-realized cost error. Runtime affordability uses a quoted cost;
-   the replay ledger charges the realized outcome. Exact arithmetic detects infeasible
-   replay but cannot promise ex-ante feasibility when those values differ.
+
+Quote-versus-realized error reporting is implemented over executed logged replay calls.
+It preserves offsetting call errors through an absolute-error total and separately
+reports exact net direction and magnitude. This is retrospective evidence: runtime
+affordability still uses a quote and cannot promise ex-ante feasibility when an unseen
+realized charge differs.
 
 ## Open evidence gates
 

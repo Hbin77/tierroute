@@ -97,10 +97,16 @@ per-query or cumulative semantics in a policy.
    predictable temporary pathname or sequentially publish a bound predictor/policy
    pair without rollback and input-alias checks. Do not claim bundle-wide atomicity for
    concurrent writers or power loss across unrelated pathnames.
-4. Add focused tests for behavior, failure paths, determinism, and offline operation.
-5. Keep public interfaces typed and explain non-obvious routing or metric choices in a
+4. Preserve executed-call evidence in replay evaluation. A call that consumed a logged
+   outcome remains recorded even if the ledger returns false; a call rejected before
+   replay is not executed. Require `QueryResult.cost` to equal the exact sum of its
+   realized call charges, and reconcile tier call evidence with `BudgetReport.spent`
+   and its over-budget count. Treat balance snapshots and the ledger result as adapter
+   evidence; do not infer unconfirmed budget semantics in shared schemas.
+5. Add focused tests for behavior, failure paths, determinism, and offline operation.
+6. Keep public interfaces typed and explain non-obvious routing or metric choices in a
    short docstring or design comment.
-6. Run `make verify`, including both core and training/artifact CLI smoke paths, before
+7. Run `make verify`, including both core and training/artifact CLI smoke paths, before
    opening a pull request.
 
 ## Licensing, data, and dependencies
