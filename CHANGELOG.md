@@ -7,6 +7,21 @@ the public API is pre-1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the pandas/NumPy RouterBench reader with a dependency-free,
+  non-dispatching standard-library decoder for the exact pinned artifact.
+- Remove the `routerbench` optional extra, `requirements-routerbench.lock`,
+  `RouterBenchDependencyError`, and `load_routerbench_dataframe`; callers now use
+  `load_routerbench_table`, which returns the immutable project-owned table.
+- Pin a canonical decoded-table digest and exact row, column, model, and domain counts
+  as a regression oracle independent of the artifact checksum.
+
+### Security
+
+- Authenticate RouterBench bytes before structural decoding; referenced pickle globals
+  remain inert and no callable named by the payload is imported or invoked.
+
 ### Planned
 
 - Train and compare calibrated GBM and bilinear quality predictors on licensed data.

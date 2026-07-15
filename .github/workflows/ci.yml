@@ -33,9 +33,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: |
-            requirements-dev.lock
-            requirements-routerbench.lock
+          cache-dependency-path: requirements-dev.lock
 
       - name: Prepare empty offline model cache
         run: |
@@ -44,13 +42,37 @@ jobs:
           test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
           echo "HF_HOME=$hf_home" >> "$GITHUB_ENV"
 
-      - name: Install exact development and optional-audit environment
+      - name: Install exact development environment
         run: |
           python -m pip install --no-deps \
-            --requirement requirements-dev.lock \
-            --requirement requirements-routerbench.lock
+            --requirement requirements-dev.lock
           python -m pip install --no-build-isolation --no-deps -e .
           python -m pip check
+
+      - name: Verify fresh core wheel has no numerical-package dependency
+        run: |
+          wheelhouse="$RUNNER_TEMP/tierroute-wheelhouse"
+          core_venv="$RUNNER_TEMP/tierroute-core-venv"
+          mkdir -p "$wheelhouse"
+          python -m pip wheel --no-build-isolation --no-deps --wheel-dir "$wheelhouse" .
+          python -m venv "$core_venv"
+          wheel="$(find "$wheelhouse" -maxdepth 1 -name 'tierroute-*.whl' -print -quit)"
+          test -n "$wheel"
+          "$core_venv/bin/python" -m pip install --no-deps "$wheel"
+          "$core_venv/bin/python" - <<'PY'
+          import importlib.metadata
+          import importlib.util
+
+          for package in ("numpy", "pandas"):
+              assert importlib.util.find_spec(package) is None, package
+              try:
+                  importlib.metadata.version(package)
+              except importlib.metadata.PackageNotFoundError:
+                  continue
+              raise AssertionError(f"unexpected distribution installed: {package}")
+          PY
+          HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+            "$core_venv/bin/tierroute" route "fresh core wheel" --tier fast
 
       - name: Run Ruff and SPDX checks
         run: make lint spdx PYTHON=python

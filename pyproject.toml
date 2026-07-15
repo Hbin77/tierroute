@@ -37,10 +37,6 @@ dev = [
   "pytest==8.4.2",
   "ruff==0.15.21",
 ]
-routerbench = [
-  "numpy==2.2.6",
-  "pandas==2.3.3",
-]
 
 [project.urls]
 Homepage = "https://github.com/Hbin77/tierroute"

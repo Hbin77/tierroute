@@ -65,8 +65,10 @@ acceptable substitute for domain-shift evaluation.
   proposing a package.
 - Update `SBOM.md` in the same pull request whenever a dependency or external asset is
   added, removed, or pinned differently.
-- Treat pickle as executable input. Never relax RouterBench's pinned size/SHA checks or
-  deserialize an arbitrary file in a test or runtime path.
+- Treat pickle-format bytes as hostile input. Never relax RouterBench's pinned size/SHA,
+  opcode/global, or structural checks; never replace its non-dispatching decoder with
+  `pickle.load`, `pickle.Unpickler`, `pandas.read_pickle`, or another callable-dispatching
+  deserializer.
 - Keep synthetic fixtures clearly labeled; their values must never be reported as
   benchmark evidence.
 
