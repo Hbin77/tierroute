@@ -119,7 +119,13 @@ the public API is pre-1.0.
 - Authenticate RouterBench bytes before structural decoding; referenced pickle globals
   remain inert and no callable named by the payload is imported or invoked.
 - Predictor artifacts accept strict JSON only; duplicate keys, unknown fields,
-  non-finite numbers, invalid dimensions, and pickle bytes fail closed.
+  non-finite numbers, invalid dimensions, and pickle bytes fail closed. Bounded binary
+  reads and a pre-decode lexical pass now enforce a 32 MiB document limit plus bounded
+  nesting, strings, structure, and numeric tokens. Single-snapshot direct input,
+  finite-binary64 normalization, and planned-shape model, feature, scalar, metadata, and
+  calibration caps apply across construction, parsing, serialization, save validation,
+  and policy hashing. This is an intentional pre-1.0 rejection of oversized version-1
+  inputs; valid canonical bytes and the pinned predictor SHA-256 remain unchanged.
 - Policy artifacts additionally reject malformed/noncanonical rational values,
   predictor/data/order mismatches, invalid Unicode metadata, and unsafe binary input.
   Bounded reads now reject artifacts above 8 MiB, 404,096 digits per exact integer, or

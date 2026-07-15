@@ -134,7 +134,7 @@ original global order so cumulative accounting is not reset between folds.
 
 The built-in solver is an auditable reference backend for the surface schema and
 modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
-with the planned 1,024-dimensional bge-m3 embedding (roughly 1,030 total features)
+with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total features)
 requires a separately reviewed accelerated backend and numerical parity tests.
 tierroute will not silently reduce or discard embedding dimensions to make that
 experiment fit this reference solver. A conservative operation-count guard fails fast
@@ -171,7 +171,18 @@ solver, and unknown IDs still fail closed.
   prompt-derived domain tags), project-owned deterministic centered-ridge fitting,
   inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
 - Canonical, strictly validated JSON predictor artifacts; pickle is never accepted for
-  predictor loading. Batch prediction vectorizes or embeds each prompt batch once.
+  predictor loading. Reads, parsing, serialization, saving, and policy hashing share a
+  32 MiB UTF-8 limit. Version-1 structure is capped at 4,096 models, training domains,
+  and feature tags; 16,384 total feature dimensions; 1,000,000 numeric scalars; 640
+  characters per JSON number; 4 KiB per metadata value; and 1 MiB aggregate metadata.
+  Before decoding, a lexical pass that does not materialize decoded JSON values caps
+  nesting at 32, JSON string tokens at 32,768, each encoded string token at 24,578
+  characters, and opening containers/commas at 1,100,000; numeric callbacks allow
+  1,000,005 tokens including five fixed fields.
+  Direct containers are snapshotted once and numeric parameters normalize to finite
+  binary64. Each calibrator has at most one point per recorded training example. These
+  limits cover the planned 11-model, 1,036-feature, 34,778-row RouterBench/bge-m3 shape
+  with explicit headroom. Batch prediction vectorizes or embeds each prompt batch once.
 - Canonical policy artifacts bind the exact predictor hash, training/metric-relevant
   replay content and order, tier specs, ledger identity, and retained candidate-search
   evidence. They record the OOF prediction hash as audit metadata; verifying it
@@ -412,7 +423,7 @@ The embedding contract pins `BAAI/bge-m3` at revision
 `5617a9f61b028005a4858fdac845db406aefb181` (MIT). Weights are not bundled and no
 runtime downloader exists. The planned provider will accept only a prepared local path
 and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model ID.
-Full training at roughly 1,030 total features also remains gated on an approved
+Full training at up to 1,036 total features also remains gated on an approved
 accelerated solver with parity tests against the project reference implementation;
 embedding dimensions will not be silently projected away.
 

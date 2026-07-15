@@ -146,7 +146,8 @@ closed.
   [`predictors/_ridge.py`](../src/tierroute/predictors/_ridge.py),
   [`predictors/solvers.py`](../src/tierroute/predictors/solvers.py),
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
-  [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py)
+  [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py), with limits in
+  [`predictors/resource_limits.py`](../src/tierroute/predictors/resource_limits.py)
 - Strongest evidence: [`test_feature_encoding.py`](../tests/test_feature_encoding.py),
   [`test_features_predictors.py`](../tests/test_features_predictors.py),
   [`test_bilinear_training.py`](../tests/test_bilinear_training.py),
@@ -161,9 +162,9 @@ Owner questions:
 2. Describe the centered-ridge normal equations and Cholesky solve; why does the
    reference solver have a conservative work guard and a fixed solver ID?
 3. Why is isotonic calibration fitted from out-of-fold rather than in-sample predictions?
-4. Which artifact identities make a silent schema, model catalogue, solver, or training
-   data change fail closed, and which predictor-artifact input-size bound is still
-   absent?
+4. Which identities make a silent schema, catalogue, solver, or training-data change
+   fail closed? Trace the predictor byte, numeric-token, structure, metadata, and
+   calibration limits through construction, parsing, loading, saving, and policy hash.
 5. What is implemented today at the embedding boundary? Explain that no inference
    provider or asset path is shipped, then name the revision, license, asset-manifest,
    and offline checks required before `bge-m3` can be claimed.

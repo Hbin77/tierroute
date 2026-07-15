@@ -58,9 +58,15 @@ predictions on that same outer training side, then refit the deployable predicto
 the full outer training side. Never fit feature scaling, a tag vocabulary,
 calibration, or a policy threshold on the outer held-out domain. Predictor and policy
 artifacts use strict JSON only; do not introduce pickle, `eval`, or an automatic
-compatibility fallback. Preserve policy artifact byte, integer-digit, and per-tier
-candidate limits on both construction and loading; raise them only with measured parser
-resource evidence and matching adversarial tests.
+compatibility fallback. Preserve predictor limits for bytes, JSON-number width, model/
+domain/tag counts, feature dimension, numeric scalars, metadata, and calibration points
+on construction, lexical preflight, parsing, loading, serialization, and saving. Keep
+direct inputs single-snapshot, exact-primitive, and finite-binary64 normalized; never
+validate one view of a caller-owned container and store another. Preserve policy
+artifact byte, integer-digit, and per-tier candidate limits on both construction and
+loading. Raise any limit only with measured parser/resource evidence, planned-shape
+headroom, and matching adversarial tests; do not change valid version-1 predictor bytes
+because policy artifacts bind their SHA-256.
 
 Runtime and tuning must share `route_from_predictions`, including its exact utility and
 tie-break order. An exhaustive lambda claim requires the full boundary/interval/tail
