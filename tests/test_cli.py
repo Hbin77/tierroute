@@ -3,6 +3,7 @@
 
 import json
 import os
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import pytest
 from tierroute.adapters import bundled_synthetic_path, load_evaluation_dataset
 from tierroute.cli import (
     DEFAULT_MAX_LAMBDA_CANDIDATES,
+    _baseline_payload,
     _fraction_label,
     _fraction_payload,
     main,
@@ -107,6 +109,23 @@ def test_evaluate_command_prints_all_required_baselines(capsys: object) -> None:
     assert "not benchmark claims" in output
     assert "original-order outer-LODO" in output
     assert "outer training side" in output
+    assert "Evaluation scope: tierroute-evaluation-scope-v1:" in output
+
+
+def test_baseline_serializer_reads_algorithm_from_report_identity() -> None:
+    row = evaluate_six_baselines(load_evaluation_dataset())[0]
+    future_report = replace(
+        row.report,
+        evaluation_scope=replace(
+            row.report.evaluation_scope,
+            algorithm="tierroute-evaluation-scope-v2",
+        ),
+    )
+    future_row = replace(row, report=future_report)
+
+    assert _baseline_payload(future_row)["evaluation_scope"]["algorithm"] == (
+        "tierroute-evaluation-scope-v2"
+    )
 
 
 def test_evaluate_json_declares_lodo_and_domain_fit_scope(capsys: object) -> None:
@@ -116,7 +135,15 @@ def test_evaluate_json_declares_lodo_and_domain_fit_scope(capsys: object) -> Non
     assert payload["budget_scope"] == "per-query-illustrative"
     assert payload["validation_scope"] == "outer-lodo-original-order"
     assert payload["domain_table_fit"] == "outer-training-observable-tags-only"
+    assert payload["evaluation_scope"]["algorithm"] == "tierroute-evaluation-scope-v1"
+    assert len(payload["evaluation_scope"]["sha256"]) == 64
+    assert payload["evaluation_scope"]["max_calls_per_query"] == 1
     cheapest = payload["baselines"][0]
+    assert cheapest["evaluation_scope"] == payload["evaluation_scope"]
+    assert all(
+        baseline["evaluation_scope"] == payload["evaluation_scope"]
+        for baseline in payload["baselines"]
+    )
     assert cheapest["total_realized_cost"] == cheapest["total_cost"] == "4.8"
     evidence = cheapest["cost_evidence"]
     assert evidence["scope"] == ("executed-replay-calls; overall is cross-tier diagnostic only")
@@ -550,6 +577,9 @@ def test_train_then_route_with_canonical_exact_policy(
     assert training["network_used"] is False
     assert training["policy_artifact"] == str(policy_path)
     assert training["accounting_scope"] == "per-query"
+    assert training["evaluation_scope"]["algorithm"] == "tierroute-evaluation-scope-v1"
+    assert len(training["evaluation_scope"]["sha256"]) == 64
+    assert training["evaluation_scope"]["max_calls_per_query"] == 1
     assert training["feasible"] is True
     assert training["weighted_training_score"] == pytest.approx(0.73125)
     assert set(training["lambda_by_tier"]) == {"fast", "balanced", "premium"}
