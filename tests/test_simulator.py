@@ -3,14 +3,18 @@
 
 from decimal import Decimal, localcontext
 
+import pytest
+
+import tierroute.eval.provenance as provenance_module
 from tierroute.adapters import CumulativeBudgetLedger, PerQueryBudgetLedger
-from tierroute.core import BudgetTier, CallModel, ModelSpec, SelectOutput
+from tierroute.core import BudgetTier, CallModel, ModelSpec, RouterState, SelectOutput
 from tierroute.eval import (
     CandidateOutcome,
     EvaluationExample,
     OfflineSimulator,
     TierSpec,
     build_per_query_oracle_plan,
+    weighted_delta,
 )
 from tierroute.policies import AlwaysCheapestRouter, AlwaysPremiumRouter, OracleRouter
 
@@ -313,6 +317,147 @@ def test_split_domain_is_not_exposed_without_explicit_router_metadata() -> None:
     assert router.metadata
     assert all("domain" not in metadata for metadata in router.metadata)
     assert all("example_id" not in metadata for metadata in router.metadata)
+
+
+def test_report_scope_uses_the_same_deeply_immutable_metadata_seen_by_router() -> None:
+    router_metadata = {"domain": "math", "tags": ["reasoning"]}
+    model_metadata = {"provider": {"name": "local"}}
+    example = EvaluationExample(
+        "immutable-metadata",
+        "prompt",
+        "split-only-domain",
+        (CandidateOutcome("model", "answer", Decimal("1"), 0.8),),
+        (ModelSpec("model", Decimal("1"), metadata=model_metadata),),
+        router_metadata=router_metadata,
+    )
+
+    class MutationAttemptRouter:
+        failures = 0
+
+        def route(self, state: RouterState) -> CallModel | SelectOutput:
+            if state.call_history:
+                return SelectOutput(0)
+            attempts = (
+                lambda: state.metadata.__setitem__("domain", "changed"),
+                lambda: state.metadata["tags"].append("changed"),  # type: ignore[union-attr]
+                lambda: (
+                    state.candidate_models[0]
+                    .metadata["provider"]
+                    .__setitem__(  # type: ignore[union-attr]
+                        "name", "changed"
+                    )
+                ),
+            )
+            for attempt in attempts:
+                try:
+                    attempt()
+                except (AttributeError, TypeError):
+                    self.failures += 1
+            return CallModel("model")
+
+    router = MutationAttemptRouter()
+    report = OfflineSimulator(PerQueryBudgetLedger).run(
+        router,
+        (example,),
+        (TierSpec(BudgetTier.FAST, Decimal("1"), 1.0),),
+    )
+
+    assert router.failures == 3
+    assert router_metadata == {"domain": "math", "tags": ["reasoning"]}
+    assert model_metadata == {"provider": {"name": "local"}}
+    assert len(report.evaluation_scope_sha256) == 64
+    assert report.max_calls_per_query == 1
+
+
+def test_tier_budget_representation_is_normalized_before_routing_and_hashing() -> None:
+    class RepresentationSensitiveRouter:
+        def __init__(self) -> None:
+            self.exponents: list[int] = []
+
+        def route(self, state: RouterState) -> CallModel | SelectOutput:
+            if state.call_history:
+                return SelectOutput(0)
+            exponent = state.remaining_budget.as_tuple().exponent
+            assert isinstance(exponent, int)
+            self.exponents.append(exponent)
+            return CallModel("cheap" if exponent == 0 else "premium")
+
+    simulator = OfflineSimulator(PerQueryBudgetLedger)
+    plain_router = RepresentationSensitiveRouter()
+    padded_router = RepresentationSensitiveRouter()
+    plain = simulator.run(
+        plain_router,
+        EXAMPLES[:1],
+        (TierSpec(BudgetTier.FAST, Decimal("2"), 1),),
+    )
+    padded = simulator.run(
+        padded_router,
+        EXAMPLES[:1],
+        (TierSpec(BudgetTier.FAST, Decimal("2.00"), 1.0),),
+    )
+
+    assert plain.evaluation_scope == padded.evaluation_scope
+    assert plain_router.exponents == padded_router.exponents == [0]
+    assert plain.tiers[0].queries[0].selected_model_id == "cheap"
+    assert padded.tiers[0].queries[0].selected_model_id == "cheap"
+    assert plain.tiers[0].tier_spec.budget_limit.as_tuple().exponent == 0
+    assert type(plain.tiers[0].tier_spec.weight) is float
+
+
+def test_binary64_equivalent_integer_labels_have_one_oracle_replay_semantics() -> None:
+    models = (ModelSpec("a", Decimal("1")), ModelSpec("b", Decimal("1")))
+
+    def example(a_quality: int, b_quality: int) -> EvaluationExample:
+        return EvaluationExample(
+            "large-label",
+            "prompt",
+            "domain",
+            (
+                CandidateOutcome("a", "a-output", Decimal("1"), a_quality),
+                CandidateOutcome("b", "b-output", Decimal("1"), b_quality),
+            ),
+            models,
+        )
+
+    spec = TierSpec(BudgetTier.FAST, Decimal("1"), 1.0)
+    simulator = OfflineSimulator(PerQueryBudgetLedger)
+    left = simulator._prepare_evaluation((example(2**53, 2**53 + 1),), (spec,))
+    right = simulator._prepare_evaluation((example(2**53 + 1, 2**53),), (spec,))
+    left_plan = build_per_query_oracle_plan(left.examples, left.tier_specs)
+    right_plan = build_per_query_oracle_plan(right.examples, right.tier_specs)
+    left_report = simulator._run_prepared(OracleRouter(left_plan), left, router_name="oracle")
+    right_report = simulator._run_prepared(OracleRouter(right_plan), right, router_name="oracle")
+
+    assert left.identity == right.identity
+    assert all(type(outcome.quality) is float for outcome in left.examples[0].outcomes)
+    assert left_plan == right_plan
+    assert left_report.tiers[0].queries[0].selected_model_id == "a"
+    assert right_report.tiers[0].queries[0].selected_model_id == "a"
+    assert weighted_delta(left_report, right_report) == 0.0
+
+
+def test_invalid_forged_metadata_fails_before_the_router_is_invoked() -> None:
+    class CountingRouter:
+        calls = 0
+
+        def route(self, state: RouterState) -> CallModel:
+            self.calls += 1
+            return CallModel("cheap")
+
+    forged = provenance_module._FrozenMetadata((("bad", object()),))
+    example = EvaluationExample(
+        "forged",
+        "prompt",
+        "domain",
+        EXAMPLES[0].outcomes,
+        EXAMPLES[0].candidate_models,
+        forged,
+    )
+    router = CountingRouter()
+
+    with pytest.raises(TypeError, match="unsupported type object"):
+        OfflineSimulator(PerQueryBudgetLedger).run(router, (example,), (TIER,))
+    assert router.calls == 0
 
 
 def test_privileged_context_requires_nominal_oracle_marker() -> None:

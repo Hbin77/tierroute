@@ -6,16 +6,20 @@ from decimal import Decimal, Inexact, Rounded, localcontext
 
 import pytest
 
+from tierroute.adapters import PerQueryBudgetLedger, load_evaluation_dataset
 from tierroute.core import BudgetTier
 from tierroute.eval import (
     BudgetReport,
     EvaluationReport,
+    EvaluationScopeIdentity,
     ExactCostDifference,
+    OfflineSimulator,
     QueryResult,
     QuoteCostDirection,
     QuoteErrorReport,
     QuoteErrorSummary,
     ReplayCall,
+    ScoreSummary,
     TierQuoteErrorSummary,
     TierResult,
     TierSpec,
@@ -24,12 +28,15 @@ from tierroute.eval import (
     summarize_report,
     weighted_delta,
 )
+from tierroute.policies import AlwaysCheapestRouter
 
 WEIGHTS = {
     BudgetTier.FAST: 0.5,
     BudgetTier.BALANCED: 0.3,
     BudgetTier.PREMIUM: 0.2,
 }
+SCOPE = EvaluationScopeIdentity("tierroute-evaluation-scope-v1", "0" * 64, 1)
+SCOPE_THREE_CALLS = EvaluationScopeIdentity("tierroute-evaluation-scope-v1", "0" * 64, 3)
 
 
 def report(name: str, qualities: dict[BudgetTier, float | None]) -> EvaluationReport:
@@ -63,7 +70,7 @@ def report(name: str, qualities: dict[BudgetTier, float | None]) -> EvaluationRe
         )
         budget = BudgetReport("test", Decimal("1"), Decimal("1"), query.cost, 0, ("q1",))
         tiers.append(TierResult(TierSpec(tier, Decimal("1"), WEIGHTS[tier]), (query,), budget))
-    return EvaluationReport(name, tuple(tiers))
+    return EvaluationReport(name, tuple(tiers), SCOPE)
 
 
 def quote_error_report() -> EvaluationReport:
@@ -94,6 +101,7 @@ def quote_error_report() -> EvaluationReport:
     return EvaluationReport(
         "router",
         (TierResult(TierSpec(BudgetTier.FAST, Decimal("1"), 1.0), (query,), budget),),
+        SCOPE_THREE_CALLS,
     )
 
 
@@ -108,6 +116,17 @@ def test_weighted_tier_quality_uses_explicit_weights() -> None:
     )
 
     assert summarize_report(result).weighted_quality == pytest.approx(0.72)
+
+
+def test_score_summary_is_immutable_and_rejects_nonfinite_or_boolean_values() -> None:
+    summary = summarize_report(report("router", {BudgetTier.FAST: 0.6}))
+
+    with pytest.raises(TypeError):
+        summary.tier_quality[BudgetTier.FAST] = 0.9  # type: ignore[index]
+    with pytest.raises(TypeError, match="real numbers"):
+        ScoreSummary({BudgetTier.FAST: True}, 1.0)
+    with pytest.raises(ValueError, match="finite"):
+        ScoreSummary({BudgetTier.FAST: float("nan")}, float("nan"))
 
 
 def test_quote_error_preserves_offsetting_call_errors() -> None:
@@ -136,10 +155,12 @@ def test_quote_error_rejects_budget_and_call_evidence_mismatch() -> None:
     wrong_spend = EvaluationReport(
         "wrong-spend",
         (replace(tier, budget=replace(tier.budget, spent=Decimal("0.4"))),),
+        valid.evaluation_scope,
     )
     wrong_overruns = EvaluationReport(
         "wrong-overruns",
         (replace(tier, budget=replace(tier.budget, over_budget_calls=1)),),
+        valid.evaluation_scope,
     )
 
     with pytest.raises(ValueError, match="budget spend"):
@@ -197,7 +218,7 @@ def test_quote_error_is_exact_under_decimal_rounding_traps(
         context.prec = 2
         context.traps[Inexact] = True
         context.traps[Rounded] = True
-        summary = summarize_quote_error(EvaluationReport("router", (tier,))).overall
+        summary = summarize_quote_error(EvaluationReport("router", (tier,), SCOPE)).overall
 
     assert summary.net_quote_error == ExactCostDifference(
         direction,
@@ -231,7 +252,7 @@ def test_quote_error_uses_adapter_outcomes_without_inventing_balance_semantics()
         BudgetReport("custom", Decimal("1"), Decimal("1"), Decimal("1.2"), 1, ("q1",)),
     )
 
-    summary = summarize_quote_error(EvaluationReport("router", (tier,))).overall
+    summary = summarize_quote_error(EvaluationReport("router", (tier,), SCOPE)).overall
 
     assert summary.call_count == 1
     assert summary.underquoted_calls == 1
@@ -318,7 +339,7 @@ def test_oracle_gap_recovery_detects_invalid_upper_bound() -> None:
 def test_oracle_gap_recovery_rejects_duplicate_tiers() -> None:
     cheapest = report("cheap", {BudgetTier.FAST: 0.4})
     oracle = report("oracle", {BudgetTier.FAST: 0.8})
-    duplicate = EvaluationReport("duplicate", cheapest.tiers * 2)
+    duplicate = EvaluationReport("duplicate", cheapest.tiers * 2, SCOPE)
 
     with pytest.raises(ValueError, match="duplicate tier"):
         oracle_gap_recovery(duplicate, cheapest, oracle)
@@ -338,10 +359,12 @@ def test_oracle_gap_recovery_rejects_population_or_budget_scope_mismatch() -> No
                 budget=replace(base_tier.budget, query_order=("q2",)),
             ),
         ),
+        SCOPE,
     )
     other_adapter = EvaluationReport(
         "other-adapter",
         (replace(base_tier, budget=replace(base_tier.budget, adapter_name="cumulative")),),
+        SCOPE,
     )
 
     with pytest.raises(ValueError, match="evaluation scope mismatch"):
@@ -350,3 +373,68 @@ def test_oracle_gap_recovery_rejects_population_or_budget_scope_mismatch() -> No
         oracle_gap_recovery(other_adapter, cheapest, oracle)
     with pytest.raises(ValueError, match="evaluation scope mismatch"):
         weighted_delta(other_population, cheapest)
+
+
+def test_cross_report_metrics_reject_scope_hash_or_call_cap_mismatch_first() -> None:
+    cheapest = report("cheap", {BudgetTier.FAST: 0.4})
+    router = report("router", {BudgetTier.FAST: 0.6})
+    oracle = report("oracle", {BudgetTier.FAST: 0.8})
+    mismatched_hash = replace(
+        router,
+        evaluation_scope=replace(router.evaluation_scope, sha256="1" * 64),
+    )
+    mismatched_cap = replace(
+        router,
+        evaluation_scope=replace(router.evaluation_scope, max_calls_per_query=2),
+    )
+    mismatched_algorithm = replace(
+        router,
+        evaluation_scope=replace(router.evaluation_scope, algorithm="tierroute-scope-v2"),
+    )
+
+    for mismatched in (mismatched_hash, mismatched_cap, mismatched_algorithm):
+        with pytest.raises(ValueError, match="report scope mismatch"):
+            weighted_delta(mismatched, cheapest)
+        with pytest.raises(ValueError, match="report scope mismatch"):
+            oracle_gap_recovery(mismatched, cheapest, oracle)
+        with pytest.raises(ValueError, match="report scope mismatch"):
+            oracle_gap_recovery(router, mismatched, oracle)
+        with pytest.raises(ValueError, match="report scope mismatch"):
+            oracle_gap_recovery(router, cheapest, mismatched)
+
+
+def test_simulator_scope_prevents_same_id_quality_or_cost_replay_mixups() -> None:
+    dataset = load_evaluation_dataset()
+    first = dataset.examples[0]
+    outcome = first.outcomes[0]
+    changed_quality = replace(
+        first,
+        outcomes=(replace(outcome, quality=outcome.quality + 0.01), *first.outcomes[1:]),
+    )
+    changed_cost = replace(
+        first,
+        outcomes=(
+            replace(outcome, cost=outcome.cost + Decimal("0.01")),
+            *first.outcomes[1:],
+        ),
+    )
+    simulator = OfflineSimulator(PerQueryBudgetLedger)
+    original = simulator.run(
+        AlwaysCheapestRouter(),
+        dataset.examples,
+        dataset.tier_specs,
+        router_name="original",
+    )
+
+    for changed_first in (changed_quality, changed_cost):
+        changed = simulator.run(
+            AlwaysCheapestRouter(),
+            (changed_first, *dataset.examples[1:]),
+            dataset.tier_specs,
+            router_name="changed",
+        )
+        assert changed.evaluation_scope_sha256 != original.evaluation_scope_sha256
+        with pytest.raises(ValueError, match="report scope mismatch"):
+            weighted_delta(changed, original)
+        with pytest.raises(ValueError, match="report scope mismatch"):
+            oracle_gap_recovery(original, original, changed)
