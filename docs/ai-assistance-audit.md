@@ -15,6 +15,7 @@ The retrospective ledger below covers the repository through merge commit `614a0
 human entrant may change a row to complete, in a later commit that records the entrant's
 explicit attestation after performing the review protocol in
 [maintainer-explainability.md](maintainer-explainability.md).
+The last row records the current governance PR outside that retrospective snapshot.
 
 ## Assistance boundary
 
@@ -82,6 +83,7 @@ are **MAINTAINER_DECLARATION**; the exact historical model revision is
 | [PR #13](https://github.com/Hbin77/tierroute/pull/13) | `b85a77e`; **REPO** | Leakage-free per-query outer-LODO six-baseline orchestration | Fold leakage, observable-tag, order, ledger-guard, oracle, and baseline tests; merged CI | **PENDING** |
 | [PR #14](https://github.com/Hbin77/tierroute/pull/14) | `cf56748`; **REPO** | Executed-call quote/realized-cost evidence and exact error reporting | Overspend, quote direction, accounting conservation, schema, and CLI tests, plus updated documentation; merged CI | **PENDING** |
 | [PR #16](https://github.com/Hbin77/tierroute/pull/16) | `614a018`; **REPO** | Complete replay-scope identity, immutable canonical snapshot, comparison/fold binding, and resource hardening | Python 3.10: 409 tests; Python 3.12: 408 tests plus one expected compatibility skip; dual CI and dependency-free wheel green | **PENDING** |
+| [PR #18](https://github.com/Hbin77/tierroute/pull/18) | PR and branch commits; **REPO** | This assistance ledger, explainability packet, submission draft, and future disclosure governance | Source/test/link audit and dual-Python locked verification are recorded in the PR; no named human review is claimed | **PENDING** |
 
 Future material AI-assisted changes must add or update one ledger row in the same PR.
 Pure typo or formatting changes may state the assistance in the PR without adding a
