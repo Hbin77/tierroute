@@ -46,4 +46,3 @@ def validate_action(state: RouterState, action: RouterAction) -> None:
         return
 
     raise RoutingContractError(f"unsupported action type: {type(action).__name__}")
-
