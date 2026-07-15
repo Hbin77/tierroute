@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 import pytest
@@ -19,7 +19,11 @@ from tierroute.predictors import (
     fit_calibrated_bilinear_for_fold,
     training_data_sha256,
 )
-from tierroute.predictors._ridge import CENTERED_RIDGE_SOLVER_ID, RidgeSolution
+from tierroute.predictors._ridge import (
+    CENTERED_RIDGE_SOLVER_ID,
+    RidgeSolution,
+    fit_centered_ridge,
+)
 from tierroute.predictors.solvers import resolve_ridge_solver
 
 
@@ -212,6 +216,30 @@ def test_one_resolved_solver_reaches_every_inner_fold_and_final_fit(
     assert preflights == solves
     assert preflights[-1][0] == artifact.training_example_count
     assert artifact.solver_id == CENTERED_RIDGE_SOLVER_ID
+
+
+def test_solver_boundary_preserves_reference_artifact_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    examples = load_evaluation_dataset().examples
+    through_boundary = fit_calibrated_bilinear(examples)
+
+    def legacy_fit(
+        solver: object,
+        feature_rows: Sequence[Sequence[float]],
+        targets_by_model: Mapping[str, Sequence[float]],
+        *,
+        ridge: float,
+    ) -> dict[str, tuple[tuple[float, ...], float]]:
+        del solver
+        return fit_centered_ridge(feature_rows, targets_by_model, ridge=ridge)
+
+    monkeypatch.setattr(training_module, "fit_targets_with_solver", legacy_fit)
+    through_legacy_path = fit_calibrated_bilinear(examples)
+
+    # Exact equality is intentionally platform-local. The reference solver does
+    # not claim cross-platform byte-identical floating-point coefficients.
+    assert through_boundary.to_json() == through_legacy_path.to_json()
 
 
 def test_reference_preflight_rejects_full_embedding_before_provider_call() -> None:
