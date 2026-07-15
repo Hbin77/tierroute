@@ -13,6 +13,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from tierroute.core import BudgetTier, as_cost
+from tierroute.core.atomic_io import AtomicTextWrite, replace_text_bundle
 from tierroute.eval import (
     EvaluationExample,
     TierSpec,
@@ -301,11 +302,9 @@ class LambdaPolicyArtifact:
         """Atomically save the canonical JSON artifact."""
 
         destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_name(f".{destination.name}.tmp")
-        temporary.write_text(self.to_json(), encoding="utf-8")
-        temporary.replace(destination)
-        return destination
+        return replace_text_bundle(
+            (AtomicTextWrite(destination, self.to_json(), type(self).from_json),)
+        )[0]
 
     @classmethod
     def from_json(cls, document: str) -> LambdaPolicyArtifact:
