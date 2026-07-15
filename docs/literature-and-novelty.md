@@ -380,7 +380,12 @@ experiment first needs a sequence-level oracle; the independent per-query plan i
 neither guaranteed feasible nor an upper bound for a stream. Every reportable JSON
 result must show per-tier feasibility, mean quality, executed-call quoted and realized
 totals, absolute quote error, and ledger over-budget counts. The cross-tier cost row
-must remain labeled as a diagnostic over independent ledgers. Planned ablations are
+must remain labeled as a diagnostic over independent ledgers. Cross-report metrics
+must first match the required versioned evaluation-scope identity, whose digest covers the full
+ordered replay, tier configuration, call cap, outputs, labels, candidate order, and
+canonical immutable router/model metadata. Baseline score and oracle-gap fields are
+derived evidence and must be recomputed by the six-report suite rather than trusted
+from persisted rows. Planned ablations are
 surface-only versus local bge-m3 features, bilinear versus GBM, uncalibrated versus
 isotonic, shared versus tier-specific lambda, full versus curated model catalogues, and
 LODO versus a clearly
@@ -401,6 +406,7 @@ pool, data split, cost model, and metric.
 | Tier metric and oracle-gap recovery | [`eval/metrics.py`](../src/tierroute/eval/metrics.py) |
 | Executed-call quote/realized evidence | [`eval/schemas.py`](../src/tierroute/eval/schemas.py), [`eval/simulator.py`](../src/tierroute/eval/simulator.py) |
 | Exact quote-error aggregation and CLI report | [`eval/metrics.py`](../src/tierroute/eval/metrics.py), [`cli.py`](../src/tierroute/cli.py) |
+| Complete evaluation-scope identity and immutable metadata snapshot | [`evaluation-scope.md`](evaluation-scope.md), [`eval/provenance.py`](../src/tierroute/eval/provenance.py), [`eval/simulator.py`](../src/tierroute/eval/simulator.py) |
 | Bilinear fit and isotonic calibration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py) |
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
 | Optional RouterBench boundary | [`adapters/routerbench.py`](../src/tierroute/adapters/routerbench.py), [`download_routerbench.py`](../scripts/download_routerbench.py) |

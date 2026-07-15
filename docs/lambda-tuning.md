@@ -224,6 +224,18 @@ A policy artifact records:
   breakpoint occurrence counts. The complete derived-candidate count is `null` for a
   truncated bounded search because it was intentionally never materialized.
 
+These stable artifact hashes intentionally retain their existing byte contract.
+Separately, each in-memory `EvaluationReport` carries an `EvaluationScopeIdentity`
+using `tierroute-evaluation-scope-v1`, which binds the ordered tier specs,
+`max_calls_per_query`, complete replay rows, output text, quality and cost labels,
+candidate/outcome order, and canonical policy-visible metadata. This report identity
+prevents a tuned report from being compared with a different replay while leaving the
+router's actions out so distinct policies remain comparable. Metadata is deep-copied
+into an immutable, sorted value tree before simulation; unsupported, cyclic, nonfinite,
+or over-limit metadata fails before routing. The digest is not an authenticated
+signature, and executable ledger semantics remain a separately checked adapter/report
+boundary.
+
 Artifact-backed CLI routing fails closed on a predictor, dataset, replay order, model
 catalogue, or tier-spec mismatch. A cumulative policy additionally requires the caller
 to provide the current exact `--remaining-budget`. Routing cannot recompute the OOF

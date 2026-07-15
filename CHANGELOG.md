@@ -43,6 +43,10 @@ the public API is pre-1.0.
   overspends, plus exact per-tier and cross-tier quote-versus-realized diagnostics.
   JSON routing labels its pre-call quote and leaves realized cost unknown; JSON
   evaluation reconciles realized call totals and over-budget counts with each ledger.
+- A required `tierroute-evaluation-scope-v1` report identity over ordered tier specs,
+  call cap, complete replay content, candidate/outcome order, outputs, labels, and
+  canonical policy-visible metadata. Evaluation CLI output exposes the algorithm,
+  digest, and call cap.
 
 ### Changed
 
@@ -53,6 +57,19 @@ the public API is pre-1.0.
   to `cost`, plus a selected call for every feasible result. Make `BaselineResult`
   require quote evidence derived from its own replay report. These are intentional
   pre-1.0 constructor-contract changes.
+- Require `EvaluationReport` callers to supply an
+  `EvaluationScopeIdentity(algorithm, sha256, max_calls_per_query)`. Fold evidence now
+  requires that same identity, and `LodoSixBaselineEvaluation` requires the stable
+  candidate-model IDs. Cross-report metrics reject a mismatched complete identity
+  before numeric work; score summaries are immutable, baseline rows recompute their
+  scores, and the six-report suite validates canonical row order, fold partitions,
+  scope-bound fold/table evidence, candidate membership, per-query oracle dominance,
+  and exact oracle-gap derivation. These are intentional pre-1.0 constructor-contract
+  changes.
+- Canonicalize candidate, realized, and tier-budget costs in the immutable replay
+  snapshot used by both routing and scope hashing; normalize tier weights to plain
+  binary64 there as well. Repeated baseline and lambda-policy runs reuse one prepared
+  snapshot and digest without weakening the public fail-closed input boundary.
 - Make the bundled six-baseline CLI use outer-training-only domain tables and a shared
   original-order outer-LODO replay. Domain-table fitting now reads only observable
   pre-call metadata tags, never validation-only split domains; unseen tags use the
@@ -105,6 +122,11 @@ the public API is pre-1.0.
   100,000 retained candidates per tier before expensive big-integer parsing. The
   integer limit covers candidates derivable from the public core cost contract;
   ledger-adapter metadata is capped at 4 KiB.
+- Evaluation metadata is copied into a sorted, deeply immutable value tree before
+  routing. Cycles, custom containers, non-string keys, nonfinite numbers, excessive
+  depth/node/encoded-payload/integer/Decimal ranges, invalid Unicode, and aggregate
+  replay payloads over the documented limit fail before replay; hashing never invokes
+  `repr`, pickle, or user-defined serialization hooks.
 - Dependency license enforcement now scans bounded regular-file evidence, nested
   vendored metadata, common third-party notice layouts, and GPL-family filenames. Its
   only document exceptions are exact reviewed PSF-family license hashes used by the

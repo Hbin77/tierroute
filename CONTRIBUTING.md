@@ -103,10 +103,15 @@ per-query or cumulative semantics in a policy.
    realized call charges, and reconcile tier call evidence with `BudgetReport.spent`
    and its over-budget count. Treat balance snapshots and the ledger result as adapter
    evidence; do not infer unconfirmed budget semantics in shared schemas.
-5. Add focused tests for behavior, failure paths, determinism, and offline operation.
-6. Keep public interfaces typed and explain non-obvious routing or metric choices in a
+5. Preserve the versioned evaluation-scope contract. Do not reuse artifact hashes as a
+   substitute, omit a router-visible replay field, accept mutable/custom metadata via
+   `repr`, or compare reports before checking the complete scope identity (algorithm,
+   digest, and call cap). A scope algorithm byte change requires a new version and
+   golden vectors for the old hashes.
+6. Add focused tests for behavior, failure paths, determinism, and offline operation.
+7. Keep public interfaces typed and explain non-obvious routing or metric choices in a
    short docstring or design comment.
-7. Run `make verify`, including both core and training/artifact CLI smoke paths, before
+8. Run `make verify`, including both core and training/artifact CLI smoke paths, before
    opening a pull request.
 
 ## Licensing, data, and dependencies

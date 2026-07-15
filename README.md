@@ -161,6 +161,12 @@ solver, and unknown IDs still fail closed.
   reach `RouterState`. Every simulated call that consumes a logged outcome records its
   quote, realized charge, ledger balance snapshots, and ledger result. A realized
   overspend is still an executed replay call and remains in exact spend evidence.
+- Every full evaluation report carries a required `EvaluationScopeIdentity` using
+  `tierroute-evaluation-scope-v1` over the ordered tier specs, call cap, complete
+  ordered replay, outputs, labels, candidate order, and policy-visible metadata.
+  Replay-visible costs and metadata are copied into one canonical immutable snapshot
+  before routing; unsupported or cyclic objects fail closed instead of being
+  serialized with `repr` or pickle.
 - A fitted surface-feature schema (log-scaled counts, code/math signals, and
   prompt-derived domain tags), project-owned deterministic centered-ridge fitting,
   inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
@@ -308,7 +314,18 @@ boundary.
 domain table on training rows only; only that fold's test decisions are retained. All
 six methods are then replayed once over the identical original row order and checked
 against the same per-query accounting contract. The bundled data and tier weights are
-still synthetic smoke inputs, so their numbers are not benchmark evidence.
+still synthetic smoke inputs, so their numbers are not benchmark evidence. Cross-report
+metrics require the same evaluation-scope identity before checking tier and ledger fields.
+The six-baseline constructor then recomputes every score, realized total, quote summary,
+and oracle-gap value from its own reports; mixed or stale rows fail closed. JSON and
+text CLI output expose the scope algorithm, digest, and `max_calls_per_query`.
+
+The scope digest is an accidental-mix and reproducibility identity, not an authenticated
+signature. It excludes router actions so different policies remain comparable. Ledger
+implementation semantics cannot be hashed safely; the metric layer separately compares
+the adapter name, configured/effective limits, query order, and recorded accounting.
+The exact field and canonical-byte contract is documented in
+[docs/evaluation-scope.md](docs/evaluation-scope.md).
 
 A dataset domain reaches `RouterState` only when its adapter explicitly places a valid
 pre-call tag in `router_metadata["domain"]`; split-only labels remain private. If the
