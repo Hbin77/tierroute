@@ -231,8 +231,9 @@ weight is never redistributed. The bundled fixture uses Fast/Balanced/Premium we
 `0.5/0.3/0.2` to exercise low-budget emphasis, but these are illustrative rather than
 official SK Telecom weights.
 
-Oracle-gap recovery measures how much of the weighted quality interval from
-always-cheapest to the budget-feasible oracle was recovered:
+Under the current per-query accounting, oracle-gap recovery measures how much of the
+weighted quality interval from always-cheapest to the independently budget-feasible
+per-query oracle was recovered:
 
 ```text
 sum_t w_t * (Q_router,t - Q_cheapest,t)
@@ -241,7 +242,9 @@ sum_t w_t * (Q_oracle,t - Q_cheapest,t)
 ```
 
 It is undefined when the oracle and cheapest scores are equal, and negative values are
-preserved. The six baselines are:
+preserved. The bundled oracle planner is a per-query upper bound only. It is not a
+cumulative-stream oracle: a cumulative report needs a sequence-level plan that is not
+implemented yet. The six baselines are:
 
 | Baseline | Decision rule |
 | --- | --- |
@@ -385,6 +388,11 @@ dependency-license gate. GPL-family dependencies are not accepted. See
 [SBOM.md](SBOM.md) for the dependency inventory. Actual wheel-content approvals and
 rejections are recorded in
 [docs/dependency-license-audit.md](docs/dependency-license-audit.md).
+
+The primary-source review, prior-art comparison, and exact boundary between implemented,
+planned, and gated claims are recorded in
+[docs/literature-and-novelty.md](docs/literature-and-novelty.md). Read it before reusing
+performance, OOD, or novelty language in a report or presentation.
 
 ## Open questions
 
