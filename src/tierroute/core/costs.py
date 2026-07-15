@@ -11,7 +11,7 @@ not round and do not depend on ambient process state.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from decimal import MAX_EMAX, MIN_EMIN, ROUND_HALF_EVEN, Decimal, localcontext
+from decimal import MAX_EMAX, MIN_EMIN, ROUND_HALF_EVEN, Context, Decimal, localcontext
 from math import gcd
 
 from tierroute.core.schemas import Cost
@@ -129,11 +129,13 @@ def divide_cost(value: Cost, divisor: int) -> Cost:
         return _from_parts(coefficient, exponent - decimal_places)
 
     precision = max(50, len(value.as_tuple().digits) + 50)
-    with localcontext() as context:
-        context.prec = precision
-        context.rounding = ROUND_HALF_EVEN
-        context.Emax = MAX_EMAX
-        context.Emin = MIN_EMIN
+    deterministic_context = Context(
+        prec=precision,
+        rounding=ROUND_HALF_EVEN,
+        Emax=MAX_EMAX,
+        Emin=MIN_EMIN,
+    )
+    with localcontext(deterministic_context):
         return value / Decimal(divisor)
 
 

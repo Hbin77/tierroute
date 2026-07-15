@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the stable router contract."""
 
-from decimal import Decimal, localcontext
+from decimal import Decimal, Inexact, Rounded, localcontext
 
 import pytest
 
@@ -113,6 +113,16 @@ def test_cost_arithmetic_is_exact_under_a_low_precision_context() -> None:
     assert scaled == Decimal("3.703703670370370367")
     assert terminating_quotient == Decimal("0.125")
     assert repeating_quotient == Decimal("0.333333333333333333333333333333333333333333333333333")
+
+
+def test_repeating_cost_division_ignores_ambient_rounding_traps() -> None:
+    with localcontext() as context:
+        context.prec = 2
+        context.traps[Inexact] = True
+        context.traps[Rounded] = True
+        result = divide_cost(Decimal("1"), 3)
+
+    assert result == Decimal("0.333333333333333333333333333333333333333333333333333")
 
 
 def test_cost_arithmetic_validates_operands_and_non_negative_results() -> None:
