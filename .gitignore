@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.coverage
+.pytest_cache/
+.ruff_cache/
+.venv/
+build/
+dist/
+htmlcov/
+
+# Downloaded datasets and model weights must never be committed.
+data/routerbench/
+models/
+
+.DS_Store
+

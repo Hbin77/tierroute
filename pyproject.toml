@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tierroute"
+version = "0.1.0"
+description = "Offline-first, budget-aware routing for large language models"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "tierroute contributors" }]
+keywords = ["llm", "routing", "budget", "offline", "evaluation"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pip-licenses>=5.0,<6",
+  "pytest>=8.4,<9",
+  "ruff>=0.12,<1",
+]
+
+[project.urls]
+Homepage = "https://github.com/tierroute/tierroute"
+Issues = "https://github.com/tierroute/tierroute/issues"
+Repository = "https://github.com/tierroute/tierroute"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "UP"]
+
