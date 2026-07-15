@@ -52,17 +52,42 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="tierroute-training-smoke-") as temporary:
         artifact = Path(temporary) / "predictor.json"
-        training = json.loads(_run_cli(executable, "train", "--output", str(artifact), "--json"))
-        if training.get("network_used") is not False or not artifact.is_file():
-            raise RuntimeError("training smoke did not produce an offline artifact")
+        policy = Path(temporary) / "policy.json"
+        training = json.loads(
+            _run_cli(
+                executable,
+                "train",
+                "--output",
+                str(artifact),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--json",
+            )
+        )
+        if (
+            training.get("network_used") is not False
+            or not artifact.is_file()
+            or not policy.is_file()
+        ):
+            raise RuntimeError(
+                "training smoke did not produce offline predictor and policy artifacts"
+            )
         if training.get("model_ids") != ["expert", "steady", "swift"]:
             raise RuntimeError("training smoke returned an unexpected model catalogue")
         if training.get("training_examples") != 8:
             raise RuntimeError("training smoke returned an unexpected example count")
         if training.get("solver_id") != "tierroute.centered-ridge-cholesky-python-v1":
             raise RuntimeError("training smoke returned an unexpected ridge solver ID")
+        if training.get("accounting_scope") != "per-query":
+            raise RuntimeError("training smoke returned the wrong policy accounting scope")
+        if training.get("feasible") is not True or training.get("weighted_training_score") is None:
+            raise RuntimeError("training smoke did not report a feasible weighted policy score")
+        if set(training.get("lambda_search", {})) != {"fast", "balanced", "premium"}:
+            raise RuntimeError("training smoke did not report every tier's lambda search")
 
-        route = json.loads(
+        predictor_route = json.loads(
             _run_cli(
                 executable,
                 "route",
@@ -74,17 +99,44 @@ def main() -> int:
                 "--json",
             )
         )
-        if route.get("network_used") is not False:
+        if predictor_route.get("network_used") is not False:
             raise RuntimeError("artifact route did not confirm offline operation")
-        if route.get("quality_kind") != "calibrated bilinear artifact":
+        if predictor_route.get("quality_kind") != "calibrated bilinear artifact":
             raise RuntimeError("artifact route did not use the trained predictor")
-        if route.get("model") not in training["model_ids"]:
+        if predictor_route.get("model") not in training["model_ids"]:
             raise RuntimeError("artifact route selected a model outside the trained catalogue")
+
+        policy_route = json.loads(
+            _run_cli(
+                executable,
+                "route",
+                "Prove that sqrt(2) is irrational.",
+                "--tier",
+                "balanced",
+                "--artifact",
+                str(artifact),
+                "--policy-artifact",
+                str(policy),
+                "--json",
+            )
+        )
+        if policy_route.get("network_used") is not False:
+            raise RuntimeError("policy artifact route did not confirm offline operation")
+        if policy_route.get("quality_kind") != (
+            "calibrated bilinear + tuned exact-rational tier lambda"
+        ):
+            raise RuntimeError("policy artifact route did not use the tuned exact lambda")
+        if policy_route.get("accounting_scope") != "per-query":
+            raise RuntimeError("policy artifact route returned the wrong accounting scope")
+        if policy_route.get("lambda_cost") != training["lambda_by_tier"]["balanced"]:
+            raise RuntimeError("policy artifact route did not preserve the exact tuned lambda")
+        if policy_route.get("lambda_search") != training["lambda_search"]["balanced"]:
+            raise RuntimeError("policy artifact route did not preserve candidate-search evidence")
 
     if any(hf_home.iterdir()):
         raise RuntimeError("training or artifact routing wrote to HF_HOME")
 
-    print("Training smoke passed: fit, JSON artifact load, and route ran fully offline.")
+    print("Training smoke passed: predictor fit, exact policy tuning, and both routes ran offline.")
     return 0
 
 

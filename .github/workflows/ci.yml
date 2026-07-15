@@ -119,7 +119,7 @@ jobs:
       - name: Smoke-test the installed CLI offline
         run: python scripts/smoke.py
 
-      - name: Smoke-test offline predictor training and artifact routing
+      - name: Smoke-test offline predictor/policy training and artifact routing
         run: python scripts/training_smoke.py
 
       - name: Verify no model cache was populated

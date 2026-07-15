@@ -29,7 +29,24 @@ def test_runtime_commands_never_open_a_socket(
     assert main(["evaluate", "--json"]) == 0
     assert main(["demo"]) == 0
     artifact = tmp_path / "predictor.json"
-    assert main(["train", "--output", str(artifact), "--json"]) == 0
+    policy = tmp_path / "policy.json"
+    assert (
+        main(
+            [
+                "train",
+                "--output",
+                str(artifact),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--max-lambda-candidates",
+                "2",
+                "--json",
+            ]
+        )
+        == 0
+    )
     assert (
         main(
             [
@@ -37,6 +54,20 @@ def test_runtime_commands_never_open_a_socket(
                 "offline artifact prompt",
                 "--artifact",
                 str(artifact),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "route",
+                "offline policy artifact prompt",
+                "--artifact",
+                str(artifact),
+                "--policy-artifact",
+                str(policy),
                 "--json",
             ]
         )
