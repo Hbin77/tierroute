@@ -87,6 +87,7 @@ class QueryResult:
     cost: Cost
     quality: float | None
     output: str | None
+    predicted_quality: float | None = None
     decision_reason: str = ""
     error: str | None = None
 
