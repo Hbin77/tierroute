@@ -26,6 +26,19 @@ subtraction, and integer scaling are exact even if a caller changes global decim
 precision. A learned mean quote that is mathematically repeating uses an explicit
 half-even precision contract instead of inheriting caller state.
 
+The exact-cost resource contract accepts nonzero decimal positions from `-100000`
+through `99999` and at most 100,000 coefficient digits after input parsing. Equivalent
+expanded and scientific values are normalized to the same effective coefficient and
+exponent for arithmetic. Inputs, exact results, or rounded repeating quotients outside
+that range raise an error; they never silently underflow to zero or trigger an
+unbounded power-of-ten expansion. A nonzero legal cost is at least `1e-100000` and a
+legal result is below `1e100000`, so integer scaling first rejects a raw factor at or
+above `1e200000`. Below that numeric bound it combines the coefficient's and factor's
+2-adic/5-adic orders, including powers of ten formed across the two operands, absorbs
+them into the decimal exponent, and checks the reduced cofactor. Division first
+reduces common numerator/divisor factors, then absorbs divisor powers of ten; the
+remaining integer cofactor must fit the same 100,000-digit resource bound.
+
 The shared runtime/evaluator selection order is:
 
 1. greater exact utility;
@@ -68,8 +81,8 @@ entire decision, charge, and remaining-budget trajectory is constant in that int
 default capped path instead keeps memory bounded while it streams every non-negative
 pairwise breakpoint occurrence:
 
-1. retain a deterministic bottom-hash sample of unique roots plus the minimum and
-   maximum root;
+1. retain a deterministic `bounded-bottom-hash-v2` sample of unique roots plus the
+   minimum and maximum root;
 2. derive boundaries, adjacent midpoints, and the tail from only those retained roots;
 3. rank-space that derived set to at most the configured cap.
 
@@ -81,6 +94,12 @@ occurrence count, and an unknown (`null`) complete candidate count; it is not pr
 as a global continuous optimum. The uncapped path is the way to request exhaustive
 coverage, subject to the resource preflight below.
 
+Version 2 hashes the numerator and denominator as signed, length-delimited big-endian
+integer identities. That avoids Python's process-global decimal rendering limit for
+large exact roots and gives the strategy a stable golden vector. Version-1 strategy
+metadata remains accepted when loading an existing artifact; the retained rational
+values are embedded in the artifact, so routing never has to reconstruct the sample.
+
 ## Exhaustive-search resource preflight
 
 With `n` examples, `m` models, and `T` tiers, at most `n * choose(m, 2)` unequal-cost
@@ -88,15 +107,21 @@ pair occurrences can contribute roots. Boundaries, midpoints, and the tail there
 produce at most twice that count plus two candidates. Replaying every candidate has
 worst-case work `O(T * n^2 * m^3)`.
 
-Before materializing roots, an uncapped search computes conservative upper bounds and
-refuses the run when either exceeds:
+Before fitting a predictor or materializing roots, a bounded or uncapped search computes
+conservative upper bounds and refuses the run when any exceeds:
 
+- 10,000,000 model-pair scans while streaming breakpoints;
 - 100,000 retained candidates; or
-- 100,000,000 model-utility evaluations.
+- 100,000,000 model-utility evaluations; or
+- 256 MiB of estimated peak exact-rational candidate state, including integer width;
+  or
+- 8 MiB of estimated serialized policy candidate evidence.
 
-Duplicate or negative roots make real work smaller, so the Python API offers the
-explicit `allow_large_exhaustive=True` acknowledgement for a reviewed false positive.
-The CLI deliberately requires two flags:
+Duplicate or negative roots make real work smaller, so the Python API retains the
+legacy-named explicit `allow_large_exhaustive=True` acknowledgement for a reviewed
+false positive in either bounded or exhaustive derivation. The CLI exposes that
+acknowledgement only together with an explicitly exhaustive request and requires two
+flags:
 
 ```bash
 tierroute train ... \
@@ -104,11 +129,20 @@ tierroute train ... \
   --allow-large-exhaustive-search
 ```
 
-The second flag is invalid without the first. Capped and explicit-grid searches bypass
-the guard. At the pinned RouterBench shape (34,778 rows, 11 models, three tiers), the
+The second flag is invalid without the first. Public bounded and uncapped helper
+functions and every outer nested-LODO fold use the same guard; all folds are checked
+before the first fit. Unequal-pair counts use cost frequencies, while the guard also
+counts equal-cost pairs because the root stream visits them before skipping. A bounded
+search substitutes its retained cap when estimating replay work, memory, and serialized
+evidence, so an arbitrarily large cap cannot bypass the limits. Explicit caller-supplied
+grids are already materialized and are outside this derivation guard.
+At the pinned RouterBench shape (34,778 rows, 11 models, three tiers), the
 conservative bounds are 3,825,582 candidates and 4,390,520,996,268 utility evaluations;
-use `max_candidates_per_tier=257` for the practical nested-LODO path and report its
-artifact-labeled exhaustive/truncated status.
+the default cap of 257 would still require 294,952,218 evaluations and is refused.
+Use `max_candidates_per_tier=64` as the documented starting point for that full shape:
+its conservative estimate is 73,451,136 evaluations and 1,912,790 pair scans. It must
+also pass the cost-width-dependent policy-artifact estimate. Report the artifact-labeled
+exhaustive/truncated status for every capped run.
 
 ## Direct metric tuning
 
@@ -168,7 +202,15 @@ holdout, and at least two domains for the predictor's calibration fit.
 ## Artifact provenance
 
 Predictor and policy state use strict canonical JSON; pickle and unknown fields are
-rejected. A policy artifact records:
+rejected. Policy input is read with an 8 MiB bound before decoding; each exact integer
+is limited to 404,096 decimal digits, which covers roots and adjacent midpoints
+derivable from the core cost range and finite binary64 predictions. Each tier is
+limited to 100,000 retained candidates, and ledger-adapter names are limited to 4 KiB.
+The pre-fit size estimate includes exact JSON/UTF-8 domain strings and tier-budget
+text, plus a conservative cross-example root/midpoint width. The same checks apply to
+in-memory artifact construction for integer width, candidate count, and ledger
+metadata; canonical serialization and save enforce the aggregate byte limit again.
+A policy artifact records:
 
 - the canonical predictor artifact SHA-256;
 - an order-independent hash of training/metric-relevant replay content;
@@ -188,8 +230,12 @@ reproducing the cross-fitted table and comparing its digest. It is not an authen
 claim by itself.
 
 Training serializes and round-trip-validates both documents before writing, rejects
-input/output aliases, stages each file under a random exclusive name in its destination
-directory, and replaces the policy last. Existing files are backed up and both paths
-are rolled back on an ordinary write or verification failure. Two unrelated POSIX
-pathnames cannot be switched in one filesystem operation, so concurrent writers remain
-unsupported; a transient mixed pair fails the policy-to-predictor hash check.
+input/output aliases (including portable case/Unicode aliases), stages each file under
+a random exclusive name in its destination directory, and replaces the policy last.
+Existing files are backed up and every attempted path is restored after ordinary OS or
+Python exceptions, including asynchronous exceptions; an unverifiable restore preserves
+its recovery backup and reports the path. If content committed and validated but final
+cleanup fails, the error explicitly reports that committed state. Two unrelated
+pathnames cannot be switched in one filesystem operation, so concurrent writers and
+power-loss transactions across the bundle remain unsupported; a transient mixed pair
+fails the policy-to-predictor hash check.

@@ -85,22 +85,33 @@ tierroute route "Prove that sqrt(2) is irrational." \
 Policy fitting creates inner-LODO out-of-fold predictions keyed by private example ID,
 streams every non-negative exact rational pairwise quality/cost breakpoint occurrence,
 and replays every retained candidate through the selected budget ledger. By default,
-the CLI keeps a bounded deterministic bottom-hash sample of roots plus the minimum and
-maximum, derives boundaries, midpoints, and a tail from those retained roots, then
+the CLI keeps a bounded deterministic `bounded-bottom-hash-v2` sample of roots plus the
+minimum and maximum, derives boundaries, midpoints, and a tail from those retained roots, then
 rank-spaces the result to at most 257 candidates. If every unique root and derived
 candidate fits that cap, the result remains complete and reports `exhaustive: true`
 with its exact count. Only actual truncation is approximate; it reports
 `exhaustive: false` and an unknown complete count (`null`), together with the search
 strategy and observed breakpoint-occurrence count. Use `--exhaustive-lambda-search`
 to request materialization and evaluation of the full exact finite set. Before any
-roots are materialized, a conservative preflight refuses more than 100,000 possible
-candidates or 100,000,000 utility evaluations. Only after reviewing that estimate may
-a caller add `--allow-large-exhaustive-search`; capped runs never need this override.
+predictor fitting or root materialization, a conservative preflight refuses more than
+10,000,000 pair scans, 100,000 possible candidates, 100,000,000 utility evaluations,
+a 256 MiB estimated peak for exact-rational candidate state, or 8 MiB of estimated
+serialized policy evidence. Only after reviewing all five estimates may a caller add
+`--allow-large-exhaustive-search` to an exhaustive CLI run. The default
+257-candidate run fits the bundled synthetic data, but every cap is checked against the
+actual dataset's retained-work and integer-width estimates and must be reduced if it
+fails.
 At the pinned RouterBench shape (34,778 rows, 11 models, three tiers), the conservative
 bounds are 3,825,582 candidates and about 4.39 trillion utility evaluations, so the
-257-candidate default is the practical reportable path and is provenance-labeled when
-truncated. The selected lambda itself always remains an exact numerator/denominator
-pair.
+257-candidate default would require 294,952,218 evaluations and is refused. A cap of 64
+requires a conservative 73,451,136 evaluations and is the documented starting point
+for that full shape; its 1,912,790 pair scans are also below the separate scan limit.
+Every run must still pass the dataset-dependent artifact-size estimate. Its artifact
+labels whether the retained search was complete or truncated. The selected lambda
+itself always remains an exact numerator/denominator
+pair. Version 2 hashes signed, self-delimiting binary integer identities, avoiding
+Python's decimal integer rendering limit; version-1 strategy metadata remains loadable
+because artifacts embed the retained values and strategy version explicitly.
 
 A policy trained with `--budget-scope cumulative` can be routed only when the caller
 also supplies the current exact state with `--remaining-budget`. This command does not
@@ -127,7 +138,9 @@ before an unaudited workload can enter the cubic reference path.
 
 - Context-independent exact `Decimal` cost accounting and typed
   `RouterState`/`RouterAction` contracts; caller precision cannot round away an
-  overspend.
+  overspend. Nonzero costs are supported within decimal positions `-100000` through
+  `99999`, with at most 100,000 coefficient digits; inputs or results outside this
+  explicit resource contract fail before silent underflow or unbounded expansion.
 - Swappable per-query and cumulative budget ledgers; the demo uses illustrative
   per-query limits until the official budget scope is confirmed.
 - One-shot lambda routing with exact rational utility, immutable per-tier schedules,
@@ -144,10 +157,16 @@ before an unaudited workload can enter the cubic reference path.
   replay content and order, tier specs, ledger identity, and retained candidate-search
   evidence. They record the OOF prediction hash as audit metadata; verifying it
   requires reproducing the cross-fitted prediction table because routing has no OOF
-  table to recompute it from.
+  table to recompute it from. Loading is bounded to 8 MiB, 404,096 decimal digits per
+  exact integer (covering candidates derivable from the core cost contract), and
+  100,000 retained candidates per tier before expensive parsing. Ledger-adapter names
+  are limited to 4 KiB; the pre-fit artifact estimate includes actual encoded domains
+  and tier-budget text rather than treating metadata as a fixed-size constant.
 - Predictor and policy files use random exclusive staging, post-write validation, and
   rollback-safe policy-last bundle replacement; input aliases and unsafe output nodes
-  fail before fitting.
+  fail before fitting. Ordinary OS/Python failures roll back every attempted path, but
+  concurrent writers and power-loss atomicity across unrelated pathnames are not
+  supported.
 - True nested LODO orchestration keeps every outer domain out of predictor fitting,
   calibration, and lambda tuning.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out

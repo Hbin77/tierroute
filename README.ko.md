@@ -85,20 +85,29 @@ tierroute route "루트 2가 무리수임을 증명해 줘." \
 정책 학습은 비공개 example ID로 구분한 inner-LODO out-of-fold 예측을 만들고,
 모든 모델 쌍의 음이 아닌 exact rational 품질/비용 breakpoint 발생을 스트리밍한
 다음, 남긴 모든 후보를 선택한 budget ledger로 replay합니다. 기본 CLI는 root의
-결정론적인 bounded bottom-hash 표본과 최솟값·최댓값을 남기고, 그 root들로
+결정론적인 `bounded-bottom-hash-v2` 표본과 최솟값·최댓값을 남기고, 그 root들로
 경계·중간값·tail을 만든 뒤 최종 결과를 최대 257개로 rank-spacing합니다. 이
 cap 안에 모든 고유 root와 파생 후보가 들어오면 결과는 여전히 완전하며 정확한
 개수와 `exhaustive: true`를 기록합니다. 실제 truncation이 일어난 경우에만
 근사이며 `exhaustive: false`, 알 수 없는 전체 후보 개수 `null`, 탐색 strategy,
 관측한 breakpoint 발생 횟수를 기록합니다. 전체 exact 유한 집합의 materialize·평가를
-요청하려면 `--exhaustive-lambda-search`를 사용합니다. root를 만들기
-전에 보수적으로 계산한 후보 상한이 100,000개 또는 utility 평가 상한이 100,000,000회를
-넘으면 즉시 거부합니다. 산정량을 검토한 뒤에만
-`--allow-large-exhaustive-search`를 함께 지정할 수 있고 capped 실행에는 이 override가
-필요 없습니다. 고정 RouterBench 규모(34,778행, 모델 11개, tier 3개)의 보수적 상한은
-후보 3,825,582개와 약 4.39조 회의 utility 평가이므로, 보고 실험에는 provenance에
-truncation 여부를 남기는 기본 257개 경로가 현실적입니다. 선택된 lambda 자체는 언제나
-정확한 분자/분모로 유지됩니다.
+요청하려면 `--exhaustive-lambda-search`를 사용합니다. predictor fitting이나 root 생성을
+시작하기 전에 보수적으로 계산한 모델 쌍 scan 상한 10,000,000회, 후보 상한 100,000개,
+utility 평가 상한 100,000,000회, exact-rational 후보 상태의 추정 peak 256 MiB,
+직렬화할 정책 근거의 추정치 8 MiB 중 하나라도 넘으면 즉시 거부합니다. 다섯 산정량을
+모두 검토한 뒤에만 exhaustive CLI 실행에 `--allow-large-exhaustive-search`를
+함께 지정할 수 있습니다. 기본 257개 capped 실행은 동봉한 합성 데이터에서는 이 범위
+안에 있지만, 모든 cap은 실제 데이터셋의 retained work·정수 폭 preflight를 통과해야 하며
+실패하면 줄여야 합니다. 고정 RouterBench 규모(34,778행, 모델 11개, tier 3개)의 보수적
+상한은 후보 3,825,582개와 약 4.39조 회의 utility 평가입니다. 기본 cap 257은
+294,952,218회를 요구해 거부되므로, 보수적 평가량이 73,451,136회인 cap 64를 이 전체
+규모의 시작점으로 문서화합니다. 모델 쌍 scan 1,912,790회도 별도 scan 한도 안에
+있지만, 데이터별 artifact 크기 추정도 통과해야 합니다. 이 경우에도 artifact는 retained
+탐색의 complete/truncated 여부를 기록합니다. 선택된 lambda 자체는 언제나 정확한
+분자/분모로 유지됩니다. v2는
+부호와 길이를 자체 포함하는 이진 정수 identity를 hash하여 Python의 10진 정수 출력 제한을
+피합니다. artifact에는 값과 strategy version이 함께 들어 있으므로 기존 v1 strategy
+metadata도 계속 로드할 수 있습니다.
 
 `--budget-scope cumulative`로 학습한 정책을 라우팅할 때는 현재 상태인 정확한
 `--remaining-budget`도 반드시 전달해야 합니다. CLI는 초기 잔액을 추측하거나
@@ -123,7 +132,9 @@ backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-
 ## 현재 구현 범위
 
 - 호출자의 정밀도가 미세한 초과지출을 반올림하지 못하는 context 독립적 `Decimal`
-  정확 비용 계산과 `RouterState`/`RouterAction` 타입 계약
+  정확 비용 계산과 `RouterState`/`RouterAction` 타입 계약. 0이 아닌 비용은 10진 위치
+  `-100000`부터 `99999`까지, coefficient 최대 100,000자리 범위에서 지원하며 입력이나
+  연산 결과가 이 명시적 자원 계약을 벗어나면 조용한 underflow·무제한 확장 전에 실패
 - 쿼리당·누적 예산 ledger 교체 구조(공식 범위 확정 전 데모는 예시용 쿼리당 한도)
 - exact rational utility, 불변 tier별 schedule, 완전 exhaustive breakpoint 탐색 또는
   명시적으로 표시한 truncated bounded-memory 근사 탐색을 쓰는 one-shot lambda 라우팅과
@@ -138,10 +149,15 @@ backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-
 - canonical 정책 artifact는 정확한 predictor hash, 학습/지표에 관련된 replay
   내용과 순서, tier 명세, ledger 식별자, 남긴 후보 탐색 근거를 함께 결합합니다. OOF 예측
   hash는 감사 메타데이터로 기록하며, 라우팅 시 OOF 표가 없으므로 검증하려면 cross-fitted
-  예측 표를 재현해 대조해야 합니다.
+  예측 표를 재현해 대조해야 합니다. 비용이 큰 parsing 전에 파일 8 MiB, 코어 비용 계약에서
+  파생 가능한 후보를 포괄하는 exact 정수당 10진 404,096자리, tier당 retained 후보
+  100,000개 상한을 적용합니다. ledger adapter 이름은 4 KiB로 제한하며, fitting 전 artifact
+  추정에는 고정 metadata 여유분만 쓰지 않고 실제 인코딩한 domain과 tier budget 텍스트를
+  포함합니다.
 - 예측기와 정책 파일은 배타적인 무작위 staging, 저장 후 검증, 정책을 마지막에 교체하는
   rollback-safe bundle 저장을 사용하며 입력 alias와 안전하지 않은 출력 node는 fitting 전에
-  거부합니다.
+  거부합니다. 일반 OS/Python 예외에서는 시도한 모든 경로를 복구하지만, 동시 writer와 서로
+  다른 pathname 전체에 대한 전원 장애 atomicity는 지원하지 않습니다.
 - 모든 outer domain을 predictor fitting·calibration·lambda tuning에서 제외하는 true
   nested LODO orchestration
 - tier 가중 품질, oracle gap 회수율, 결정론적 leave-one-domain-out(LODO). random

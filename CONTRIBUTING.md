@@ -54,7 +54,9 @@ predictions on that same outer training side, then refit the deployable predicto
 the full outer training side. Never fit feature scaling, a tag vocabulary,
 calibration, or a policy threshold on the outer held-out domain. Predictor and policy
 artifacts use strict JSON only; do not introduce pickle, `eval`, or an automatic
-compatibility fallback.
+compatibility fallback. Preserve policy artifact byte, integer-digit, and per-tier
+candidate limits on both construction and loading; raise them only with measured parser
+resource evidence and matching adversarial tests.
 
 Runtime and tuning must share `route_from_predictions`, including its exact utility and
 tie-break order. An exhaustive lambda claim requires the full boundary/interval/tail
@@ -64,9 +66,15 @@ actually truncates roots or derived values, label the result `exhaustive: false`
 the strategy and observed breakpoint-occurrence count, and leave the intentionally
 unmaterialized complete candidate count unknown. If everything fits, retain the exact
 count and `exhaustive: true`.
-Uncapped searches must keep the candidate/utility preflight. Do not raise its limits or
-use `allow_large_exhaustive=True` without recording the measured resource rationale;
-the CLI's bounded default is 257 candidates.
+Changing the bottom-hash byte identity requires a new strategy version and a golden
+vector; existing artifact strategy values must remain loadable. Bounded and uncapped
+searches must keep the candidate, utility, and exact-rational byte-width preflight
+before fitting or root creation. Pair-scan work and estimated serialized policy evidence
+are guarded separately and must stay in that same pre-fit path. Do not raise its limits or use
+`allow_large_exhaustive=True` without
+recording the measured resource rationale. The CLI's bounded default is 257 candidates,
+but the cap is dataset-dependent; the pinned full RouterBench shape needs a cap of 64
+to stay below the default utility-work limit.
 Budget normalization belongs to the injected ledger adapter; do not infer official
 per-query or cumulative semantics in a policy.
 
@@ -77,11 +85,14 @@ per-query or cumulative semantics in a policy.
    the format permits comments.
 2. Preserve exact costs with `Decimal`; never introduce float comparisons at budget
    boundaries. Aggregate, subtract, scale, or average costs through the project-owned
-   context-independent helpers. Preserve fitted lambdas as `Fraction` values and
-   serialize their exact numerator/denominator representation.
+   context-independent helpers. The supported decimal-position/coefficient bound is a
+   deliberate resource contract; changes require boundary, equivalent-representation,
+   underflow, and expansion tests plus documentation. Preserve fitted lambdas as
+   `Fraction` values and serialize their exact numerator/denominator representation.
 3. Save JSON artifacts through the project-owned atomic bundle writer. Never use a
    predictable temporary pathname or sequentially publish a bound predictor/policy
-   pair without rollback and input-alias checks.
+   pair without rollback and input-alias checks. Do not claim bundle-wide atomicity for
+   concurrent writers or power loss across unrelated pathnames.
 4. Add focused tests for behavior, failure paths, determinism, and offline operation.
 5. Keep public interfaces typed and explain non-obvious routing or metric choices in a
    short docstring or design comment.
