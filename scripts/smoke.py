@@ -7,7 +7,13 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
+
+from tierroute.adapters import load_evaluation_dataset
+from tierroute.demo import model_catalogue
+from tierroute.features import PromptFeatureSchema
+from tierroute.predictors import BilinearPredictorArtifact, IsotonicCalibrator
 
 REQUIRED_BASELINES = {
     "always-cheapest",
@@ -53,7 +59,7 @@ def _run_cli(executable: str, *arguments: str) -> str:
 
 
 def main() -> int:
-    """Run route, evaluate, and demo through the installed console script."""
+    """Run core route, artifact route, evaluate, and demo through the console script."""
 
     hf_home = _require_empty_offline_home()
     executable = shutil.which("tierroute")
@@ -76,6 +82,45 @@ def main() -> int:
         if key not in route:
             raise RuntimeError(f"route smoke output is missing {key!r}")
 
+    dataset = load_evaluation_dataset()
+    schema = PromptFeatureSchema.fit(tuple(example.prompt for example in dataset.examples))
+    model_ids = tuple(sorted(model.model_id for model in model_catalogue(dataset)))
+    smoke_scores = {
+        model_id: (index + 1) / len(model_ids) for index, model_id in enumerate(model_ids)
+    }
+    smoke_artifact = BilinearPredictorArtifact(
+        feature_schema=schema,
+        model_weights={model_id: (0.0,) * schema.dimension for model_id in model_ids},
+        model_bias=smoke_scores,
+        calibrators={
+            model_id: IsotonicCalibrator((0.0,), (score,))
+            for model_id, score in smoke_scores.items()
+        },
+        training_data_sha256="0" * 64,
+        training_example_count=len(dataset.examples),
+        training_domains=tuple(sorted({example.domain for example in dataset.examples})),
+        ridge=1.0,
+        seed=0,
+    )
+    with tempfile.TemporaryDirectory(prefix="tierroute-core-artifact-") as temporary:
+        artifact_path = smoke_artifact.save(Path(temporary) / "predictor.json")
+        artifact_route = json.loads(
+            _run_cli(
+                executable,
+                "route",
+                "Route with a local artifact.",
+                "--tier",
+                "balanced",
+                "--artifact",
+                str(artifact_path),
+                "--json",
+            )
+        )
+    if artifact_route.get("quality_kind") != "calibrated bilinear artifact":
+        raise RuntimeError("core artifact inference smoke did not load the JSON predictor")
+    if artifact_route.get("network_used") is not False:
+        raise RuntimeError("core artifact inference smoke did not confirm offline routing")
+
     evaluation = json.loads(_run_cli(executable, "evaluate", "--json"))
     baseline_names = {row.get("name") for row in evaluation.get("baselines", [])}
     if baseline_names != REQUIRED_BASELINES:
@@ -88,7 +133,7 @@ def main() -> int:
     if any(hf_home.iterdir()):
         raise RuntimeError("the CLI wrote to HF_HOME during an offline smoke test")
 
-    print("CLI smoke passed: route, evaluate, and demo ran offline on bundled data.")
+    print("CLI smoke passed: core and artifact route, evaluate, and demo ran offline.")
     return 0
 
 

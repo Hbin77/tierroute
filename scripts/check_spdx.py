@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Require Apache-2.0 SPDX identifiers in tracked, commentable project files."""
+"""Require Apache-2.0 SPDX identifiers in tracked or untracked project files."""
 
 from __future__ import annotations
 
@@ -13,9 +13,18 @@ COMMENTABLE_NAMES = frozenset({".gitignore", "Makefile"})
 HEADER_LINE_LIMIT = 10
 
 
-def _tracked_files(repository: Path) -> tuple[Path, ...]:
+def _project_files(repository: Path) -> tuple[Path, ...]:
     completed = subprocess.run(
-        ["git", "-C", str(repository), "ls-files", "-z"],
+        [
+            "git",
+            "-C",
+            str(repository),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ],
         check=False,
         capture_output=True,
     )
@@ -43,12 +52,12 @@ def _has_spdx_header(path: Path) -> bool:
 
 
 def main() -> int:
-    """Check tracked source files and return a shell-friendly status."""
+    """Check versionable source files and return a shell-friendly status."""
 
     repository = Path(__file__).resolve().parents[1]
     try:
         candidates = tuple(
-            path for path in _tracked_files(repository) if _is_commentable_source(path)
+            path for path in _project_files(repository) if _is_commentable_source(path)
         )
     except RuntimeError as error:
         print(f"SPDX check error: {error}", file=sys.stderr)
@@ -61,7 +70,7 @@ def main() -> int:
             print(f"  - {path}", file=sys.stderr)
         return 1
 
-    print(f"SPDX check passed: {len(candidates)} tracked commentable files checked.")
+    print(f"SPDX check passed: {len(candidates)} versionable commentable files checked.")
     return 0
 
 
