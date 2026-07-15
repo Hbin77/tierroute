@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Bug report
+description: Report reproducible incorrect behavior in tierroute
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not attach private prompts, unlicensed data, model weights, credentials, or arbitrary pickle files.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues for the same behavior.
+          required: true
+        - label: I can reproduce this with runtime networking disabled.
+          required: true
+        - label: Any data or asset named below may be legally shared.
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: State the observed behavior and the behavior you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest commands or code needed. Replace sensitive prompt content with a synthetic example.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: tierroute version or commit
+      placeholder: "0.1.0 or git SHA"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, installation command, budget adapter, and relevant dependency versions.
+      placeholder: |
+        OS: Ubuntu 24.04
+        Python: 3.12
+        Install: python -m pip install -e .
+        Budget adapter: per-query
+    validations:
+      required: true
+  - type: dropdown
+    id: offline
+    attributes:
+      label: Was HF_HUB_OFFLINE=1 set?
+      options:
+        - "Yes"
+        - "No"
+        - "Not applicable"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Paste a short traceback or CLI output after removing secrets and private data.
+      render: text
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: For external data, give its source, exact revision/checksum, license, and whether this used synthetic or benchmark values.

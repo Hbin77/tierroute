@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Feature request
+description: Propose a scoped, offline-safe improvement
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before the implementation. Changes to cascade behavior, official scoring, or challenge data must wait for confirmed organizer semantics and licensing.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched issues and the roadmap for related proposals.
+          required: true
+        - label: This proposal can keep runtime routing and evaluation offline.
+          required: true
+        - label: I identified any new code, data, model, or dependency licenses.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who is affected, what fails today, and why is it worth solving?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe inputs, outputs, failure behavior, and the package boundary that should own it.
+    validations:
+      required: true
+  - type: textarea
+    id: evaluation
+    attributes:
+      label: Evaluation plan
+      description: Explain the smoke test and, for modeling changes, the leakage-free LODO comparison and baselines.
+    validations:
+      required: true
+  - type: textarea
+    id: compliance
+    attributes:
+      label: Offline and license impact
+      description: List network behavior, dependencies, data/model assets, versions or revisions, licenses, URLs, checksums, and the required SBOM update.
+      placeholder: "No new dependencies or assets; runtime remains offline."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include a smaller or adapter-local option when applicable.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Link related design notes or issues. Do not upload unlicensed or private artifacts.
