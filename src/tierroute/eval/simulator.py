@@ -123,15 +123,18 @@ class OfflineSimulator:
                         f"max_calls_per_query={self.max_calls_per_query} exceeded",
                     )
                 outcome = outcome_by_model[action.model_id]
-                if not ledger.try_charge(outcome.cost):
+                remaining_before_call = ledger.remaining_budget
+                charged += outcome.cost
+                trace.append(f"call {outcome.model_id}: {action.reason}")
+                if not ledger.charge_realized(outcome.cost):
                     return self._failed_query(
                         example,
                         tier_spec,
                         charged,
                         trace,
-                        f"budget adapter rejected cost {outcome.cost}",
+                        "realized cost "
+                        f"{outcome.cost} exceeded remaining budget {remaining_before_call}",
                     )
-                charged += outcome.cost
                 history.append(
                     CallRecord(
                         outcome.model_id,
@@ -140,7 +143,6 @@ class OfflineSimulator:
                         metadata={"predicted_quality": action.predicted_quality},
                     )
                 )
-                trace.append(f"call {outcome.model_id}: {action.reason}")
                 continue
 
             if isinstance(action, SelectOutput):

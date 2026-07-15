@@ -105,7 +105,7 @@ class BudgetReport:
     configured_limit: Cost
     effective_total_limit: Cost
     spent: Cost
-    rejected_calls: int
+    over_budget_calls: int
     query_order: tuple[str, ...]
 
 

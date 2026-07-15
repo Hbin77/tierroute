@@ -22,8 +22,8 @@ class BudgetLedger(Protocol):
         """Return the amount exposed to the router for the active query."""
         ...
 
-    def try_charge(self, cost: Cost) -> bool:
-        """Atomically charge a call or reject it without changing spend."""
+    def charge_realized(self, cost: Cost) -> bool:
+        """Record a completed call's charge and return whether it stayed in budget."""
         ...
 
     def finish_query(self) -> None:

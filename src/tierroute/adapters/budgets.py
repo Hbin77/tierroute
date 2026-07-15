@@ -33,7 +33,7 @@ class PerQueryBudgetLedger:
     _active_query: str | None = field(default=None, init=False, repr=False)
     _remaining: Cost = field(default=Decimal(0), init=False, repr=False)
     _spent: Cost = field(default=Decimal(0), init=False, repr=False)
-    _rejected_calls: int = field(default=0, init=False, repr=False)
+    _over_budget_calls: int = field(default=0, init=False, repr=False)
     _query_order: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -52,15 +52,18 @@ class PerQueryBudgetLedger:
             raise RuntimeError("begin_query must be called before reading budget")
         return self._remaining
 
-    def try_charge(self, cost: Cost) -> bool:
+    def charge_realized(self, cost: Cost) -> bool:
+        """Record the post-call charge, including any unavoidable overspend."""
+
         _validate_charge(cost)
         if self._active_query is None:
             raise RuntimeError("begin_query must be called before charging")
+        self._spent += cost
         if cost > self._remaining:
-            self._rejected_calls += 1
+            self._over_budget_calls += 1
+            self._remaining = Decimal(0)
             return False
         self._remaining -= cost
-        self._spent += cost
         return True
 
     def finish_query(self) -> None:
@@ -74,7 +77,7 @@ class PerQueryBudgetLedger:
             configured_limit=self.budget_limit,
             effective_total_limit=self.budget_limit * self.expected_queries,
             spent=self._spent,
-            rejected_calls=self._rejected_calls,
+            over_budget_calls=self._over_budget_calls,
             query_order=tuple(self._query_order),
         )
 
@@ -88,7 +91,7 @@ class CumulativeBudgetLedger:
     _active_query: str | None = field(default=None, init=False, repr=False)
     _remaining: Cost = field(init=False, repr=False)
     _spent: Cost = field(default=Decimal(0), init=False, repr=False)
-    _rejected_calls: int = field(default=0, init=False, repr=False)
+    _over_budget_calls: int = field(default=0, init=False, repr=False)
     _query_order: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -107,15 +110,18 @@ class CumulativeBudgetLedger:
             raise RuntimeError("begin_query must be called before reading budget")
         return self._remaining
 
-    def try_charge(self, cost: Cost) -> bool:
+    def charge_realized(self, cost: Cost) -> bool:
+        """Record the post-call charge and exhaust a cumulative budget on overspend."""
+
         _validate_charge(cost)
         if self._active_query is None:
             raise RuntimeError("begin_query must be called before charging")
+        self._spent += cost
         if cost > self._remaining:
-            self._rejected_calls += 1
+            self._over_budget_calls += 1
+            self._remaining = Decimal(0)
             return False
         self._remaining -= cost
-        self._spent += cost
         return True
 
     def finish_query(self) -> None:
@@ -129,6 +135,6 @@ class CumulativeBudgetLedger:
             configured_limit=self.budget_limit,
             effective_total_limit=self.budget_limit,
             spent=self._spent,
-            rejected_calls=self._rejected_calls,
+            over_budget_calls=self._over_budget_calls,
             query_order=tuple(self._query_order),
         )

@@ -129,6 +129,33 @@ def test_policy_sees_quoted_cost_but_ledger_charges_hidden_realized_cost() -> No
     assert result.queries[0].cost == Decimal("9")
 
 
+def test_realized_overspend_is_recorded_and_exhausts_cumulative_budget() -> None:
+    models = (ModelSpec("cheap", Decimal("0.1")),)
+    examples = tuple(
+        EvaluationExample(
+            f"q{index}",
+            f"prompt {index}",
+            "general",
+            (CandidateOutcome("cheap", "answer", Decimal("9"), 0.5),),
+            models,
+        )
+        for index in (1, 2)
+    )
+
+    result = OfflineSimulator(CumulativeBudgetLedger).run_tier(
+        AlwaysCheapestRouter(),
+        examples,
+        TierSpec(BudgetTier.FAST, Decimal("1"), 1.0),
+    )
+
+    assert result.feasible is False
+    assert result.queries[0].cost == Decimal("9")
+    assert "realized cost 9 exceeded" in (result.queries[0].error or "")
+    assert result.queries[1].cost == Decimal(0)
+    assert result.budget.spent == Decimal("9")
+    assert result.budget.over_budget_calls == 1
+
+
 def test_split_domain_is_not_exposed_without_explicit_router_metadata() -> None:
     class CapturingRouter:
         def __init__(self) -> None:
