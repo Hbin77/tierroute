@@ -87,12 +87,13 @@ streams every non-negative exact rational pairwise quality/cost breakpoint occur
 and replays every retained candidate through the selected budget ledger. By default,
 the CLI keeps a bounded deterministic bottom-hash sample of roots plus the minimum and
 maximum, derives boundaries, midpoints, and a tail from those retained roots, then
-rank-spaces the result to at most 257 candidates. This bounded-memory search is
-approximate and reports `exhaustive: false`; the complete candidate count is unknown
-(`null`), while the search strategy and observed breakpoint-occurrence count are
-recorded. Use `--exhaustive-lambda-search` to materialize and evaluate the full exact
-finite set. The selected lambda itself always remains an exact numerator/denominator
-pair.
+rank-spaces the result to at most 257 candidates. If every unique root and derived
+candidate fits that cap, the result remains complete and reports `exhaustive: true`
+with its exact count. Only actual truncation is approximate; it reports
+`exhaustive: false` and an unknown complete count (`null`), together with the search
+strategy and observed breakpoint-occurrence count. Use `--exhaustive-lambda-search`
+to require materialization and evaluation of the full exact finite set regardless of
+size. The selected lambda itself always remains an exact numerator/denominator pair.
 
 A policy trained with `--budget-scope cumulative` can be routed only when the caller
 also supplies the current exact state with `--remaining-budget`. This command does not
@@ -121,8 +122,8 @@ before an unaudited workload can enter the cubic reference path.
 - Swappable per-query and cumulative budget ledgers; the demo uses illustrative
   per-query limits until the official budget scope is confirmed.
 - One-shot lambda routing with exact rational utility, immutable per-tier schedules,
-  complete exhaustive breakpoint search or explicitly labeled bounded-memory
-  approximate search, and six reproducible baselines.
+  complete exhaustive breakpoint search or explicitly labeled truncated
+  bounded-memory approximate search, and six reproducible baselines.
 - Full-information offline replay: labels stay hidden until a selected logged outcome
   is replayed, so the policy cannot read ground truth through `RouterState`.
 - A fitted surface-feature schema (log-scaled counts, code/math signals, and
@@ -220,8 +221,8 @@ one representative inside every open interval, and one tail value after the fina
 boundary. Each candidate is replayed through `OfflineSimulator`; infeasible candidates
 cannot win. Since tiers have independent ledgers and positive weights, optimizing each
 tier independently is exactly equivalent to a Cartesian joint search over the retained
-candidate sets. This is a full exact finite joint optimum only for the uncapped search;
-the default bounded search remains approximate. See
+candidate sets. This is a full exact finite joint optimum whenever the retained set is
+marked exhaustive; a truncated bounded search remains approximate. See
 [docs/lambda-tuning.md](docs/lambda-tuning.md) for the proof, tie-breaks, and leakage
 boundary.
 

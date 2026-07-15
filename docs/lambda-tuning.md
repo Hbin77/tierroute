@@ -67,11 +67,13 @@ pairwise breakpoint occurrence:
 2. derive boundaries, adjacent midpoints, and the tail from only those retained roots;
 3. rank-space that derived set to at most the configured cap.
 
-The capped path is approximate even though every retained number is exact. It is stored
-as `exhaustive: false` with its bounded-search strategy and observed breakpoint
-occurrence count. Because it never materializes the complete candidate set, its total
-complete candidate count is unknown and serialized as `null`; it is not presented as a
-global continuous optimum. Only the uncapped path may claim exhaustive coverage.
+When every unique root and derived candidate fits the cap, this path has still retained
+the complete set and records `exhaustive: true` with its exact count. If either stage is
+truncated, the result is approximate even though every retained number is exact. That
+case records `exhaustive: false`, its bounded-search strategy, the observed breakpoint
+occurrence count, and an unknown (`null`) complete candidate count; it is not presented
+as a global continuous optimum. The uncapped path is the way to require exhaustive
+coverage independent of data size.
 
 ## Direct metric tuning
 
@@ -92,8 +94,8 @@ argmax_(lambda_fast, ...) sum_t weight_t * quality_t(lambda_t)
 
 decomposes into one independent maximum per tier. This is the same answer as a
 Cartesian-product search over the retained finite grids without its exponential cost.
-It is a full exact finite joint optimum only when those grids are exhaustive; capped
-grids remain approximate as described above.
+It is a full exact finite joint optimum only when those grids are marked exhaustive;
+truncated capped grids remain approximate as described above.
 
 The ledger factory receives both the configured limit and replay query count. An
 adapter therefore decides whether the limit is fixed-total, per-query, or pooled.
@@ -141,7 +143,7 @@ rejected. A policy artifact records and validates:
 - exact tier specs and ledger adapter identity;
 - selected exact lambdas, retained candidate counts, search strategy, and observed
   breakpoint occurrence counts. The complete derived-candidate count is `null` for a
-  bounded search because it was intentionally never materialized.
+  truncated bounded search because it was intentionally never materialized.
 
 Artifact-backed CLI routing fails closed on a predictor, dataset, replay order, model
 catalogue, or tier-spec mismatch. A cumulative policy additionally requires the caller

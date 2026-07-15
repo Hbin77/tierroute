@@ -59,9 +59,11 @@ compatibility fallback.
 Runtime and tuning must share `route_from_predictions`, including its exact utility and
 tie-break order. An exhaustive lambda claim requires the full boundary/interval/tail
 candidate set. If a cap is used, stream roots into the deterministic bounded bottom-hash
-sample plus extrema, derive and rank-space only the retained-root candidates, and label
-the result `exhaustive: false`. Record the strategy and observed breakpoint-occurrence
-count, and leave the intentionally unmaterialized complete candidate count unknown.
+sample plus extrema, then derive and rank-space the retained-root candidates. If the cap
+actually truncates roots or derived values, label the result `exhaustive: false`, record
+the strategy and observed breakpoint-occurrence count, and leave the intentionally
+unmaterialized complete candidate count unknown. If everything fits, retain the exact
+count and `exhaustive: true`.
 Budget normalization belongs to the injected ledger adapter; do not infer official
 per-query or cumulative semantics in a policy.
 
