@@ -76,6 +76,13 @@ def test_validate_action_rejects_unknown_model_and_history_index() -> None:
         validate_action(state, SelectOutput(1))
 
 
+def test_validate_action_rejects_call_when_candidate_catalogue_is_empty() -> None:
+    state = RouterState("prompt", BudgetTier.FAST, Decimal("1"))
+
+    with pytest.raises(RoutingContractError, match="unknown candidate"):
+        validate_action(state, CallModel("unlisted"))
+
+
 def test_as_cost_rejects_inexact_floats() -> None:
     assert as_cost("0.1") + as_cost("0.2") == as_cost("0.3")
     with pytest.raises(TypeError, match="not exact"):

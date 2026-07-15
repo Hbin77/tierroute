@@ -26,15 +26,14 @@ def validate_action(state: RouterState, action: RouterAction) -> None:
 
     if isinstance(action, CallModel):
         candidates = {model.model_id: model for model in state.candidate_models}
-        if candidates and action.model_id not in candidates:
+        if action.model_id not in candidates:
             raise RoutingContractError(f"unknown candidate model: {action.model_id}")
-        if action.model_id in candidates:
-            cost = candidates[action.model_id].cost
-            if cost > state.remaining_budget:
-                raise RoutingContractError(
-                    f"model {action.model_id!r} costs {cost:g}, "
-                    f"but only {state.remaining_budget:g} remains"
-                )
+        cost = candidates[action.model_id].cost
+        if cost > state.remaining_budget:
+            raise RoutingContractError(
+                f"model {action.model_id!r} costs {cost:g}, "
+                f"but only {state.remaining_budget:g} remains"
+            )
         return
 
     if isinstance(action, SelectOutput):
