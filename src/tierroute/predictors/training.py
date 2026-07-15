@@ -8,28 +8,13 @@ import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from tierroute.eval import DomainFold, EvaluationExample, leave_one_domain_out
 from tierroute.features import EmbeddingProvider, PromptFeatureEncoder
+from tierroute.predictors._ridge import fit_centered_ridge
 from tierroute.predictors.artifacts import BilinearPredictorArtifact
 from tierroute.predictors.base import BilinearQualityPredictor
 from tierroute.predictors.calibration import IsotonicCalibrator
-
-
-class TrainingDependencyError(RuntimeError):
-    """The opt-in numerical training dependency is unavailable."""
-
-
-def _import_numpy() -> Any:
-    try:
-        import numpy
-    except ImportError as error:
-        raise TrainingDependencyError(
-            "bilinear training requires the optional 'training' extra; "
-            "install tierroute[training] in a preparation environment"
-        ) from error
-    return numpy
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +101,6 @@ def _fit_base(
     config: BilinearTrainingConfig,
     embedding_provider: EmbeddingProvider | None,
 ) -> _FittedBase:
-    numpy = _import_numpy()
     ordered = _ordered_examples(examples)
     model_ids = _model_ids(ordered)
     prompts = tuple(example.prompt for example in ordered)
@@ -124,34 +108,27 @@ def _fit_base(
         prompts,
         embedding_provider=embedding_provider,
     )
-    feature_matrix = numpy.asarray(encoder.transform_many(prompts), dtype=numpy.float64)
-    if feature_matrix.shape != (len(ordered), encoder.schema.dimension):
+    feature_rows = encoder.transform_many(prompts)
+    if len(feature_rows) != len(ordered) or any(
+        len(row) != encoder.schema.dimension for row in feature_rows
+    ):
         raise ValueError("encoded feature matrix has an unexpected shape")
-    intercept = numpy.ones((len(ordered), 1), dtype=numpy.float64)
-    design = numpy.concatenate((feature_matrix, intercept), axis=1)
-    regularizer = numpy.eye(design.shape[1], dtype=numpy.float64) * config.ridge
-    regularizer[-1, -1] = 0.0
-    normal_matrix = design.T @ design + regularizer
-
-    model_weights: dict[str, tuple[float, ...]] = {}
-    model_bias: dict[str, float] = {}
-    for model_id in model_ids:
-        targets = numpy.asarray(
-            [
-                next(
-                    outcome.quality for outcome in example.outcomes if outcome.model_id == model_id
-                )
-                for example in ordered
-            ],
-            dtype=numpy.float64,
+    targets_by_model = {
+        model_id: tuple(
+            next(outcome.quality for outcome in example.outcomes if outcome.model_id == model_id)
+            for example in ordered
         )
-        coefficients = numpy.linalg.solve(normal_matrix, design.T @ targets)
-        weights = tuple(float(value) for value in coefficients[:-1])
-        bias = float(coefficients[-1])
-        if any(not math.isfinite(value) for value in (*weights, bias)):
-            raise ValueError("bilinear fitting produced non-finite coefficients")
-        model_weights[model_id] = weights
-        model_bias[model_id] = bias
+        for model_id in model_ids
+    }
+    fitted = fit_centered_ridge(feature_rows, targets_by_model, ridge=config.ridge)
+    model_weights = {model_id: fitted[model_id][0] for model_id in model_ids}
+    model_bias = {model_id: fitted[model_id][1] for model_id in model_ids}
+    if any(
+        not math.isfinite(value)
+        for model_id in model_ids
+        for value in (*model_weights[model_id], model_bias[model_id])
+    ):
+        raise ValueError("bilinear fitting produced non-finite coefficients")
 
     predictor = BilinearQualityPredictor(
         vectorizer=encoder.transform_one,

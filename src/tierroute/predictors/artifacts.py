@@ -12,6 +12,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from tierroute.features import EmbeddingProvider, PromptFeatureEncoder, PromptFeatureSchema
+from tierroute.predictors._ridge import CENTERED_RIDGE_SOLVER_ID
 from tierroute.predictors.base import BilinearQualityPredictor
 from tierroute.predictors.calibration import (
     IsotonicCalibrator,
@@ -59,6 +60,7 @@ class BilinearPredictorArtifact:
     training_domains: tuple[str, ...]
     ridge: float
     seed: int
+    solver_id: str = CENTERED_RIDGE_SOLVER_ID
     artifact_version: int = PREDICTOR_ARTIFACT_VERSION
 
     def __post_init__(self) -> None:
@@ -126,6 +128,8 @@ class BilinearPredictorArtifact:
             raise ValueError("ridge must be finite and positive")
         if isinstance(self.seed, bool) or not isinstance(self.seed, int):
             raise TypeError("seed must be an integer")
+        if self.solver_id != CENTERED_RIDGE_SOLVER_ID:
+            raise ValueError(f"solver_id must equal {CENTERED_RIDGE_SOLVER_ID!r}")
 
         object.__setattr__(self, "model_weights", MappingProxyType(weights_copy))
         object.__setattr__(self, "model_bias", MappingProxyType(bias_copy))
@@ -179,6 +183,7 @@ class BilinearPredictorArtifact:
                 "domains": list(self.training_domains),
                 "ridge": self.ridge,
                 "seed": self.seed,
+                "solver_id": self.solver_id,
             },
         }
 
@@ -263,7 +268,7 @@ class BilinearPredictorArtifact:
         training = _mapping(payload["training"], "training")
         _strict_fields(
             training,
-            {"data_sha256", "example_count", "domains", "ridge", "seed"},
+            {"data_sha256", "example_count", "domains", "ridge", "seed", "solver_id"},
             "training",
         )
 
@@ -305,4 +310,5 @@ class BilinearPredictorArtifact:
             training_domains=tuple(domains),
             ridge=float(ridge),  # type: ignore[arg-type]
             seed=training["seed"],  # type: ignore[arg-type]
+            solver_id=training["solver_id"],  # type: ignore[arg-type]
         )

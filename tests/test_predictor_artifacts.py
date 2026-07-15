@@ -30,6 +30,7 @@ def test_artifact_json_is_canonical_and_round_trips(
     loaded = BilinearPredictorArtifact.load(path)
 
     assert document.endswith("\n")
+    assert loaded.solver_id == "tierroute.centered-ridge-cholesky-python-v1"
     assert loaded.to_json() == document
     assert (
         json.dumps(
@@ -128,6 +129,10 @@ def test_artifact_validation_rejects_schema_and_numeric_mutations(
     string_ridge = copy.deepcopy(valid)
     string_ridge["training"]["ridge"] = "1.0"  # type: ignore[index]
     mutations.append(string_ridge)
+
+    unknown_solver = copy.deepcopy(valid)
+    unknown_solver["training"]["solver_id"] = "unreviewed-solver"  # type: ignore[index]
+    mutations.append(unknown_solver)
 
     empty_domains = copy.deepcopy(valid)
     empty_domains["training"]["domains"] = []  # type: ignore[index]

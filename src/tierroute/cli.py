@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +20,6 @@ from tierroute.demo import (
 from tierroute.predictors import (
     BilinearPredictorArtifact,
     BilinearTrainingConfig,
-    TrainingDependencyError,
     fit_calibrated_bilinear,
 )
 
@@ -164,6 +162,7 @@ def _training_payload(
         "training_domains": list(artifact.training_domains),
         "ridge": artifact.ridge,
         "seed": artifact.seed,
+        "solver_id": artifact.solver_id,
         "network_used": False,
     }
 
@@ -221,14 +220,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "train":
-        try:
-            artifact = fit_calibrated_bilinear(
-                dataset.examples,
-                config=BilinearTrainingConfig(ridge=args.ridge, seed=args.seed),
-            )
-        except TrainingDependencyError as error:
-            print(f"tierroute train: {error}", file=sys.stderr)
-            return 2
+        artifact = fit_calibrated_bilinear(
+            dataset.examples,
+            config=BilinearTrainingConfig(ridge=args.ridge, seed=args.seed),
+        )
         output = artifact.save(args.output)
         payload = _training_payload(artifact, output, dataset.name)
         if args.json:
@@ -240,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  training domains:   {', '.join(artifact.training_domains)}")
             print(f"  candidate models:   {', '.join(artifact.model_ids)}")
             print(f"  feature dimension:  {artifact.feature_schema.dimension}")
+            print(f"  ridge solver:       {artifact.solver_id}")
             print(f"  artifact:           {output}")
             print("  network:            disabled")
             print("  note: synthetic data is a wiring test, not benchmark evidence")

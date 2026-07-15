@@ -19,7 +19,6 @@ from tierroute.predictors.calibration import (
 )
 from tierroute.predictors.training import (
     BilinearTrainingConfig,
-    TrainingDependencyError,
     fit_calibrated_bilinear,
     fit_calibrated_bilinear_for_fold,
     training_data_sha256,
@@ -37,7 +36,6 @@ __all__ = [
     "PerModelCalibratedQualityPredictor",
     "QualityPredictor",
     "StaticQualityPredictor",
-    "TrainingDependencyError",
     "fit_calibrated_bilinear",
     "fit_calibrated_bilinear_for_fold",
     "training_data_sha256",

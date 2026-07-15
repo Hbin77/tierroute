@@ -59,6 +59,8 @@ def main() -> int:
             raise RuntimeError("training smoke returned an unexpected model catalogue")
         if training.get("training_examples") != 8:
             raise RuntimeError("training smoke returned an unexpected example count")
+        if training.get("solver_id") != "tierroute.centered-ridge-cholesky-python-v1":
+            raise RuntimeError("training smoke returned an unexpected ridge solver ID")
 
         route = json.loads(
             _run_cli(
