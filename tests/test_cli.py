@@ -9,10 +9,11 @@ from pathlib import Path
 import pytest
 
 from tierroute.adapters import bundled_synthetic_path, load_evaluation_dataset
-from tierroute.cli import main
+from tierroute.cli import DEFAULT_MAX_LAMBDA_CANDIDATES, main
 from tierroute.core import BudgetTier, atomic_io
 from tierroute.demo import evaluate_six_baselines, route_prompt
 from tierroute.policies.lambda_artifacts import LambdaPolicyArtifact
+from tierroute.policies.lambda_tuning import tune_tier_lambdas
 from tierroute.predictors import BilinearPredictorArtifact
 
 
@@ -289,6 +290,67 @@ def test_lambda_search_options_are_policy_only_and_mutually_exclusive(
         )
     assert caught.value.code == 2
     assert "not allowed with argument" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit) as caught:
+        main(
+            [
+                "train",
+                "--output",
+                str(predictor),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--allow-large-exhaustive-search",
+            ]
+        )
+    assert caught.value.code == 2
+    assert "requires --exhaustive-lambda-search" in capsys.readouterr().err
+
+
+def test_cli_default_and_large_exhaustive_acknowledgement_are_forwarded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int | None, bool]] = []
+    real_tune = tune_tier_lambdas
+
+    def capture_tuning(*args: object, **kwargs: object) -> object:
+        calls.append(
+            (
+                kwargs.get("max_candidates_per_tier"),  # type: ignore[arg-type]
+                kwargs.get("allow_large_exhaustive"),  # type: ignore[arg-type]
+            )
+        )
+        return real_tune(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("tierroute.cli.tune_tier_lambdas", capture_tuning)
+    base = [
+        "train",
+        "--policy-output",
+        str(tmp_path / "policy.json"),
+        "--budget-scope",
+        "per-query",
+    ]
+
+    assert main([*base, "--output", str(tmp_path / "predictor.json")]) == 0
+    assert calls[-1] == (DEFAULT_MAX_LAMBDA_CANDIDATES, False)
+
+    assert (
+        main(
+            [
+                *base,
+                "--output",
+                str(tmp_path / "predictor-exhaustive.json"),
+                "--policy-output",
+                str(tmp_path / "policy-exhaustive.json"),
+                "--exhaustive-lambda-search",
+                "--allow-large-exhaustive-search",
+            ]
+        )
+        == 0
+    )
+    assert calls[-1] == (None, True)
 
 
 def test_train_then_route_with_canonical_exact_policy(

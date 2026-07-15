@@ -36,6 +36,8 @@ from tierroute.predictors import (
     fit_calibrated_bilinear,
 )
 
+DEFAULT_MAX_LAMBDA_CANDIDATES = 257
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -110,12 +112,17 @@ def _build_parser() -> argparse.ArgumentParser:
     lambda_search.add_argument(
         "--max-lambda-candidates",
         type=int,
-        help="deterministic per-tier candidate cap (default: 257)",
+        help=(f"deterministic per-tier candidate cap (default: {DEFAULT_MAX_LAMBDA_CANDIDATES})"),
     )
     lambda_search.add_argument(
         "--exhaustive-lambda-search",
         action="store_true",
         help="retain every exact breakpoint candidate instead of applying the cap",
+    )
+    train_parser.add_argument(
+        "--allow-large-exhaustive-search",
+        action="store_true",
+        help="acknowledge and bypass the exhaustive-search resource preflight",
     )
     train_parser.add_argument("--ridge", type=float, default=1.0, help="positive ridge penalty")
     train_parser.add_argument("--seed", type=int, default=0, help="recorded reproducibility seed")
@@ -353,6 +360,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("train --exhaustive-lambda-search requires --policy-output")
         if args.policy_output is None and args.max_lambda_candidates is not None:
             parser.error("train --max-lambda-candidates requires --policy-output")
+        if args.allow_large_exhaustive_search and not args.exhaustive_lambda_search:
+            parser.error(
+                "train --allow-large-exhaustive-search requires --exhaustive-lambda-search"
+            )
         if args.max_lambda_candidates is not None and args.max_lambda_candidates < 2:
             parser.error("train --max-lambda-candidates must be at least 2")
         data_source = args.data if args.data is not None else bundled_synthetic_path()
@@ -461,8 +472,11 @@ def main(argv: list[str] | None = None) -> int:
                 predictions,
                 ledger_factory,
                 max_candidates_per_tier=(
-                    None if args.exhaustive_lambda_search else (args.max_lambda_candidates or 257)
+                    None
+                    if args.exhaustive_lambda_search
+                    else (args.max_lambda_candidates or DEFAULT_MAX_LAMBDA_CANDIDATES)
                 ),
+                allow_large_exhaustive=args.allow_large_exhaustive_search,
             )
             policy = LambdaPolicyArtifact.from_tuning(
                 artifact,
