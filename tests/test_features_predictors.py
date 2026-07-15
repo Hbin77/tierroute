@@ -8,6 +8,7 @@ from tierroute.predictors import (
     BilinearQualityPredictor,
     CalibratedQualityPredictor,
     IsotonicCalibrator,
+    PerModelCalibratedQualityPredictor,
     StaticQualityPredictor,
 )
 
@@ -46,3 +47,29 @@ def test_isotonic_calibrator_merges_decreasing_blocks() -> None:
     assert calibrator.calibrate(0.25) == pytest.approx(0.6)
     wrapped = CalibratedQualityPredictor(StaticQualityPredictor({"m": 0.25}), calibrator)
     assert wrapped.predict("prompt", "m") == pytest.approx(0.6)
+
+
+def test_per_model_calibration_rejects_malformed_batch_output() -> None:
+    class BrokenBatchPredictor:
+        def predict(self, prompt: str, model_id: str) -> float:
+            del prompt, model_id
+            return 0.5
+
+        def predict_many(self, prompt: str, model_ids: object) -> dict[str, float]:
+            del prompt, model_ids
+            return {"unexpected": 0.5}
+
+        def predict_batch(self, prompts: object, model_ids: object) -> tuple[dict[str, float], ...]:
+            del prompts, model_ids
+            return ({"unexpected": 0.5},)
+
+    calibrator = IsotonicCalibrator((0.5,), (0.5,))
+    predictor = PerModelCalibratedQualityPredictor(
+        BrokenBatchPredictor(),
+        {"m": calibrator},
+    )
+
+    with pytest.raises(ValueError, match="every requested model"):
+        predictor.predict_many("prompt", ("m",))
+    with pytest.raises(ValueError, match="every requested model"):
+        predictor.predict_batch(("prompt",), ("m",))

@@ -7,7 +7,8 @@ model, dataset, font, media asset, or CI action is added or upgraded.
 
 The core `tierroute` runtime has no third-party Python dependency. The pinned
 RouterBench artifact is decoded with the Python standard library; development tools are
-isolated from the offline routing path.
+isolated from the offline routing path. Optional predictor training is also isolated
+from the runtime path.
 
 ## Build dependency
 
@@ -34,14 +35,42 @@ Exact versions are recorded in `requirements-dev.lock`.
 | tomli | 2.4.1 | MIT | https://github.com/hukkin/tomli | TOML parsing on Python 3.10 | Conditional transitive (`python_version < 3.11`) |
 | typing-extensions | 4.16.0 | PSF-2.0 | https://github.com/python/typing_extensions | Backported typing APIs on Python 3.10 | Conditional transitive (`python_version < 3.11`) |
 
+## Optional predictor training
+
+These packages are not installed by `pip install -e .`. NumPy is pinned in
+`requirements-training.lock` and the `training` extra for explicit predictor
+preparation.
+
+| Component | Version | License | Source | Purpose | Relationship |
+|---|---:|---|---|---|---|
+| numpy | 2.2.6 | BSD-3-Clause | https://github.com/numpy/numpy | Deterministic ridge fitting | Direct optional training pin |
+
+### Audited native components in the NumPy wheel
+
+tierroute pins but does not redistribute the upstream NumPy wheel. NumPy's installed
+`LICENSE.txt` discloses dynamically linked native runtime components that
+`pip-licenses` does not expose as separate Python distributions:
+
+| Component | License | Source | Purpose | Compatibility disposition |
+|---|---|---|---|---|
+| libgfortran / libgcc runtime | GPL-3.0 with GCC Runtime Library Exception 3.1 | https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libgfortran | Fortran/GCC runtime bundled by upstream NumPy wheel | The explicit runtime exception permits independent non-GPL programs; wheel not redistributed by tierroute |
+| libquadmath | LGPL-2.1-or-later | https://gcc.gnu.org/git/?p=gcc.git;a=tree;f=libquadmath | Dynamically linked quad-precision runtime bundled by upstream NumPy wheel | Weak-copyleft dynamic library, kept unmodified and not redistributed by tierroute |
+
+This is a manual compatibility record, not a general GPL-family allowlist. A future
+wheel/version change requires re-auditing its complete license file before the pin is
+updated. If submission policy is interpreted to prohibit even runtime-exception or
+dynamically linked weak-copyleft components in a preparation-only wheel, NumPy must be
+replaced before release.
+
 ## Models and model-serving assets
 
 | Asset | Revision | License | Source | Purpose | Repository status |
 |---|---|---|---|---|---|
 | BAAI/bge-m3 | `5617a9f61b028005a4858fdac845db406aefb181` | MIT | https://huggingface.co/BAAI/bge-m3/tree/5617a9f61b028005a4858fdac845db406aefb181 | Planned multilingual prompt embeddings | Not downloaded or distributed in W1; runtime contract accepts local paths only |
 
-No LLM weights or commercial API client is bundled. The CLI's quality predictor is
-project-authored deterministic demo logic, not an AI model or benchmark result.
+No LLM weights or commercial API client is bundled. The default CLI predictor and the
+optional fitted bilinear artifact use project-authored logic; neither is an LLM nor a
+benchmark result.
 
 ## Data assets
 
@@ -62,10 +91,11 @@ license the separate Hugging Face dataset. tierroute contains no copied RouterBe
 
 ## License gate
 
-CI installs the exact development lock, then scans that clean environment with
-`pip-licenses`. It rejects GPL, LGPL, and AGPL family metadata and permits only the
-reviewed permissive license set. CI also installs the base wheel into a separate fresh
-environment and asserts that neither pandas nor NumPy is present, so optional developer
-or future training tools cannot mask the RouterBench reader boundary. This scan does not
-replace manual review of models, datasets, vendored files, or GitHub Actions; those
-assets must also be added to this SBOM before adoption.
+CI installs the exact development and training locks, then scans that clean environment
+with `pip-licenses`. It rejects distributions whose package
+metadata declares GPL, LGPL, or AGPL family terms and permits only the reviewed
+allowlist. CI also installs the base wheel into a separate fresh environment and
+asserts that neither pandas nor NumPy is present. Package metadata cannot enumerate
+every library bundled inside a binary wheel, so this scan does not replace manual
+review of wheel license files, models, datasets, vendored files, or GitHub Actions.
+Those assets must also be added to this SBOM before adoption.

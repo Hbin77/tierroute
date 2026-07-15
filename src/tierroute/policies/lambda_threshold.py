@@ -14,7 +14,7 @@ from tierroute.core import (
     RoutingContractError,
     SelectOutput,
 )
-from tierroute.predictors import QualityPredictor
+from tierroute.predictors import BatchQualityPredictor, QualityPredictor
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +29,11 @@ class LambdaThresholdRouter:
     lambda_cost: float
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.lambda_cost) or self.lambda_cost < 0:
+        if (
+            isinstance(self.lambda_cost, bool)
+            or not math.isfinite(self.lambda_cost)
+            or self.lambda_cost < 0
+        ):
             raise ValueError("lambda_cost must be finite and non-negative")
 
     def route(self, state: RouterState) -> RouterAction:
@@ -41,9 +45,19 @@ class LambdaThresholdRouter:
         if not affordable:
             raise RoutingContractError("no candidate model fits the remaining budget")
 
+        model_ids = tuple(model.model_id for model in affordable)
+        if isinstance(self.predictor, BatchQualityPredictor):
+            predictions = self.predictor.predict_many(state.prompt, model_ids)
+            if set(predictions) != set(model_ids):
+                raise ValueError("batch predictor must return every affordable model exactly")
+        else:
+            predictions = {
+                model_id: self.predictor.predict(state.prompt, model_id) for model_id in model_ids
+            }
+
         scored: list[tuple[float, Cost, str, float]] = []
         for model in affordable:
-            quality = float(self.predictor.predict(state.prompt, model.model_id))
+            quality = float(predictions[model.model_id])
             if not math.isfinite(quality):
                 raise ValueError(f"predicted quality for {model.model_id!r} must be finite")
             utility = quality - self.lambda_cost * float(model.cost)

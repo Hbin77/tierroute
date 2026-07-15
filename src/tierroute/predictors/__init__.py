@@ -1,17 +1,44 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Model-quality prediction interfaces and implementations."""
+"""Model-quality prediction, training, calibration, and artifacts."""
 
+from tierroute.predictors.artifacts import (
+    PREDICTOR_ARTIFACT_VERSION,
+    BilinearPredictorArtifact,
+)
 from tierroute.predictors.base import (
+    BatchPromptQualityPredictor,
+    BatchQualityPredictor,
     BilinearQualityPredictor,
     QualityPredictor,
     StaticQualityPredictor,
 )
-from tierroute.predictors.calibration import CalibratedQualityPredictor, IsotonicCalibrator
+from tierroute.predictors.calibration import (
+    CalibratedQualityPredictor,
+    IsotonicCalibrator,
+    PerModelCalibratedQualityPredictor,
+)
+from tierroute.predictors.training import (
+    BilinearTrainingConfig,
+    TrainingDependencyError,
+    fit_calibrated_bilinear,
+    fit_calibrated_bilinear_for_fold,
+    training_data_sha256,
+)
 
 __all__ = [
+    "PREDICTOR_ARTIFACT_VERSION",
+    "BatchPromptQualityPredictor",
+    "BatchQualityPredictor",
+    "BilinearPredictorArtifact",
     "BilinearQualityPredictor",
+    "BilinearTrainingConfig",
     "CalibratedQualityPredictor",
     "IsotonicCalibrator",
+    "PerModelCalibratedQualityPredictor",
     "QualityPredictor",
     "StaticQualityPredictor",
+    "TrainingDependencyError",
+    "fit_calibrated_bilinear",
+    "fit_calibrated_bilinear_for_fold",
+    "training_data_sha256",
 ]
