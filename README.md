@@ -14,9 +14,9 @@ choose m = argmax_m [predicted_quality(prompt, m) - lambda(tier) * cost(m)]
 The project is being developed for the student division of the 2026 Open Source
 Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge.”**
 It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
-metrics, leakage-aware calibrated bilinear training, and an external-data-free demo
-are implemented. The CLI selects a model but does **not** call an LLM or return a
-model completion.
+metrics, leakage-aware calibrated bilinear training, exact tier-lambda tuning, strict
+predictor/policy artifacts, and an external-data-free demo are implemented. The CLI
+selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
 
@@ -38,8 +38,8 @@ tierroute demo
 ```
 
 The equivalent module entry point is `python -m tierroute`. Machine-readable output
-is available for `route` and `evaluate` with `--json`; a compatible versioned replay
-JSON can be supplied to evaluation:
+is available for `route`, `evaluate`, and `train` with `--json`; a compatible versioned
+replay JSON can be supplied to evaluation:
 
 ```bash
 tierroute route "Debug this Python function" --tier balanced --json
@@ -51,7 +51,7 @@ The bundled prompts, costs, outputs, predicted qualities, and scorecard are
 project-authored **synthetic smoke-test values**. They verify wiring and are not a
 benchmark result, an empirical model comparison, or a competition score.
 
-### Offline predictor training
+### Offline predictor and policy training
 
 Training and inference use no third-party numerical package. A project-owned,
 deterministic centered-ridge Cholesky solver fits every model target against one shared
@@ -66,14 +66,46 @@ tierroute route "Prove that sqrt(2) is irrational." \
   --json
 ```
 
+To fit the complete one-shot policy, make the unresolved budget semantics explicit and
+write a separate policy artifact:
+
+```bash
+tierroute train \
+  --output artifacts/synthetic-bilinear.json \
+  --policy-output artifacts/synthetic-policy.json \
+  --budget-scope per-query \
+  --json
+tierroute route "Prove that sqrt(2) is irrational." \
+  --tier balanced \
+  --artifact artifacts/synthetic-bilinear.json \
+  --policy-artifact artifacts/synthetic-policy.json \
+  --json
+```
+
+Policy fitting creates inner-LODO out-of-fold predictions keyed by private example ID,
+streams every non-negative exact rational pairwise quality/cost breakpoint occurrence,
+and replays every retained candidate through the selected budget ledger. By default,
+the CLI keeps a bounded deterministic bottom-hash sample of roots plus the minimum and
+maximum, derives boundaries, midpoints, and a tail from those retained roots, then
+rank-spaces the result to at most 257 candidates. This bounded-memory search is
+approximate and reports `exhaustive: false`; the complete candidate count is unknown
+(`null`), while the search strategy and observed breakpoint-occurrence count are
+recorded. Use `--exhaustive-lambda-search` to materialize and evaluate the full exact
+finite set. The selected lambda itself always remains an exact numerator/denominator
+pair.
+
+A policy trained with `--budget-scope cumulative` can be routed only when the caller
+also supplies the current exact state with `--remaining-budget`. This command does not
+invent an initial balance or silently reuse a per-query assumption.
+
 Use `--data path/to/replay.json` on both commands for another version-1 replay dataset.
 The bundled-data command proves fit/save/load/route wiring only. It does not produce a
-reportable benchmark result. The CLI fits a deployable artifact on all supplied rows,
-using inner LODO predictions for per-model isotonic calibration. Reportable outer-LODO
-experiments must instead call `fit_calibrated_bilinear_for_fold` on each training fold
-and score only that fold's held-out domain. Artifact routing still uses the CLI's
-illustrative, hard-coded tier lambdas; learned nested-LODO lambda tuning is a separate
-next milestone, so this path is not yet a trained end-to-end budget policy.
+reportable benchmark result. The CLI fits deployment artifacts on all supplied rows;
+both isotonic calibration and lambda selection use out-of-fold predictions. Reportable
+experiments must instead use `nested_lodo_lambda_evaluation`: each outer training side
+gets its own inner-LODO lambda fit and full-training predictor refit, and only the
+untouched outer domain is scored. All outer predictions are then replayed once in the
+original global order so cumulative accounting is not reset between folds.
 
 The built-in solver is an auditable reference backend for the surface schema and
 modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
@@ -88,7 +120,9 @@ before an unaudited workload can enter the cubic reference path.
 - Exact `Decimal` cost accounting and typed `RouterState`/`RouterAction` contracts.
 - Swappable per-query and cumulative budget ledgers; the demo uses illustrative
   per-query limits until the official budget scope is confirmed.
-- One-shot lambda routing and six reproducible baselines.
+- One-shot lambda routing with exact rational utility, immutable per-tier schedules,
+  complete exhaustive breakpoint search or explicitly labeled bounded-memory
+  approximate search, and six reproducible baselines.
 - Full-information offline replay: labels stay hidden until a selected logged outcome
   is replayed, so the policy cannot read ground truth through `RouterState`.
 - A fitted surface-feature schema (log-scaled counts, code/math signals, and
@@ -96,6 +130,11 @@ before an unaudited workload can enter the cubic reference path.
   inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
 - Canonical, strictly validated JSON predictor artifacts; pickle is never accepted for
   predictor loading. Batch prediction vectorizes or embeds each prompt batch once.
+- Canonical policy artifacts bind the exact predictor hash, training/metric-relevant
+  replay content and order, OOF prediction hash, tier specs, ledger identity, and
+  retained candidate-search evidence.
+- True nested LODO orchestration keeps every outer domain out of predictor fitting,
+  calibration, and lambda tuning.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out
   (LODO) folds. No random-split helper is provided.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
@@ -130,7 +169,7 @@ prompt ─> fitted feature encoder ─> calibrated predictor ─> policy <─ bu
 core/        stable state, action, model, and validation contracts
 features/    offline surface features, fitted schema, local embedding contract
 predictors/  bilinear trainer, per-model calibration, strict JSON artifacts
-policies/    one-shot lambda policy and required baselines
+policies/    exact one-shot lambda policy, tuning/artifacts, required baselines
 eval/        replay, accounting protocol, metrics, planning, and LODO
 adapters/    budget-scope and external-dataset uncertainty boundaries
 ```
@@ -173,6 +212,18 @@ preserved. The six baselines are:
 | `length-heuristic` | Strong model for long/code/math prompts when affordable |
 | `oracle` | Privileged per-query, budget-feasible quality upper bound |
 | `domain-best-table` | Per-tier mean-quality table fitted on training domains, with cheapest fallback |
+
+Lambda tuning maximizes this same realized metric, not a proxy loss. For each prompt,
+model utilities are affine functions of lambda, so decisions can change only at exact
+pairwise quality/cost intersections. The exhaustive search evaluates every boundary,
+one representative inside every open interval, and one tail value after the final
+boundary. Each candidate is replayed through `OfflineSimulator`; infeasible candidates
+cannot win. Since tiers have independent ledgers and positive weights, optimizing each
+tier independently is exactly equivalent to a Cartesian joint search over the retained
+candidate sets. This is a full exact finite joint optimum only for the uncapped search;
+the default bounded search remains approximate. See
+[docs/lambda-tuning.md](docs/lambda-tuning.md) for the proof, tie-breaks, and leakage
+boundary.
 
 `tierroute evaluate` fits the domain table on the tiny bundled sample only as an
 end-to-end smoke check, and says so in its output. Reportable experiments must fit on
@@ -277,6 +328,10 @@ tierroute evaluate
 tierroute demo
 tierroute train --output artifacts/synthetic-bilinear.json --json
 tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --json
+tierroute train --output artifacts/synthetic-bilinear.json \
+  --policy-output artifacts/synthetic-policy.json --budget-scope per-query --json
+tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
+  --policy-artifact artifacts/synthetic-policy.json --json
 ```
 
 `make reproduce` installs the exact development lock and runs the complete bundled-data

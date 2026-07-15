@@ -13,7 +13,19 @@ the public API is pre-1.0.
 - Inner-LODO out-of-fold prediction with a separate isotonic calibrator per model.
 - Canonical, fail-closed JSON predictor artifacts and `tierroute train`/
   `tierroute route --artifact` CLI paths.
-- A dependency-free wheel CI job plus a fully offline fit/save/load/route smoke test.
+- Exact rational one-shot utility shared by runtime routing and offline evaluation,
+  including deterministic behavior for non-float-representable `Decimal` costs.
+- Cross-fitted tier-lambda tuning that directly replays the weighted budget metric,
+  with full exact breakpoint search or an explicitly approximate, bounded-memory
+  bottom-hash search that records its strategy and observed breakpoint occurrences.
+- True nested-LODO policy evaluation with one original-order outer-OOF replay for
+  cumulative accounting.
+- Canonical policy artifacts bound to predictor, data, replay-order, prediction,
+  tier-spec, ledger, and candidate-search provenance.
+- `train --policy-output --budget-scope` and `route --policy-artifact` offline CLI
+  reproduction paths; cumulative routes require explicit remaining budget state.
+- A dependency-free wheel CI job plus a fully offline predictor/policy
+  fit/save/load/route smoke test.
 
 ### Changed
 
@@ -44,6 +56,8 @@ the public API is pre-1.0.
   remain inert and no callable named by the payload is imported or invoked.
 - Predictor artifacts accept strict JSON only; duplicate keys, unknown fields,
   non-finite numbers, invalid dimensions, and pickle bytes fail closed.
+- Policy artifacts additionally reject malformed/noncanonical rational values,
+  predictor/data/order mismatches, invalid Unicode metadata, and unsafe binary input.
 
 ## [0.1.0] - 2026-07-15
 

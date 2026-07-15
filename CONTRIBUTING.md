@@ -22,6 +22,10 @@ tierroute evaluate
 tierroute demo
 tierroute train --output artifacts/synthetic-bilinear.json --json
 tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --json
+tierroute train --output artifacts/synthetic-bilinear.json \
+  --policy-output artifacts/synthetic-policy.json --budget-scope per-query --json
+tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
+  --policy-artifact artifacts/synthetic-policy.json --json
 ```
 
 All tests and demos must pass without network access. A preparation script may access
@@ -45,9 +49,21 @@ predictor must be fitted only on the training side of a fold. Random splits are 
 acceptable substitute for domain-shift evaluation.
 
 For calibrated predictors, fit the isotonic layer from inner-LODO out-of-fold
-predictions inside the outer training fold. Never fit feature scaling, a tag vocabulary,
-or calibration on the outer held-out domain. Predictor artifacts use strict JSON only;
-do not introduce pickle, `eval`, or an automatic compatibility fallback.
+predictions inside the outer training fold. Tune tier lambdas only from cross-fitted
+predictions on that same outer training side, then refit the deployable predictor on
+the full outer training side. Never fit feature scaling, a tag vocabulary,
+calibration, or a policy threshold on the outer held-out domain. Predictor and policy
+artifacts use strict JSON only; do not introduce pickle, `eval`, or an automatic
+compatibility fallback.
+
+Runtime and tuning must share `route_from_predictions`, including its exact utility and
+tie-break order. An exhaustive lambda claim requires the full boundary/interval/tail
+candidate set. If a cap is used, stream roots into the deterministic bounded bottom-hash
+sample plus extrema, derive and rank-space only the retained-root candidates, and label
+the result `exhaustive: false`. Record the strategy and observed breakpoint-occurrence
+count, and leave the intentionally unmaterialized complete candidate count unknown.
+Budget normalization belongs to the injected ledger adapter; do not infer official
+per-query or cumulative semantics in a policy.
 
 ## Code and test expectations
 
@@ -55,7 +71,8 @@ do not introduce pickle, `eval`, or an automatic compatibility fallback.
    project-authored source, test, script, configuration, and documentation file where
    the format permits comments.
 2. Preserve exact costs with `Decimal`; never introduce float comparisons at budget
-   boundaries.
+   boundaries. Preserve fitted lambdas as `Fraction` values and serialize their exact
+   numerator/denominator representation.
 3. Add focused tests for behavior, failure paths, determinism, and offline operation.
 4. Keep public interfaces typed and explain non-obvious routing or metric choices in a
    short docstring or design comment.
