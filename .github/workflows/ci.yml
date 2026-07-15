@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: Apache-2.0
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    env:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONHASHSEED: "0"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.lock
+            requirements-routerbench.lock
+
+      - name: Prepare empty offline model cache
+        run: |
+          hf_home="$RUNNER_TEMP/tierroute-empty-hf-home"
+          mkdir -p "$hf_home"
+          test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
+          echo "HF_HOME=$hf_home" >> "$GITHUB_ENV"
+
+      - name: Install exact development and optional-audit environment
+        run: |
+          python -m pip install --no-deps \
+            --requirement requirements-dev.lock \
+            --requirement requirements-routerbench.lock
+          python -m pip install --no-build-isolation --no-deps -e .
+          python -m pip check
+
+      - name: Run Ruff and SPDX checks
+        run: make lint spdx PYTHON=python
+
+      - name: Run tests offline
+        run: make test PYTHON=python
+
+      - name: Enforce dependency license allowlist
+        run: make licenses PYTHON=python
+
+      - name: Smoke-test the installed CLI offline
+        run: python scripts/smoke.py
+
+      - name: Verify no model cache was populated
+        run: test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"

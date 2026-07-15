@@ -29,6 +29,9 @@ Exact versions are recorded in `requirements-dev.lock`.
 | Pygments | 2.20.0 | BSD-2-Clause | https://github.com/pygments/pygments | pytest trace highlighting | Transitive |
 | prettytable | 3.18.0 | BSD-3-Clause | https://github.com/prettytable/prettytable | pip-licenses output | Transitive |
 | wcwidth | 0.8.2 | MIT | https://github.com/jquast/wcwidth | prettytable terminal widths | Transitive |
+| exceptiongroup | 1.3.1 | MIT | https://github.com/agronholm/exceptiongroup | pytest exception groups on Python 3.10 | Conditional transitive (`python_version < 3.11`) |
+| tomli | 2.4.1 | MIT | https://github.com/hukkin/tomli | TOML parsing on Python 3.10 | Conditional transitive (`python_version < 3.11`) |
+| typing-extensions | 4.16.0 | PSF-2.0 | https://github.com/python/typing_extensions | Backported typing APIs on Python 3.10 | Conditional transitive (`python_version < 3.11`) |
 
 ## Optional RouterBench reader
 
@@ -73,8 +76,8 @@ license the separate Hugging Face dataset. tierroute contains no copied RouterBe
 
 ## License gate
 
-CI scans the clean development environment with `pip-licenses`, rejects GPL, LGPL, and
-AGPL family metadata, and permits only the reviewed permissive license set. This scan
-does not replace manual review of models, datasets, vendored files, or GitHub Actions;
-those assets must also be added to this SBOM before adoption.
-
+CI installs both the exact development lock and the optional RouterBench reader lock,
+then scans that clean environment with `pip-licenses`. It rejects GPL, LGPL, and AGPL
+family metadata and permits only the reviewed permissive license set. This scan does
+not replace manual review of models, datasets, vendored files, or GitHub Actions; those
+assets must also be added to this SBOM before adoption.

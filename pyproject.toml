@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools==83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "tierroute"
 version = "0.1.0"
 description = "Offline-first, budget-aware routing for large language models"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "tierroute contributors" }]
 keywords = ["llm", "routing", "budget", "offline", "evaluation"]
 classifiers = [
@@ -31,9 +33,9 @@ tierroute = "tierroute.cli:main"
 
 [project.optional-dependencies]
 dev = [
-  "pip-licenses>=5.0,<6",
-  "pytest>=8.4,<9",
-  "ruff>=0.12,<1",
+  "pip-licenses==5.5.5",
+  "pytest==8.4.2",
+  "ruff==0.15.21",
 ]
 routerbench = [
   "numpy==2.2.6",
@@ -41,9 +43,9 @@ routerbench = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tierroute/tierroute"
-Issues = "https://github.com/tierroute/tierroute/issues"
-Repository = "https://github.com/tierroute/tierroute"
+Homepage = "https://github.com/Hbin77/tierroute"
+Issues = "https://github.com/Hbin77/tierroute/issues"
+Repository = "https://github.com/Hbin77/tierroute"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
