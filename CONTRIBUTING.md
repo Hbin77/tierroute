@@ -13,7 +13,7 @@ Python 3.10 or newer is required.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev,training]'
+python -m pip install -e '.[dev]'
 ruff check .
 ruff format --check .
 HF_HUB_OFFLINE=1 pytest

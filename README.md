@@ -53,12 +53,12 @@ benchmark result, an empirical model comparison, or a competition score.
 
 ### Offline predictor training
 
-Training is an explicit preparation step with a pinned optional NumPy dependency.
-The resulting surface-feature artifact is strict canonical JSON and inference returns
-to the dependency-free, network-free runtime path:
+Training and inference use no third-party numerical package. A project-owned,
+deterministic centered-ridge Cholesky solver fits every model target against one shared
+factorization and leaves the intercept unregularized. The resulting surface-feature
+artifact is strict canonical JSON and records the solver ID used to produce it:
 
 ```bash
-python -m pip install -e '.[training]'
 tierroute train --output artifacts/synthetic-bilinear.json --json
 tierroute route "Prove that sqrt(2) is irrational." \
   --tier balanced \
@@ -75,6 +75,13 @@ and score only that fold's held-out domain. Artifact routing still uses the CLI'
 illustrative, hard-coded tier lambdas; learned nested-LODO lambda tuning is a separate
 next milestone, so this path is not yet a trained end-to-end budget policy.
 
+The built-in solver is an auditable reference backend for the surface schema and
+modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
+with the planned 1,024-dimensional bge-m3 embedding (roughly 1,030 total features)
+requires a separately reviewed accelerated backend and numerical parity tests.
+tierroute will not silently reduce or discard embedding dimensions to make that
+experiment fit this reference solver.
+
 ## What is implemented
 
 - Exact `Decimal` cost accounting and typed `RouterState`/`RouterAction` contracts.
@@ -84,8 +91,8 @@ next milestone, so this path is not yet a trained end-to-end budget policy.
 - Full-information offline replay: labels stay hidden until a selected logged outcome
   is replayed, so the policy cannot read ground truth through `RouterState`.
 - A fitted surface-feature schema (log-scaled counts, code/math signals, and
-  prompt-derived domain tags), deterministic per-model ridge fitting, inner-LODO
-  out-of-fold predictions, and separate isotonic calibration per model.
+  prompt-derived domain tags), project-owned deterministic centered-ridge fitting,
+  inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
 - Canonical, strictly validated JSON predictor artifacts; pickle is never accepted for
   predictor loading. Batch prediction vectorizes or embeds each prompt batch once.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out
@@ -250,6 +257,9 @@ The embedding contract pins `BAAI/bge-m3` at revision
 `5617a9f61b028005a4858fdac845db406aefb181` (MIT). Weights are not bundled and no
 runtime downloader exists. The planned provider will accept only a prepared local path
 and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model ID.
+Full training at roughly 1,030 total features also remains gated on an approved
+accelerated solver with parity tests against the project reference implementation;
+embedding dimensions will not be silently projected away.
 
 SK Telecom challenge data is likewise excluded until its license and redistribution
 terms are confirmed in writing.
@@ -257,7 +267,7 @@ terms are confirmed in writing.
 ## Development checks
 
 ```bash
-python -m pip install -e '.[dev,training]'
+python -m pip install -e '.[dev]'
 ruff check .
 ruff format --check .
 HF_HUB_OFFLINE=1 pytest
@@ -270,7 +280,7 @@ tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --
 
 `make reproduce` installs the exact development lock and runs the complete bundled-data
 pipeline, including training and artifact-backed routing. CI runs linting, tests, a
-dependency-free core install, both CLI smoke paths, offline-mode checks, and a
+dependency-free wheel install, both CLI smoke paths, offline-mode checks, and a
 dependency-license gate. GPL-family dependencies are not accepted. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and compliance checklist and
 [SBOM.md](SBOM.md) for the dependency inventory.
@@ -286,10 +296,6 @@ These decisions remain adapter- or configuration-local until official answers ar
 3. What license and redistribution terms govern SK Telecom data, and what are the
    official Fast/Balanced/Premium weights? No SK Telecom data will be committed before
    written license confirmation.
-4. Does the submission's GPL-family prohibition also exclude compatible native runtime
-   components disclosed inside a preparation-only NumPy wheel? The GCC Runtime Library
-   Exception and dynamically linked LGPL component are recorded in the SBOM; NumPy and
-   the RouterBench pickle reader will be replaced if the rule is literal at that level.
 
 ## License
 

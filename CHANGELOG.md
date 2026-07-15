@@ -13,10 +13,15 @@ the public API is pre-1.0.
 - Inner-LODO out-of-fold prediction with a separate isotonic calibrator per model.
 - Canonical, fail-closed JSON predictor artifacts and `tierroute train`/
   `tierroute route --artifact` CLI paths.
-- A dependency-free core CI job plus a fully offline fit/save/load/route smoke test.
+- A dependency-free wheel CI job plus a fully offline fit/save/load/route smoke test.
 
 ### Changed
 
+- Replace the optional NumPy training path with a project-owned deterministic
+  centered-ridge Cholesky reference solver, and remove the `training` extra and lock.
+- Record the exact ridge solver ID in strict predictor artifacts and CLI training
+  output. Full bge-m3-scale fitting remains gated on a reviewed accelerated backend
+  with numerical parity tests.
 - Replace the pandas/NumPy RouterBench reader with a dependency-free,
   non-dispatching standard-library decoder for the exact pinned artifact.
 - Remove the `routerbench` optional extra, `requirements-routerbench.lock`,

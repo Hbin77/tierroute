@@ -51,12 +51,12 @@ smoke-test 값**입니다. 벤치마크 결과, 실제 모델 비교, 대회 점
 
 ### 오프라인 예측기 학습
 
-학습은 고정된 선택 NumPy 의존성을 쓰는 명시적 준비 단계입니다. 표면 특징
-artifact는 엄격하고 결정론적인 JSON이며, 추론은 다시 외부 의존성과 네트워크가
-없는 경로로 돌아옵니다.
+학습과 추론에는 제3자 수치 계산 패키지가 필요하지 않습니다. 프로젝트가 작성한
+결정론적 centered-ridge Cholesky solver가 모든 모델 target을 하나의 공유
+factorization으로 맞추고 intercept에는 ridge penalty를 적용하지 않습니다. 표면
+특징 artifact는 엄격한 canonical JSON이며 생성에 쓴 solver ID도 기록합니다.
 
 ```bash
-python -m pip install -e '.[training]'
 tierroute train --output artifacts/synthetic-bilinear.json --json
 tierroute route "루트 2가 무리수임을 증명해 줘." \
   --tier balanced \
@@ -73,6 +73,12 @@ isotonic calibration은 inner LODO 예측으로 학습합니다. 보고용 outer
 학습된 nested-LODO lambda tuning은 다음 마일스톤입니다. 따라서 현재 경로를 end-to-end
 학습 예산 정책으로 주장하지 않습니다.
 
+내장 solver는 표면 특징 schema와 적당한 크기의 행렬을 위한 감사 가능한 참조
+backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-m3 임베딩과
+표면 특징을 합친 약 1,030차원으로 RouterBench 전체 보고 실험을 하려면 별도로
+검토한 가속 backend와 수치 parity 테스트가 필요합니다. 참조 solver에 맞추기 위해
+임베딩 차원을 조용히 줄이거나 버리지 않습니다.
+
 ## 현재 구현 범위
 
 - `Decimal` 기반 정확한 비용 계산과 `RouterState`/`RouterAction` 타입 계약
@@ -80,8 +86,9 @@ isotonic calibration은 inner LODO 예측으로 학습합니다. 보고용 outer
 - one-shot lambda 라우팅과 재현 가능한 베이스라인 6종
 - full-information offline replay: 선택된 로그 출력을 재생하기 전까지 정답 품질과
   미호출 출력은 `RouterState`에 노출하지 않음
-- log-scaled 길이·코드/수식·프롬프트 유래 domain tag의 fitted schema, 모델별
-  결정론적 ridge, inner-LODO out-of-fold 예측, 모델별 독립 isotonic calibration
+- log-scaled 길이·코드/수식·프롬프트 유래 domain tag의 fitted schema, 프로젝트가
+  작성한 결정론적 centered-ridge, inner-LODO out-of-fold 예측, 모델별 독립
+  isotonic calibration
 - 엄격히 검증하는 canonical JSON 예측기 artifact. 예측기 로더는 pickle을 받지 않고,
   batch 예측은 프롬프트 batch를 한 번만 vectorize/embed
 - tier 가중 품질, oracle gap 회수율, 결정론적 leave-one-domain-out(LODO). random
@@ -242,13 +249,15 @@ replay합니다.
 `5617a9f61b028005a4858fdac845db406aefb181`(MIT)을 고정합니다. 가중치는 동봉하지
 않고 런타임 downloader도 없습니다. 계획된 provider는 미리 준비한 로컬 경로만 받고,
 `HF_HUB_OFFLINE=1`에서 Hub ID를 조회하지 않고 즉시 실패하도록 구현합니다.
+약 1,030개 전체 특징 학습도 프로젝트 참조 구현과 parity test를 통과한 승인된 가속
+solver가 마련될 때까지 gate로 남깁니다. 임베딩 차원을 조용히 투영해 버리지 않습니다.
 
 SK텔레콤 대회 데이터도 라이선스와 재배포 조건을 서면 확인하기 전까지 포함하지 않습니다.
 
 ## 개발 검증
 
 ```bash
-python -m pip install -e '.[dev,training]'
+python -m pip install -e '.[dev]'
 ruff check .
 ruff format --check .
 HF_HUB_OFFLINE=1 pytest
@@ -260,9 +269,9 @@ tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --
 ```
 
 `make reproduce`는 정확한 개발 lock을 설치하고 동봉 데이터 전체 파이프라인을
-실행하며 학습과 artifact 라우팅도 포함합니다. CI는 lint, 테스트, 의존성 없는 core
-설치, 두 CLI smoke 경로, offline mode, 의존성 라이선스 gate를 검사합니다. GPL 계열 의존성은
-허용하지 않습니다. 기여·컴플라이언스 절차는
+실행하며 학습과 artifact 라우팅도 포함합니다. CI는 lint, 테스트, 의존성 없는 wheel
+설치, 두 CLI smoke 경로, offline mode, 의존성 라이선스 gate를 검사합니다. GPL 계열
+의존성은 허용하지 않습니다. 기여·컴플라이언스 절차는
 [CONTRIBUTING.md](CONTRIBUTING.md), 의존성 목록은 [SBOM.md](SBOM.md)를 참고하세요.
 
 ## Open questions
@@ -275,10 +284,6 @@ tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --
    cascade를 범위에 넣지 않습니다.
 3. SK텔레콤 데이터의 라이선스·재배포 조건과 공식 Fast/Balanced/Premium 가중치는
    무엇인가? 라이선스를 서면 확인하기 전 SK텔레콤 데이터는 커밋하지 않습니다.
-4. 출품작의 GPL 계열 금지가 준비 전용 NumPy wheel 내부에 고지된 호환 가능한
-   native runtime까지 제외하는가? GCC Runtime Library Exception과 동적 연결 LGPL
-   component를 SBOM에 기록했으며, 규칙을 그 수준까지 문자 그대로 적용해야 하면
-   NumPy와 RouterBench pickle reader를 교체합니다.
 
 ## 라이선스
 
