@@ -15,6 +15,7 @@ from tierroute.core import (
     RoutingContractError,
     SelectOutput,
 )
+from tierroute.eval import CandidateOutcome, EvaluationExample, TierSpec, fit_per_query_domain_table
 from tierroute.policies import (
     AlwaysCheapestRouter,
     AlwaysPremiumRouter,
@@ -322,3 +323,27 @@ def test_tiered_lambda_router_batches_once_and_selects_after_a_completed_call() 
     assert predictor.calls == [("batch tiered prompt", ("cheap", "middle", "premium"))]
     assert isinstance(action, CallModel) and action.model_id == "premium"
     assert completed == SelectOutput(0, reason="one-shot call completed")
+
+
+def test_domain_table_cost_tie_break_does_not_overflow_through_float() -> None:
+    models = (
+        ModelSpec("a-expensive", Decimal("2e10000")),
+        ModelSpec("z-cheap", Decimal("1e10000")),
+    )
+    example = EvaluationExample(
+        "huge-cost",
+        "prompt",
+        "general",
+        (
+            CandidateOutcome("a-expensive", "answer", Decimal("2e10000"), 0.5),
+            CandidateOutcome("z-cheap", "answer", Decimal("1e10000"), 0.5),
+        ),
+        models,
+    )
+
+    plan = fit_per_query_domain_table(
+        (example,),
+        (TierSpec(BudgetTier.FAST, Decimal("3e10000"), 1.0),),
+    )
+
+    assert plan.table[(BudgetTier.FAST, "general")] == "z-cheap"

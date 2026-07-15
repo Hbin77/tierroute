@@ -6,13 +6,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from tierroute.core import Cost, add_cost, scale_cost, subtract_cost
+from tierroute.core import Cost, add_cost, as_cost, scale_cost, subtract_cost
 from tierroute.eval.schemas import BudgetReport
 
 
 def _validate_inputs(budget_limit: Cost, expected_queries: int) -> None:
-    if not isinstance(budget_limit, Decimal) or not budget_limit.is_finite() or budget_limit < 0:
-        raise ValueError("budget_limit must be a finite non-negative Decimal")
+    as_cost(budget_limit)
     if isinstance(expected_queries, bool) or not isinstance(expected_queries, int):
         raise TypeError("expected_queries must be an integer")
     if expected_queries < 1:
@@ -20,8 +19,7 @@ def _validate_inputs(budget_limit: Cost, expected_queries: int) -> None:
 
 
 def _validate_charge(cost: Cost) -> None:
-    if not isinstance(cost, Decimal) or not cost.is_finite() or cost < 0:
-        raise ValueError("cost must be a finite non-negative Decimal")
+    as_cost(cost)
 
 
 @dataclass(slots=True)

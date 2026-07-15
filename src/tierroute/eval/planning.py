@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from fractions import Fraction
 
 from tierroute.core import BudgetTier
 from tierroute.eval.schemas import EvaluationExample, TierSpec
@@ -64,7 +65,7 @@ def fit_per_query_domain_table(
         for domain in domains:
             totals: dict[str, float] = defaultdict(float)
             counts: dict[str, int] = defaultdict(int)
-            costs: dict[str, float] = defaultdict(float)
+            costs: dict[str, Fraction] = defaultdict(Fraction)
             for example in training_examples:
                 if example.domain != domain:
                     continue
@@ -75,7 +76,7 @@ def fit_per_query_domain_table(
                         and outcome.cost <= tier_spec.budget_limit
                     ):
                         totals[outcome.model_id] += outcome.quality
-                        costs[outcome.model_id] += float(outcome.cost)
+                        costs[outcome.model_id] += Fraction(outcome.cost)
                         counts[outcome.model_id] += 1
             if not counts:
                 continue

@@ -79,3 +79,14 @@ def test_per_query_total_limit_and_spend_are_context_independent() -> None:
 
     assert report.spent == Decimal("3.703703670370370367")
     assert report.effective_total_limit == Decimal("3.703703670370370367")
+
+
+@pytest.mark.parametrize("ledger_type", [PerQueryBudgetLedger, CumulativeBudgetLedger])
+def test_ledgers_reject_costs_outside_the_exact_support_range(ledger_type: object) -> None:
+    with pytest.raises(ValueError, match="supported exact cost range"):
+        ledger_type(Decimal("1e100000"), 1)  # type: ignore[operator]
+
+    ledger = ledger_type(Decimal("1"), 1)  # type: ignore[operator]
+    ledger.begin_query("q1")
+    with pytest.raises(ValueError, match="supported exact cost range"):
+        ledger.charge_realized(Decimal("1e-100001"))

@@ -2,6 +2,7 @@
 """Tests for canonical replay-data identity and order-sensitive hashes."""
 
 from dataclasses import replace
+from decimal import Decimal
 
 import pytest
 
@@ -38,3 +39,58 @@ def test_data_hashes_reject_empty_or_duplicate_examples() -> None:
     invalid_text = (replace(example, prompt="\ud800"),)
     with pytest.raises(ValueError, match="invalid Unicode text"):
         evaluation_data_sha256(invalid_text)
+
+
+def test_extreme_zero_exponents_hash_as_canonical_zero() -> None:
+    example = load_evaluation_dataset().examples[0]
+    model_id = example.candidate_models[0].model_id
+
+    def with_cost(cost: Decimal):
+        return replace(
+            example,
+            candidate_models=tuple(
+                replace(model, cost=cost) if model.model_id == model_id else model
+                for model in example.candidate_models
+            ),
+            outcomes=tuple(
+                replace(outcome, cost=cost) if outcome.model_id == model_id else outcome
+                for outcome in example.outcomes
+            ),
+        )
+
+    canonical = (with_cost(Decimal(0)),)
+    extreme = (with_cost(Decimal("0e-100000000")),)
+
+    assert evaluation_data_sha256(extreme) == evaluation_data_sha256(canonical)
+    assert evaluation_replay_sha256(extreme) == evaluation_replay_sha256(canonical)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        (Decimal("1"), Decimal("1.0")),
+        (Decimal("0.1"), Decimal("0.10")),
+        (Decimal("1E+2"), Decimal("100.00")),
+    ],
+)
+def test_equivalent_nonzero_cost_encodings_share_provenance(
+    left: Decimal,
+    right: Decimal,
+) -> None:
+    example = load_evaluation_dataset().examples[0]
+    model_id = example.candidate_models[0].model_id
+
+    def with_cost(cost: Decimal):
+        return replace(
+            example,
+            candidate_models=tuple(
+                replace(model, cost=cost) if model.model_id == model_id else model
+                for model in example.candidate_models
+            ),
+            outcomes=tuple(
+                replace(outcome, cost=cost) if outcome.model_id == model_id else outcome
+                for outcome in example.outcomes
+            ),
+        )
+
+    assert evaluation_data_sha256((with_cost(left),)) == evaluation_data_sha256((with_cost(right),))
