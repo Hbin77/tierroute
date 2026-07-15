@@ -353,7 +353,7 @@ terms are confirmed in writing.
 ## Development checks
 
 ```bash
-python -m pip install -e '.[dev]'
+make install-dev PYTHON=python
 ruff check .
 ruff format --check .
 HF_HUB_OFFLINE=1 pytest
@@ -368,12 +368,18 @@ tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
   --policy-artifact artifacts/synthetic-policy.json --json
 ```
 
+Run `install-dev` only inside the project virtual environment; it removes the
+setuptools copy that some Python 3.10 `ensurepip` installations leave behind, then
+installs the audited lock with flit_core.
+
 `make reproduce` installs the exact development lock and runs the complete bundled-data
 pipeline, including training and artifact-backed routing. CI runs linting, tests, a
 dependency-free wheel install, both CLI smoke paths, offline-mode checks, and a
 dependency-license gate. GPL-family dependencies are not accepted. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and compliance checklist and
-[SBOM.md](SBOM.md) for the dependency inventory.
+[SBOM.md](SBOM.md) for the dependency inventory. Actual wheel-content approvals and
+rejections are recorded in
+[docs/dependency-license-audit.md](docs/dependency-license-audit.md).
 
 ## Open questions
 
