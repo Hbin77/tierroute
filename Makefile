@@ -22,6 +22,7 @@ install:
 	$(PYTHON) -m pip install --no-deps -e .
 
 install-dev:
+	$(PYTHON) -m pip uninstall --yes setuptools
 	$(PYTHON) -m pip install --no-deps --requirement requirements-dev.lock
 	$(PYTHON) -m pip install --no-build-isolation --no-deps -e .
 

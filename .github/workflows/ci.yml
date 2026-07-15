@@ -33,7 +33,8 @@ jobs:
           wheelhouse="$RUNNER_TEMP/tierroute-wheelhouse"
           clean_venv="$RUNNER_TEMP/tierroute-clean-venv"
           mkdir -p "$wheelhouse"
-          python -m pip install --no-deps setuptools==83.0.0
+          python -m pip uninstall --yes setuptools
+          python -m pip install --no-deps flit_core==3.12.0
           python -m pip wheel --no-build-isolation --no-deps --wheel-dir "$wheelhouse" .
           python -m venv "$clean_venv"
           wheel="$(find "$wheelhouse" -maxdepth 1 -name 'tierroute-*.whl' -print -quit)"
@@ -50,7 +51,7 @@ jobs:
 
           requirements = importlib.metadata.requires("tierroute") or []
           assert all("extra ==" in requirement for requirement in requirements)
-          for package in ("numpy", "pandas"):
+          for package in ("flit_core", "numpy", "pandas", "setuptools"):
               assert importlib.util.find_spec(package) is None, package
               try:
                   importlib.metadata.version(package)
@@ -103,6 +104,7 @@ jobs:
 
       - name: Install exact development environment
         run: |
+          python -m pip uninstall --yes setuptools
           python -m pip install --no-deps --requirement requirements-dev.lock
           python -m pip install --no-build-isolation --no-deps -e .
           python -m pip check

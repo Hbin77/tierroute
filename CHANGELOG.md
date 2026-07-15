@@ -30,6 +30,10 @@ the public API is pre-1.0.
 
 ### Changed
 
+- Replace setuptools with the dependency-free `flit_core` build backend after a
+  wheel-content audit found vendored LGPL code that top-level metadata did not report.
+  The license gate now scans bundled license documents and nested vendored metadata in
+  addition to `pip-licenses` output.
 - Replace the optional NumPy training path with a project-owned deterministic
   centered-ridge Cholesky reference solver, and remove the `training` extra and lock.
 - Record the exact ridge solver ID in strict predictor artifacts and CLI training
@@ -73,6 +77,10 @@ the public API is pre-1.0.
   100,000 retained candidates per tier before expensive big-integer parsing. The
   integer limit covers candidates derivable from the public core cost contract;
   ledger-adapter metadata is capped at 4 KiB.
+- Dependency license enforcement now scans bounded regular-file evidence, nested
+  vendored metadata, common third-party notice layouts, and GPL-family filenames. Its
+  sole document exception is an exact reviewed PSF license hash used by the Python 3.10
+  lock; modified evidence fails closed.
 - Lambda-search preflight now counts all breakpoint pair scans in linear catalogue
   time and rejects more than 10,000,000 scans. It also estimates repeated candidate
   evidence against the hard 8 MiB policy-artifact limit before predictor fitting.
