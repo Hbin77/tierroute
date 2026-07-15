@@ -423,9 +423,8 @@ def test_artifact_rejects_unencodable_metadata_and_non_float_weights(
     with pytest.raises(ValueError, match="valid Unicode scalar values"):
         LambdaPolicyArtifact.from_dict(surrogate_domain)
 
-    invalid_predictor = replace(predictor_artifact, training_domains=("\ud800",))
-    with pytest.raises(ValueError, match="invalid Unicode text"):
-        predictor_artifact_sha256(invalid_predictor)
+    with pytest.raises(ValueError, match="valid Unicode"):
+        replace(predictor_artifact, training_domains=("\ud800",))
 
     inexact_weight = copy.deepcopy(policy_artifact.to_dict())
     inexact_weight["tuning"]["tier_specs"][0]["weight"] = {  # type: ignore[index]

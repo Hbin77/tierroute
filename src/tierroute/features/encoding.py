@@ -12,12 +12,86 @@ from tierroute.features.embeddings import EmbeddingIdentity, EmbeddingProvider
 from tierroute.features.surface import extract_surface_features
 
 FEATURE_SCHEMA_VERSION = 1
+MAX_FEATURE_DIMENSION = 16_384
+MAX_FEATURE_DOMAIN_TAGS = 4_096
+MAX_FEATURE_METADATA_TEXT_BYTES = 4 * 1024
 _CONTINUOUS_NAMES = (
     "log1p_character_count",
     "log1p_word_count",
     "log1p_line_count",
 )
 _BINARY_NAMES = ("has_code", "has_math")
+
+
+def _bounded_sequence_snapshot(
+    value: object,
+    context: str,
+    *,
+    max_items: int,
+) -> tuple[object, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise TypeError(f"{context} must be a list or tuple")
+    result: list[object] = []
+    try:
+        iterator = iter(value)
+        for item in iterator:
+            if len(result) >= max_items:
+                raise ValueError(f"{context} exceeds the feature schema limit ({max_items:,})")
+            result.append(item)
+    except RuntimeError as error:
+        raise ValueError(f"{context} could not be read deterministically") from error
+    return tuple(result)
+
+
+def _normalized_feature_numbers(
+    value: object,
+    context: str,
+    *,
+    positive: bool,
+) -> tuple[float, float, float]:
+    snapshot = _bounded_sequence_snapshot(value, context, max_items=3)
+    if len(snapshot) != 3:
+        raise ValueError("feature schema requires three continuous means and scales")
+    normalized: list[float] = []
+    for item in snapshot:
+        if type(item) not in (int, float):
+            raise ValueError(f"{context} must be finite")
+        try:
+            number = float(item)
+        except (OverflowError, ValueError) as error:
+            raise ValueError(f"{context} must be finite") from error
+        if not math.isfinite(number) or (positive and number <= 0):
+            qualifier = "finite and positive" if positive else "finite"
+            raise ValueError(f"{context} must be {qualifier}")
+        normalized.append(number)
+    return tuple(normalized)  # type: ignore[return-value]
+
+
+def _bounded_mapping_snapshot(
+    value: object,
+    context: str,
+    *,
+    max_items: int,
+) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{context} must be an object")
+    result: dict[str, object] = {}
+    try:
+        iterator = iter(value.items())
+        for item in iterator:
+            if len(result) >= max_items:
+                raise ValueError(f"{context} has too many fields")
+            key, item_value = item
+            if type(key) is not str:
+                raise ValueError(f"{context} keys must be strings")
+            if key in result:
+                raise ValueError(f"{context} contains a duplicate key")
+            result[key] = item_value
+    except ValueError:
+        raise
+    except (TypeError, RuntimeError) as error:
+        raise ValueError(f"{context} could not be read deterministically") from error
+    return result
 
 
 def _continuous_values(prompt: str) -> tuple[float, float, float]:
@@ -43,35 +117,57 @@ class PromptFeatureSchema:
     def __post_init__(self) -> None:
         if type(self.schema_version) is not int or self.schema_version != FEATURE_SCHEMA_VERSION:
             raise ValueError(f"feature schema_version must equal {FEATURE_SCHEMA_VERSION}")
-        if len(self.continuous_means) != 3 or len(self.continuous_scales) != 3:
-            raise ValueError("feature schema requires three continuous means and scales")
-        if any(
-            isinstance(value, bool) or not math.isfinite(value) for value in self.continuous_means
-        ):
-            raise ValueError("continuous means must be finite")
-        if any(
-            isinstance(value, bool) or not math.isfinite(value) or value <= 0
-            for value in self.continuous_scales
-        ):
-            raise ValueError("continuous scales must be finite and positive")
-        if self.domain_tags != tuple(sorted(set(self.domain_tags))):
-            raise ValueError("domain_tags must be sorted and unique")
-        if any(not isinstance(tag, str) or not tag.strip() for tag in self.domain_tags):
+        means = _normalized_feature_numbers(
+            self.continuous_means,
+            "continuous means",
+            positive=False,
+        )
+        scales = _normalized_feature_numbers(
+            self.continuous_scales,
+            "continuous scales",
+            positive=True,
+        )
+        domain_tags = _bounded_sequence_snapshot(
+            self.domain_tags,
+            "domain_tags",
+            max_items=MAX_FEATURE_DOMAIN_TAGS,
+        )
+        if any(type(tag) is not str or not tag.strip() for tag in domain_tags):
             raise ValueError("domain_tags must be non-empty strings")
-        if isinstance(self.embedding_dimension, bool) or not isinstance(
-            self.embedding_dimension, int
-        ):
+        if domain_tags != tuple(sorted(set(domain_tags))):
+            raise ValueError("domain_tags must be sorted and unique")
+        for tag in domain_tags:
+            try:
+                encoded = tag.encode("utf-8")
+            except UnicodeEncodeError as error:
+                raise ValueError("domain_tags must contain valid Unicode") from error
+            if len(encoded) > MAX_FEATURE_METADATA_TEXT_BYTES:
+                raise ValueError(
+                    "domain tag exceeds the feature metadata limit "
+                    f"({MAX_FEATURE_METADATA_TEXT_BYTES:,} UTF-8 bytes)"
+                )
+        if type(self.embedding_dimension) is not int:
             raise TypeError("embedding_dimension must be an integer")
         if self.embedding_dimension < 0:
             raise ValueError("embedding_dimension must be non-negative")
-        if self.embedding_identity is not None and not isinstance(
-            self.embedding_identity, EmbeddingIdentity
+        if (
+            self.embedding_identity is not None
+            and type(self.embedding_identity) is not EmbeddingIdentity
         ):
             raise TypeError("embedding_identity must be an EmbeddingIdentity or None")
         if (self.embedding_dimension == 0) != (self.embedding_identity is None):
             raise ValueError(
                 "embedding identity must be present exactly when embedding_dimension is positive"
             )
+        dimension = len(_CONTINUOUS_NAMES) + len(_BINARY_NAMES) + len(domain_tags)
+        dimension += self.embedding_dimension
+        if dimension > MAX_FEATURE_DIMENSION:
+            raise ValueError(
+                f"feature dimension exceeds the schema limit ({MAX_FEATURE_DIMENSION:,})"
+            )
+        object.__setattr__(self, "continuous_means", means)
+        object.__setattr__(self, "continuous_scales", scales)
+        object.__setattr__(self, "domain_tags", domain_tags)
 
     @classmethod
     def fit(
@@ -176,31 +272,27 @@ class PromptFeatureSchema:
             "embedding_dimension",
             "embedding_identity",
         }
+        payload = _bounded_mapping_snapshot(
+            payload,
+            "feature schema",
+            max_items=len(expected),
+        )
         if set(payload) != expected:
             raise ValueError("feature schema fields do not match schema version 1")
         means_payload = payload["continuous_means"]
         scales_payload = payload["continuous_scales"]
         tags_payload = payload["domain_tags"]
-        if not isinstance(means_payload, list) or not isinstance(scales_payload, list):
+        if type(means_payload) is not list or type(scales_payload) is not list:
             raise ValueError("feature means and scales must be arrays")
-        if any(
-            isinstance(value, bool) or not isinstance(value, (int, float))
-            for value in (*means_payload, *scales_payload)
-        ):
-            raise ValueError("feature means and scales must be JSON numbers")
-        if not isinstance(tags_payload, list) or any(
-            not isinstance(tag, str) for tag in tags_payload
-        ):
+        if type(tags_payload) is not list:
             raise ValueError("feature domain_tags must be an array of strings")
         embedding_payload = payload["embedding_identity"]
         if embedding_payload is not None and not isinstance(embedding_payload, Mapping):
             raise ValueError("embedding_identity must be an object or null")
-        means = tuple(float(value) for value in means_payload)
-        scales = tuple(float(value) for value in scales_payload)
         return cls(
-            continuous_means=means,  # type: ignore[arg-type]
-            continuous_scales=scales,  # type: ignore[arg-type]
-            domain_tags=tuple(tags_payload),
+            continuous_means=means_payload,  # type: ignore[arg-type]
+            continuous_scales=scales_payload,  # type: ignore[arg-type]
+            domain_tags=tags_payload,  # type: ignore[arg-type]
             embedding_dimension=payload["embedding_dimension"],  # type: ignore[arg-type]
             embedding_identity=(
                 None

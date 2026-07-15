@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from dataclasses import replace
 
 import pytest
 
+import tierroute.features.embeddings as embedding_limits
+import tierroute.features.encoding as feature_limits
 from tierroute.features import (
     EmbeddingIdentity,
     PromptFeatureEncoder,
@@ -124,6 +127,114 @@ def test_embedding_provider_is_called_once_for_a_prompt_batch() -> None:
 def test_feature_schema_rejects_boolean_numeric_fields(payload: dict[str, object]) -> None:
     with pytest.raises((TypeError, ValueError)):
         PromptFeatureSchema.from_dict(payload)
+
+
+def test_feature_schema_and_embedding_metadata_limits_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = PromptFeatureSchema.fit(("Debug code.", "Prove math."))
+
+    monkeypatch.setattr(feature_limits, "MAX_FEATURE_DOMAIN_TAGS", 1)
+    with pytest.raises(ValueError, match="domain_tags exceeds"):
+        replace(schema)
+
+    monkeypatch.setattr(feature_limits, "MAX_FEATURE_DOMAIN_TAGS", 4_096)
+    monkeypatch.setattr(feature_limits, "MAX_FEATURE_DIMENSION", schema.dimension - 1)
+    with pytest.raises(ValueError, match="feature dimension exceeds"):
+        replace(schema)
+
+    monkeypatch.setattr(feature_limits, "MAX_FEATURE_DIMENSION", 16_384)
+    monkeypatch.setattr(feature_limits, "MAX_FEATURE_METADATA_TEXT_BYTES", 1)
+    with pytest.raises(ValueError, match="feature metadata limit"):
+        replace(schema, domain_tags=("ab",))
+    with pytest.raises(ValueError, match="valid Unicode"):
+        replace(schema, domain_tags=("\ud800",))
+
+    identity = RecordingEmbeddingProvider.identity
+    monkeypatch.setattr(embedding_limits, "MAX_EMBEDDING_IDENTITY_TEXT_BYTES", 1)
+    with pytest.raises(ValueError, match="metadata limit"):
+        replace(identity)
+    with pytest.raises(ValueError, match="valid Unicode"):
+        replace(identity, provider="\ud800")
+
+
+def test_feature_schema_snapshots_stateful_sequences_before_validation() -> None:
+    class FlippingNumbers(list[float]):
+        def __init__(self, first: list[float], later: list[float]) -> None:
+            super().__init__()
+            self.first = first
+            self.later = later
+            self.iterations = 0
+
+        def __iter__(self) -> Iterator[float]:
+            self.iterations += 1
+            return iter(self.first if self.iterations == 1 else self.later)
+
+    means = FlippingNumbers([0.0, 0.0, 0.0], [math.nan, math.nan, math.nan])
+    scales = FlippingNumbers([1.0, 1.0, 1.0], [math.nan, math.nan, math.nan])
+    schema = PromptFeatureSchema(
+        continuous_means=means,  # type: ignore[arg-type]
+        continuous_scales=scales,  # type: ignore[arg-type]
+        domain_tags=("general",),
+    )
+
+    assert means.iterations == 1
+    assert scales.iterations == 1
+    assert schema.continuous_means == (0.0, 0.0, 0.0)
+    assert schema.continuous_scales == (1.0, 1.0, 1.0)
+
+
+def test_feature_schema_rejects_primitive_subclass_dimension() -> None:
+    class LyingDimension(int):
+        def __radd__(self, other: object) -> int:
+            del other
+            return 0
+
+    with pytest.raises(TypeError, match="embedding_dimension must be an integer"):
+        PromptFeatureSchema(
+            continuous_means=(0.0, 0.0, 0.0),
+            continuous_scales=(1.0, 1.0, 1.0),
+            domain_tags=("general",),
+            embedding_dimension=LyingDimension(20_000),
+            embedding_identity=RecordingEmbeddingProvider.identity,
+        )
+
+
+def test_feature_schema_dimension_uses_the_bounded_tag_snapshot() -> None:
+    class LyingTags(list[str]):
+        def __len__(self) -> int:
+            return 0
+
+    with pytest.raises(ValueError, match="feature dimension exceeds"):
+        PromptFeatureSchema(
+            continuous_means=(0.0, 0.0, 0.0),
+            continuous_scales=(1.0, 1.0, 1.0),
+            domain_tags=LyingTags(["general"]),  # type: ignore[arg-type]
+            embedding_dimension=feature_limits.MAX_FEATURE_DIMENSION - 5,
+            embedding_identity=RecordingEmbeddingProvider.identity,
+        )
+
+
+def test_feature_schema_from_dict_defers_domain_copy_to_bounded_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    schema = PromptFeatureSchema.fit(("Debug code.", "Prove math."))
+    payload = schema.to_dict()
+    tags = payload["domain_tags"]
+    original_snapshot = feature_limits._bounded_sequence_snapshot
+
+    def recording_snapshot(
+        value: object,
+        context: str,
+        *,
+        max_items: int,
+    ) -> tuple[object, ...]:
+        if context == "domain_tags":
+            assert value is tags
+        return original_snapshot(value, context, max_items=max_items)
+
+    monkeypatch.setattr(feature_limits, "_bounded_sequence_snapshot", recording_snapshot)
+    assert PromptFeatureSchema.from_dict(payload) == schema
 
 
 def test_embedding_shape_and_non_finite_values_fail_closed() -> None:

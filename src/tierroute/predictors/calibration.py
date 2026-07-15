@@ -7,13 +7,39 @@ import math
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from itertools import groupby
+from itertools import groupby, pairwise
 
 from tierroute.predictors.base import (
     BatchPromptQualityPredictor,
     BatchQualityPredictor,
     QualityPredictor,
 )
+from tierroute.predictors.resource_limits import MAX_PREDICTOR_CALIBRATOR_POINTS
+
+
+def _normalized_calibration_sequence(value: object, context: str) -> tuple[float, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise TypeError(f"{context} must be a list or tuple")
+    result: list[float] = []
+    try:
+        iterator = iter(value)
+        for item in iterator:
+            if len(result) >= MAX_PREDICTOR_CALIBRATOR_POINTS:
+                raise ValueError(
+                    f"{context} exceeds the calibration limit ({MAX_PREDICTOR_CALIBRATOR_POINTS:,})"
+                )
+            if type(item) not in (int, float):
+                raise ValueError("calibration parameters must be finite")
+            try:
+                number = float(item)
+            except (OverflowError, ValueError) as error:
+                raise ValueError("calibration parameters must be finite") from error
+            if not math.isfinite(number):
+                raise ValueError("calibration parameters must be finite")
+            result.append(number)
+    except RuntimeError as error:
+        raise ValueError(f"{context} could not be read deterministically") from error
+    return tuple(result)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,20 +50,16 @@ class IsotonicCalibrator:
     values: tuple[float, ...]
 
     def __post_init__(self) -> None:
-        if not self.upper_bounds or len(self.upper_bounds) != len(self.values):
+        upper_bounds = _normalized_calibration_sequence(self.upper_bounds, "upper_bounds")
+        values = _normalized_calibration_sequence(self.values, "values")
+        if not upper_bounds or len(upper_bounds) != len(values):
             raise ValueError("upper_bounds and values must be non-empty and equally sized")
-        if any(
-            isinstance(value, bool) or not math.isfinite(value)
-            for value in (*self.upper_bounds, *self.values)
-        ):
-            raise ValueError("calibration parameters must be finite")
-        if any(
-            left >= right
-            for left, right in zip(self.upper_bounds, self.upper_bounds[1:], strict=False)
-        ):
+        if any(left >= right for left, right in pairwise(upper_bounds)):
             raise ValueError("upper_bounds must be strictly increasing")
-        if any(left > right for left, right in zip(self.values, self.values[1:], strict=False)):
+        if any(left > right for left, right in pairwise(values)):
             raise ValueError("calibrated values must be non-decreasing")
+        object.__setattr__(self, "upper_bounds", upper_bounds)
+        object.__setattr__(self, "values", values)
 
     @classmethod
     def fit(cls, predictions: list[float], targets: list[float]) -> IsotonicCalibrator:

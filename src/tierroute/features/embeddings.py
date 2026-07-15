@@ -16,7 +16,27 @@ from typing import Protocol, runtime_checkable
 BGE_M3_MODEL_ID = "BAAI/bge-m3"
 BGE_M3_REVISION = "5617a9f61b028005a4858fdac845db406aefb181"
 BGE_M3_LICENSE = "MIT"
+MAX_EMBEDDING_IDENTITY_TEXT_BYTES = 4 * 1024
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+
+
+def _identity_mapping_snapshot(value: object) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError("embedding identity must be an object")
+    result: dict[str, object] = {}
+    try:
+        for item in value.items():
+            if len(result) >= 6:
+                raise ValueError("embedding identity has too many fields")
+            key, item_value = item
+            if type(key) is not str:
+                raise ValueError("embedding identity keys must be strings")
+            if key in result:
+                raise ValueError("embedding identity contains a duplicate key")
+            result[key] = item_value
+    except (TypeError, RuntimeError) as error:
+        raise ValueError("embedding identity could not be read deterministically") from error
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,11 +53,20 @@ class EmbeddingIdentity:
     def __post_init__(self) -> None:
         for name in ("provider", "model_id", "revision", "pooling"):
             value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip():
+            if type(value) is not str or not value.strip():
                 raise ValueError(f"embedding {name} must be a non-empty string")
+            try:
+                encoded = value.encode("utf-8")
+            except UnicodeEncodeError as error:
+                raise ValueError(f"embedding {name} must contain valid Unicode") from error
+            if len(encoded) > MAX_EMBEDDING_IDENTITY_TEXT_BYTES:
+                raise ValueError(
+                    f"embedding {name} exceeds the metadata limit "
+                    f"({MAX_EMBEDDING_IDENTITY_TEXT_BYTES:,} UTF-8 bytes)"
+                )
         if not isinstance(self.normalize, bool):
             raise TypeError("embedding normalize must be a boolean")
-        if not isinstance(self.asset_manifest_sha256, str) or not _SHA256_PATTERN.fullmatch(
+        if type(self.asset_manifest_sha256) is not str or not _SHA256_PATTERN.fullmatch(
             self.asset_manifest_sha256
         ):
             raise ValueError("embedding asset_manifest_sha256 must be lowercase SHA-256 hex")
@@ -66,10 +95,11 @@ class EmbeddingIdentity:
             "normalize",
             "asset_manifest_sha256",
         }
+        payload = _identity_mapping_snapshot(payload)
         if set(payload) != expected:
             raise ValueError("embedding identity fields do not match schema version 1")
         if any(
-            not isinstance(payload[name], str)
+            type(payload[name]) is not str
             for name in ("provider", "model_id", "revision", "pooling", "asset_manifest_sha256")
         ):
             raise ValueError("embedding identity text fields must be strings")
