@@ -9,6 +9,11 @@ import pytest
 
 from tierroute.predictors import _ridge as ridge_solver
 from tierroute.predictors._ridge import fit_centered_ridge, solve_centered_ridge
+from tierroute.predictors.solvers import (
+    KNOWN_RIDGE_SOLVER_IDS,
+    fit_targets_with_solver,
+    resolve_ridge_solver,
+)
 
 
 def test_model_mapping_wrapper_is_sorted_and_preserves_model_labels() -> None:
@@ -79,6 +84,45 @@ def test_reference_work_estimate_covers_all_dominant_products() -> None:
         ridge_solver._multiply_accumulation_estimate(34_778, 16, 11)
         < ridge_solver._MAX_REFERENCE_MULTIPLY_ACCUMULATIONS
     )
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "expected_exception"),
+    [
+        ("sample_count", 0, ValueError),
+        ("sample_count", True, TypeError),
+        ("feature_count", -1, ValueError),
+        ("target_count", 1.5, TypeError),
+    ],
+)
+def test_reference_preflight_validates_positive_integer_counts(
+    name: str,
+    value: object,
+    expected_exception: type[Exception],
+) -> None:
+    counts: dict[str, object] = {
+        "sample_count": 2,
+        "feature_count": 3,
+        "target_count": 1,
+    }
+    counts[name] = value
+
+    with pytest.raises(expected_exception, match=name):
+        ridge_solver.preflight_reference_ridge(**counts)  # type: ignore[arg-type]
+
+
+def test_static_solver_resolver_preserves_reference_results() -> None:
+    assert KNOWN_RIDGE_SOLVER_IDS == {ridge_solver.CENTERED_RIDGE_SOLVER_ID}
+    solver = resolve_ridge_solver(ridge_solver.CENTERED_RIDGE_SOLVER_ID)
+    features = ((0.0,), (1.0,), (2.0,))
+    targets = {"z": (3.0, 2.0, 1.0), "a": (1.0, 2.0, 3.0)}
+
+    solver.preflight(sample_count=3, feature_count=1, target_count=2)
+    generic = fit_targets_with_solver(solver, features, targets, ridge=1.0)
+
+    assert generic == fit_centered_ridge(features, targets, ridge=1.0)
+    with pytest.raises(ValueError, match="unknown or unreviewed"):
+        resolve_ridge_solver("unknown")
     assert (
         ridge_solver._multiply_accumulation_estimate(34_778, 1_030, 11)
         > ridge_solver._MAX_REFERENCE_MULTIPLY_ACCUMULATIONS

@@ -19,6 +19,7 @@ from tierroute.predictors.calibration import (
     IsotonicCalibrator,
     PerModelCalibratedQualityPredictor,
 )
+from tierroute.predictors.solvers import validate_ridge_solver_id
 
 PREDICTOR_ARTIFACT_VERSION = 1
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -129,8 +130,7 @@ class BilinearPredictorArtifact:
             raise ValueError("ridge must be finite and positive")
         if isinstance(self.seed, bool) or not isinstance(self.seed, int):
             raise TypeError("seed must be an integer")
-        if self.solver_id != CENTERED_RIDGE_SOLVER_ID:
-            raise ValueError(f"solver_id must equal {CENTERED_RIDGE_SOLVER_ID!r}")
+        validate_ridge_solver_id(self.solver_id)
 
         object.__setattr__(self, "model_weights", MappingProxyType(weights_copy))
         object.__setattr__(self, "model_bias", MappingProxyType(bias_copy))

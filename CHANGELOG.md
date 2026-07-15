@@ -27,6 +27,10 @@ the public API is pre-1.0.
   reproduction paths; cumulative routes require explicit remaining budget state.
 - A dependency-free wheel CI job plus a fully offline predictor/policy
   fit/save/load/route smoke test.
+- A static ridge-solver boundary that resolves once per calibrated fit, preflights
+  before dense embedding allocation, and carries the same reviewed implementation
+  through every inner-LODO fit and final refit without changing version-1 artifact
+  bytes.
 
 ### Changed
 

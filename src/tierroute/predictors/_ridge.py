@@ -94,18 +94,11 @@ def solve_centered_ridge(
         name="target_columns",
         expected_width=sample_count,
     )
-    work_estimate = _multiply_accumulation_estimate(
-        sample_count,
-        feature_count,
-        len(targets),
+    preflight_reference_ridge(
+        sample_count=sample_count,
+        feature_count=feature_count,
+        target_count=len(targets),
     )
-    if work_estimate > _MAX_REFERENCE_MULTIPLY_ACCUMULATIONS:
-        raise ValueError(
-            "reference ridge work estimate "
-            f"{work_estimate:,} exceeds the audited limit "
-            f"{_MAX_REFERENCE_MULTIPLY_ACCUMULATIONS:,}; "
-            "use a separately reviewed accelerated backend with parity tests"
-        )
 
     feature_means = tuple(
         _mean((row[index] for row in features), sample_count) for index in range(feature_count)
@@ -152,6 +145,44 @@ def solve_centered_ridge(
         intercepts.append(intercept)
 
     return RidgeSolution(weights, tuple(intercepts))
+
+
+def preflight_reference_ridge(
+    *,
+    sample_count: int,
+    feature_count: int,
+    target_count: int,
+) -> None:
+    """Reject unreviewed reference-solver work before feature allocation.
+
+    Training calls this boundary after fitting the small feature schema but
+    before asking an embedding provider to materialize a dense matrix.  The
+    solver repeats the check from the validated input shape so direct callers
+    cannot bypass the resource guard.
+    """
+
+    counts = {
+        "sample_count": sample_count,
+        "feature_count": feature_count,
+        "target_count": target_count,
+    }
+    for name, value in counts.items():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{name} must be an integer")
+        if value < 1:
+            raise ValueError(f"{name} must be positive")
+    work_estimate = _multiply_accumulation_estimate(
+        sample_count,
+        feature_count,
+        target_count,
+    )
+    if work_estimate > _MAX_REFERENCE_MULTIPLY_ACCUMULATIONS:
+        raise ValueError(
+            "reference ridge work estimate "
+            f"{work_estimate:,} exceeds the audited limit "
+            f"{_MAX_REFERENCE_MULTIPLY_ACCUMULATIONS:,}; "
+            "use a separately reviewed accelerated backend with parity tests"
+        )
 
 
 def _multiply_accumulation_estimate(

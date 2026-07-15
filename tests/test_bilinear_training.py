@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 import pytest
 
+import tierroute.predictors.training as training_module
 from tierroute.adapters import load_evaluation_dataset
 from tierroute.eval import DomainFold, EvaluationExample, leave_one_domain_out
 from tierroute.features import EmbeddingIdentity
@@ -18,6 +19,12 @@ from tierroute.predictors import (
     fit_calibrated_bilinear_for_fold,
     training_data_sha256,
 )
+from tierroute.predictors._ridge import (
+    CENTERED_RIDGE_SOLVER_ID,
+    RidgeSolution,
+    fit_centered_ridge,
+)
+from tierroute.predictors.solvers import resolve_ridge_solver
 
 
 class RecordingEmbeddingProvider:
@@ -159,6 +166,96 @@ def test_training_is_deterministic_for_fixed_config(config: BilinearTrainingConf
     )
 
 
+def test_one_resolved_solver_reaches_every_inner_fold_and_final_fit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reference = resolve_ridge_solver(CENTERED_RIDGE_SOLVER_ID)
+    preflights: list[tuple[int, int, int]] = []
+    solves: list[tuple[int, int, int]] = []
+    resolutions: list[str] = []
+
+    class RecordingSolver:
+        solver_id = CENTERED_RIDGE_SOLVER_ID
+
+        def preflight(
+            self,
+            *,
+            sample_count: int,
+            feature_count: int,
+            target_count: int,
+        ) -> None:
+            preflights.append((sample_count, feature_count, target_count))
+            reference.preflight(
+                sample_count=sample_count,
+                feature_count=feature_count,
+                target_count=target_count,
+            )
+
+        def solve(
+            self,
+            feature_rows: Sequence[Sequence[float]],
+            target_columns: Sequence[Sequence[float]],
+            *,
+            ridge: float,
+        ) -> RidgeSolution:
+            solves.append((len(feature_rows), len(feature_rows[0]), len(target_columns)))
+            return reference.solve(feature_rows, target_columns, ridge=ridge)
+
+    recording = RecordingSolver()
+
+    def recording_resolver(solver_id: str) -> RecordingSolver:
+        resolutions.append(solver_id)
+        return recording
+
+    monkeypatch.setattr(training_module, "resolve_ridge_solver", recording_resolver)
+
+    artifact = fit_calibrated_bilinear(load_evaluation_dataset().examples)
+
+    assert resolutions == [CENTERED_RIDGE_SOLVER_ID]
+    assert len(preflights) == len(solves) == 5
+    assert preflights == solves
+    assert preflights[-1][0] == artifact.training_example_count
+    assert artifact.solver_id == CENTERED_RIDGE_SOLVER_ID
+
+
+def test_solver_boundary_preserves_reference_artifact_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    examples = load_evaluation_dataset().examples
+    through_boundary = fit_calibrated_bilinear(examples)
+
+    def legacy_fit(
+        solver: object,
+        feature_rows: Sequence[Sequence[float]],
+        targets_by_model: Mapping[str, Sequence[float]],
+        *,
+        ridge: float,
+    ) -> dict[str, tuple[tuple[float, ...], float]]:
+        del solver
+        return fit_centered_ridge(feature_rows, targets_by_model, ridge=ridge)
+
+    monkeypatch.setattr(training_module, "fit_targets_with_solver", legacy_fit)
+    through_legacy_path = fit_calibrated_bilinear(examples)
+
+    # Exact equality is intentionally platform-local. The reference solver does
+    # not claim cross-platform byte-identical floating-point coefficients.
+    assert through_boundary.to_json() == through_legacy_path.to_json()
+
+
+def test_reference_preflight_rejects_full_embedding_before_provider_call() -> None:
+    class FullDimensionProvider(RecordingEmbeddingProvider):
+        dimension = 1_024
+
+        def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+            raise AssertionError(f"embedding allocation must not run: {tuple(texts)!r}")
+
+    with pytest.raises(ValueError, match="reviewed accelerated backend"):
+        fit_calibrated_bilinear(
+            load_evaluation_dataset().examples,
+            embedding_provider=FullDimensionProvider(),
+        )
+
+
 def test_training_requires_multiple_domains_and_safe_regularization() -> None:
     one_domain = tuple(
         example for example in load_evaluation_dataset().examples if example.domain == "science"
@@ -174,6 +271,10 @@ def test_training_requires_multiple_domains_and_safe_regularization() -> None:
         BilinearTrainingConfig(ridge=True)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="seed"):
         BilinearTrainingConfig(seed=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="unknown or unreviewed"):
+        BilinearTrainingConfig(solver_id="third-party.unreviewed-v1")
+    with pytest.raises(TypeError, match="solver_id"):
+        BilinearTrainingConfig(solver_id=1)  # type: ignore[arg-type]
 
 
 def test_outer_fold_helper_rejects_malformed_boundaries() -> None:
