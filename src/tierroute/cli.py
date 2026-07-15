@@ -5,12 +5,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 from tierroute.adapters import load_evaluation_dataset
 from tierroute.core import BudgetTier
-from tierroute.demo import BaselineResult, RouteDecision, evaluate_six_baselines, route_prompt
+from tierroute.demo import (
+    BaselineResult,
+    RouteDecision,
+    evaluate_six_baselines,
+    model_catalogue,
+    route_prompt,
+)
+from tierroute.predictors import (
+    BilinearPredictorArtifact,
+    BilinearTrainingConfig,
+    TrainingDependencyError,
+    fit_calibrated_bilinear,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -28,6 +41,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=BudgetTier.BALANCED.value,
         help="budget tier (default: balanced)",
     )
+    route_parser.add_argument(
+        "--data",
+        type=Path,
+        help="versioned JSON model catalogue (default: bundled synthetic data)",
+    )
+    route_parser.add_argument(
+        "--artifact",
+        type=Path,
+        help="local calibrated bilinear JSON artifact (default: synthetic demo predictor)",
+    )
     route_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
     evaluate_parser = subparsers.add_parser("evaluate", help="run all six baselines on replay data")
@@ -37,6 +60,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="versioned JSON replay data (default: bundled synthetic data)",
     )
     evaluate_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+    train_parser = subparsers.add_parser(
+        "train",
+        help="fit an inner-LODO calibrated bilinear artifact offline",
+    )
+    train_parser.add_argument(
+        "--data",
+        type=Path,
+        help="versioned JSON replay data (default: bundled synthetic data)",
+    )
+    train_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="destination JSON artifact",
+    )
+    train_parser.add_argument("--ridge", type=float, default=1.0, help="positive ridge penalty")
+    train_parser.add_argument("--seed", type=int, default=0, help="recorded reproducibility seed")
+    train_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
     subparsers.add_parser("demo", help="run the self-contained offline quickstart")
     return parser
@@ -60,7 +102,7 @@ def _route_payload(decision: RouteDecision) -> dict[str, Any]:
             "domain_tags": list(decision.features.domain_tags),
         },
         "network_used": False,
-        "quality_kind": "synthetic demo prediction",
+        "quality_kind": decision.quality_kind,
     }
 
 
@@ -70,7 +112,7 @@ def _print_route(decision: RouteDecision) -> None:
     print(f"  budget limit:      {decision.budget_limit}")
     print(f"  selected model:    {decision.model_id}")
     print(f"  estimated cost:    {decision.model_cost}")
-    print(f"  predicted quality: {decision.predicted_quality:.3f} (synthetic demo estimate)")
+    print(f"  predicted quality: {decision.predicted_quality:.3f} ({decision.quality_kind})")
     print(f"  policy:            one-shot lambda={decision.lambda_cost:g}")
     print(f"  reason:            {decision.reason}")
     print(
@@ -106,6 +148,26 @@ def _format_score(value: float | None) -> str:
     return "N/A" if value is None else f"{value:.3f}"
 
 
+def _training_payload(
+    artifact: BilinearPredictorArtifact,
+    output: Path,
+    dataset_name: str,
+) -> dict[str, Any]:
+    return {
+        "artifact": str(output),
+        "artifact_version": artifact.artifact_version,
+        "dataset": dataset_name,
+        "feature_dimension": artifact.feature_schema.dimension,
+        "model_ids": list(artifact.model_ids),
+        "training_data_sha256": artifact.training_data_sha256,
+        "training_examples": artifact.training_example_count,
+        "training_domains": list(artifact.training_domains),
+        "ridge": artifact.ridge,
+        "seed": artifact.seed,
+        "network_used": False,
+    }
+
+
 def _print_scorecard(dataset_name: str, results: tuple[BaselineResult, ...]) -> None:
     print(f"Dataset: {dataset_name}")
     print("Budget scope: illustrative per-query limits (official SKT scope unresolved)")
@@ -136,11 +198,51 @@ def main(argv: list[str] | None = None) -> int:
     dataset = load_evaluation_dataset(getattr(args, "data", None))
 
     if args.command == "route":
-        decision = route_prompt(dataset, args.prompt, BudgetTier(args.tier))
+        predictor = None
+        quality_kind = None
+        if args.artifact is not None:
+            artifact = BilinearPredictorArtifact.load(args.artifact)
+            catalogue_ids = tuple(sorted(model.model_id for model in model_catalogue(dataset)))
+            if artifact.model_ids != catalogue_ids:
+                raise ValueError("artifact model catalogue does not match routing data")
+            predictor = artifact.build_predictor()
+            quality_kind = "calibrated bilinear artifact"
+        decision = route_prompt(
+            dataset,
+            args.prompt,
+            BudgetTier(args.tier),
+            predictor=predictor,
+            quality_kind=quality_kind,
+        )
         if args.json:
             print(json.dumps(_route_payload(decision), ensure_ascii=False, sort_keys=True))
         else:
             _print_route(decision)
+        return 0
+
+    if args.command == "train":
+        try:
+            artifact = fit_calibrated_bilinear(
+                dataset.examples,
+                config=BilinearTrainingConfig(ridge=args.ridge, seed=args.seed),
+            )
+        except TrainingDependencyError as error:
+            print(f"tierroute train: {error}", file=sys.stderr)
+            return 2
+        output = artifact.save(args.output)
+        payload = _training_payload(artifact, output, dataset.name)
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        else:
+            print("tierroute predictor training")
+            print(f"  dataset:            {dataset.name}")
+            print(f"  training examples:  {artifact.training_example_count}")
+            print(f"  training domains:   {', '.join(artifact.training_domains)}")
+            print(f"  candidate models:   {', '.join(artifact.model_ids)}")
+            print(f"  feature dimension:  {artifact.feature_schema.dimension}")
+            print(f"  artifact:           {output}")
+            print("  network:            disabled")
+            print("  note: synthetic data is a wiring test, not benchmark evidence")
         return 0
 
     if args.command == "evaluate":
