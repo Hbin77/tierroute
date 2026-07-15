@@ -414,9 +414,7 @@ def main(argv: list[str] | None = None) -> int:
                 ).build_predictor(),
             )
             ledger_factory = (
-                PerQueryBudgetLedger
-                if args.budget_scope == "per-query"
-                else CumulativeBudgetLedger
+                PerQueryBudgetLedger if args.budget_scope == "per-query" else CumulativeBudgetLedger
             )
             tuning = tune_tier_lambdas(
                 dataset.examples,
@@ -424,9 +422,7 @@ def main(argv: list[str] | None = None) -> int:
                 predictions,
                 ledger_factory,
                 max_candidates_per_tier=(
-                    None
-                    if args.exhaustive_lambda_search
-                    else (args.max_lambda_candidates or 257)
+                    None if args.exhaustive_lambda_search else (args.max_lambda_candidates or 257)
                 ),
             )
             policy = LambdaPolicyArtifact.from_tuning(
