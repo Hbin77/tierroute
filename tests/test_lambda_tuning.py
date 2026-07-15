@@ -248,6 +248,12 @@ def test_bounded_candidates_are_labeled_deterministic_and_order_independent() ->
 
     exhaustive = derive_lambda_candidate_set(examples, spec, predictions)
     capped = derive_lambda_candidate_set(examples, spec, predictions, max_candidates=3)
+    nontruncated_cap = derive_lambda_candidate_set(
+        examples,
+        spec,
+        predictions,
+        max_candidates=len(exhaustive.values),
+    )
     reversed_capped = derive_lambda_candidate_set(
         tuple(reversed(examples)),
         spec,
@@ -266,6 +272,9 @@ def test_bounded_candidates_are_labeled_deterministic_and_order_independent() ->
     assert capped.values[0] == exhaustive.values[0]
     assert capped.values[-1] == exhaustive.values[-1]
     assert reversed_capped == capped
+    assert nontruncated_cap == exhaustive
+    assert nontruncated_cap.exhaustive is True
+    assert nontruncated_cap.total_derived_values == len(nontruncated_cap.values)
     with pytest.raises(ValueError, match="mutually exclusive"):
         tune_tier_lambdas(
             examples,
