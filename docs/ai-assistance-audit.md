@@ -53,8 +53,8 @@ Ledger evidence uses four labels:
 
 - **REPO**: directly verifiable from committed source, tests, Git history, or GitHub
   pull-request/check metadata.
-- **MAINTAINER_DECLARATION**: a statement made and owned by the human entrant; it is not
-  inferred from authorship metadata.
+- **ASSISTANCE_RECORD**: material scope recorded by the active AI-assisted development
+  workflow; it is not a human authorship, understanding, or approval claim.
 - **NOT_RECORDED**: the repository or service did not retain enough information to make
   a narrower claim.
 - **PENDING**: a future human action is required and must not be inferred from CI,
@@ -67,8 +67,8 @@ explain-without-assistance walkthrough has not yet been recorded. It does not me
 change is known to be defective.
 
 Merge, source, test, and check facts below are **REPO** evidence. Assisted-scope entries
-are **MAINTAINER_DECLARATION**; the exact historical model revision is
-**NOT_RECORDED**; every owner walkthrough is **PENDING**.
+are **ASSISTANCE_RECORD**; the exact historical model revision is **NOT_RECORDED**;
+every owner walkthrough is **PENDING**.
 
 | Change set | Merge/evidence | Material assisted scope | Durable technical evidence | Human owner walkthrough |
 |---|---|---|---|---|
