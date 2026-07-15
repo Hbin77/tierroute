@@ -64,6 +64,9 @@ actually truncates roots or derived values, label the result `exhaustive: false`
 the strategy and observed breakpoint-occurrence count, and leave the intentionally
 unmaterialized complete candidate count unknown. If everything fits, retain the exact
 count and `exhaustive: true`.
+Uncapped searches must keep the candidate/utility preflight. Do not raise its limits or
+use `allow_large_exhaustive=True` without recording the measured resource rationale;
+the CLI's bounded default is 257 candidates.
 Budget normalization belongs to the injected ledger adapter; do not infer official
 per-query or cumulative semantics in a policy.
 
@@ -73,12 +76,16 @@ per-query or cumulative semantics in a policy.
    project-authored source, test, script, configuration, and documentation file where
    the format permits comments.
 2. Preserve exact costs with `Decimal`; never introduce float comparisons at budget
-   boundaries. Preserve fitted lambdas as `Fraction` values and serialize their exact
-   numerator/denominator representation.
-3. Add focused tests for behavior, failure paths, determinism, and offline operation.
-4. Keep public interfaces typed and explain non-obvious routing or metric choices in a
+   boundaries. Aggregate, subtract, scale, or average costs through the project-owned
+   context-independent helpers. Preserve fitted lambdas as `Fraction` values and
+   serialize their exact numerator/denominator representation.
+3. Save JSON artifacts through the project-owned atomic bundle writer. Never use a
+   predictable temporary pathname or sequentially publish a bound predictor/policy
+   pair without rollback and input-alias checks.
+4. Add focused tests for behavior, failure paths, determinism, and offline operation.
+5. Keep public interfaces typed and explain non-obvious routing or metric choices in a
    short docstring or design comment.
-5. Run `make verify`, including both core and training/artifact CLI smoke paths, before
+6. Run `make verify`, including both core and training/artifact CLI smoke paths, before
    opening a pull request.
 
 ## Licensing, data, and dependencies

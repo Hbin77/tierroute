@@ -20,6 +20,12 @@ Lambda is stored as a reduced rational numerator/denominator. No cost passes thr
 binary float, which avoids overflow and `0 * inf -> NaN` for valid values such as
 `Decimal("1e10000")`.
 
+Budget aggregation does not use ambient-context `Decimal` operators. Project-owned
+helpers align decimal coefficient/exponent tuples with Python integers, so addition,
+subtraction, and integer scaling are exact even if a caller changes global decimal
+precision. A learned mean quote that is mathematically repeating uses an explicit
+half-even precision contract instead of inheriting caller state.
+
 The shared runtime/evaluator selection order is:
 
 1. greater exact utility;
@@ -72,8 +78,37 @@ the complete set and records `exhaustive: true` with its exact count. If either 
 truncated, the result is approximate even though every retained number is exact. That
 case records `exhaustive: false`, its bounded-search strategy, the observed breakpoint
 occurrence count, and an unknown (`null`) complete candidate count; it is not presented
-as a global continuous optimum. The uncapped path is the way to require exhaustive
-coverage independent of data size.
+as a global continuous optimum. The uncapped path is the way to request exhaustive
+coverage, subject to the resource preflight below.
+
+## Exhaustive-search resource preflight
+
+With `n` examples, `m` models, and `T` tiers, at most `n * choose(m, 2)` unequal-cost
+pair occurrences can contribute roots. Boundaries, midpoints, and the tail therefore
+produce at most twice that count plus two candidates. Replaying every candidate has
+worst-case work `O(T * n^2 * m^3)`.
+
+Before materializing roots, an uncapped search computes conservative upper bounds and
+refuses the run when either exceeds:
+
+- 100,000 retained candidates; or
+- 100,000,000 model-utility evaluations.
+
+Duplicate or negative roots make real work smaller, so the Python API offers the
+explicit `allow_large_exhaustive=True` acknowledgement for a reviewed false positive.
+The CLI deliberately requires two flags:
+
+```bash
+tierroute train ... \
+  --exhaustive-lambda-search \
+  --allow-large-exhaustive-search
+```
+
+The second flag is invalid without the first. Capped and explicit-grid searches bypass
+the guard. At the pinned RouterBench shape (34,778 rows, 11 models, three tiers), the
+conservative bounds are 3,825,582 candidates and 4,390,520,996,268 utility evaluations;
+use `max_candidates_per_tier=257` for the practical nested-LODO path and report its
+artifact-labeled exhaustive/truncated status.
 
 ## Direct metric tuning
 
@@ -133,12 +168,12 @@ holdout, and at least two domains for the predictor's calibration fit.
 ## Artifact provenance
 
 Predictor and policy state use strict canonical JSON; pickle and unknown fields are
-rejected. A policy artifact records and validates:
+rejected. A policy artifact records:
 
 - the canonical predictor artifact SHA-256;
 - an order-independent hash of training/metric-relevant replay content;
 - an order-sensitive hash of that replay content in evaluation order;
-- the ordered OOF prediction hash;
+- the ordered OOF prediction hash as audit metadata;
 - example count and domains;
 - exact tier specs and ledger adapter identity;
 - selected exact lambdas, retained candidate counts, search strategy, and observed
@@ -147,4 +182,14 @@ rejected. A policy artifact records and validates:
 
 Artifact-backed CLI routing fails closed on a predictor, dataset, replay order, model
 catalogue, or tier-spec mismatch. A cumulative policy additionally requires the caller
-to provide the current exact `--remaining-budget`.
+to provide the current exact `--remaining-budget`. Routing cannot recompute the OOF
+prediction hash from a final fitted predictor; verifying that field requires
+reproducing the cross-fitted table and comparing its digest. It is not an authenticated
+claim by itself.
+
+Training serializes and round-trip-validates both documents before writing, rejects
+input/output aliases, stages each file under a random exclusive name in its destination
+directory, and replaces the policy last. Existing files are backed up and both paths
+are rolled back on an ordinary write or verification failure. Two unrelated POSIX
+pathnames cannot be switched in one filesystem operation, so concurrent writers remain
+unsupported; a transient mixed pair fails the policy-to-predictor hash check.

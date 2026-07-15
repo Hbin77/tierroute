@@ -92,8 +92,15 @@ candidate fits that cap, the result remains complete and reports `exhaustive: tr
 with its exact count. Only actual truncation is approximate; it reports
 `exhaustive: false` and an unknown complete count (`null`), together with the search
 strategy and observed breakpoint-occurrence count. Use `--exhaustive-lambda-search`
-to require materialization and evaluation of the full exact finite set regardless of
-size. The selected lambda itself always remains an exact numerator/denominator pair.
+to request materialization and evaluation of the full exact finite set. Before any
+roots are materialized, a conservative preflight refuses more than 100,000 possible
+candidates or 100,000,000 utility evaluations. Only after reviewing that estimate may
+a caller add `--allow-large-exhaustive-search`; capped runs never need this override.
+At the pinned RouterBench shape (34,778 rows, 11 models, three tiers), the conservative
+bounds are 3,825,582 candidates and about 4.39 trillion utility evaluations, so the
+257-candidate default is the practical reportable path and is provenance-labeled when
+truncated. The selected lambda itself always remains an exact numerator/denominator
+pair.
 
 A policy trained with `--budget-scope cumulative` can be routed only when the caller
 also supplies the current exact state with `--remaining-budget`. This command does not
@@ -118,7 +125,9 @@ before an unaudited workload can enter the cubic reference path.
 
 ## What is implemented
 
-- Exact `Decimal` cost accounting and typed `RouterState`/`RouterAction` contracts.
+- Context-independent exact `Decimal` cost accounting and typed
+  `RouterState`/`RouterAction` contracts; caller precision cannot round away an
+  overspend.
 - Swappable per-query and cumulative budget ledgers; the demo uses illustrative
   per-query limits until the official budget scope is confirmed.
 - One-shot lambda routing with exact rational utility, immutable per-tier schedules,
@@ -132,8 +141,13 @@ before an unaudited workload can enter the cubic reference path.
 - Canonical, strictly validated JSON predictor artifacts; pickle is never accepted for
   predictor loading. Batch prediction vectorizes or embeds each prompt batch once.
 - Canonical policy artifacts bind the exact predictor hash, training/metric-relevant
-  replay content and order, OOF prediction hash, tier specs, ledger identity, and
-  retained candidate-search evidence.
+  replay content and order, tier specs, ledger identity, and retained candidate-search
+  evidence. They record the OOF prediction hash as audit metadata; verifying it
+  requires reproducing the cross-fitted prediction table because routing has no OOF
+  table to recompute it from.
+- Predictor and policy files use random exclusive staging, post-write validation, and
+  rollback-safe policy-last bundle replacement; input aliases and unsafe output nodes
+  fail before fitting.
 - True nested LODO orchestration keeps every outer domain out of predictor fitting,
   calibration, and lambda tuning.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out

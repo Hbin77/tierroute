@@ -90,9 +90,15 @@ tierroute route "루트 2가 무리수임을 증명해 줘." \
 cap 안에 모든 고유 root와 파생 후보가 들어오면 결과는 여전히 완전하며 정확한
 개수와 `exhaustive: true`를 기록합니다. 실제 truncation이 일어난 경우에만
 근사이며 `exhaustive: false`, 알 수 없는 전체 후보 개수 `null`, 탐색 strategy,
-관측한 breakpoint 발생 횟수를 기록합니다. 크기와 무관하게 전체 exact 유한 집합의
-materialize·평가를 강제하려면 `--exhaustive-lambda-search`를 사용합니다. 선택된
-lambda 자체는 언제나 정확한 분자/분모로 유지됩니다.
+관측한 breakpoint 발생 횟수를 기록합니다. 전체 exact 유한 집합의 materialize·평가를
+요청하려면 `--exhaustive-lambda-search`를 사용합니다. root를 만들기
+전에 보수적으로 계산한 후보 상한이 100,000개 또는 utility 평가 상한이 100,000,000회를
+넘으면 즉시 거부합니다. 산정량을 검토한 뒤에만
+`--allow-large-exhaustive-search`를 함께 지정할 수 있고 capped 실행에는 이 override가
+필요 없습니다. 고정 RouterBench 규모(34,778행, 모델 11개, tier 3개)의 보수적 상한은
+후보 3,825,582개와 약 4.39조 회의 utility 평가이므로, 보고 실험에는 provenance에
+truncation 여부를 남기는 기본 257개 경로가 현실적입니다. 선택된 lambda 자체는 언제나
+정확한 분자/분모로 유지됩니다.
 
 `--budget-scope cumulative`로 학습한 정책을 라우팅할 때는 현재 상태인 정확한
 `--remaining-budget`도 반드시 전달해야 합니다. CLI는 초기 잔액을 추측하거나
@@ -116,7 +122,8 @@ backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-
 
 ## 현재 구현 범위
 
-- `Decimal` 기반 정확한 비용 계산과 `RouterState`/`RouterAction` 타입 계약
+- 호출자의 정밀도가 미세한 초과지출을 반올림하지 못하는 context 독립적 `Decimal`
+  정확 비용 계산과 `RouterState`/`RouterAction` 타입 계약
 - 쿼리당·누적 예산 ledger 교체 구조(공식 범위 확정 전 데모는 예시용 쿼리당 한도)
 - exact rational utility, 불변 tier별 schedule, 완전 exhaustive breakpoint 탐색 또는
   명시적으로 표시한 truncated bounded-memory 근사 탐색을 쓰는 one-shot lambda 라우팅과
@@ -129,7 +136,12 @@ backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-
 - 엄격히 검증하는 canonical JSON 예측기 artifact. 예측기 로더는 pickle을 받지 않고,
   batch 예측은 프롬프트 batch를 한 번만 vectorize/embed
 - canonical 정책 artifact는 정확한 predictor hash, 학습/지표에 관련된 replay
-  내용과 순서, OOF 예측 hash, tier 명세, ledger 식별자, 남긴 후보 탐색 근거를 함께 결합
+  내용과 순서, tier 명세, ledger 식별자, 남긴 후보 탐색 근거를 함께 결합합니다. OOF 예측
+  hash는 감사 메타데이터로 기록하며, 라우팅 시 OOF 표가 없으므로 검증하려면 cross-fitted
+  예측 표를 재현해 대조해야 합니다.
+- 예측기와 정책 파일은 배타적인 무작위 staging, 저장 후 검증, 정책을 마지막에 교체하는
+  rollback-safe bundle 저장을 사용하며 입력 alias와 안전하지 않은 출력 node는 fitting 전에
+  거부합니다.
 - 모든 outer domain을 predictor fitting·calibration·lambda tuning에서 제외하는 true
   nested LODO orchestration
 - tier 가중 품질, oracle gap 회수율, 결정론적 leave-one-domain-out(LODO). random

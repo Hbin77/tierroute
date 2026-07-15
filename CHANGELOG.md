@@ -20,8 +20,9 @@ the public API is pre-1.0.
   bottom-hash search that records its strategy and observed breakpoint occurrences.
 - True nested-LODO policy evaluation with one original-order outer-OOF replay for
   cumulative accounting.
-- Canonical policy artifacts bound to predictor, data, replay-order, prediction,
-  tier-spec, ledger, and candidate-search provenance.
+- Canonical policy artifacts bound to predictor, data, replay-order, tier-spec, ledger,
+  and candidate-search provenance, with the OOF prediction digest recorded as
+  reproducibility audit metadata.
 - `train --policy-output --budget-scope` and `route --policy-artifact` offline CLI
   reproduction paths; cumulative routes require explicit remaining budget state.
 - A dependency-free wheel CI job plus a fully offline predictor/policy
@@ -42,6 +43,10 @@ the public API is pre-1.0.
   `load_routerbench_table`, which returns the immutable project-owned table.
 - Pin a canonical decoded-table digest and exact row, column, model, and domain counts
   as a regression oracle independent of the artifact checksum.
+- Make cost addition, subtraction, integer scaling, replay totals, and quote estimation
+  independent of the caller's mutable `Decimal` context.
+- Refuse unacknowledged exhaustive lambda searches above conservative candidate or
+  utility-work bounds; the CLI requires a separate explicit large-search override.
 
 ### Planned
 
@@ -58,6 +63,8 @@ the public API is pre-1.0.
   non-finite numbers, invalid dimensions, and pickle bytes fail closed.
 - Policy artifacts additionally reject malformed/noncanonical rational values,
   predictor/data/order mismatches, invalid Unicode metadata, and unsafe binary input.
+- Stage artifacts under exclusive random names, reject source/destination aliases, and
+  publish predictor/policy pairs policy-last with validation, backup, and rollback.
 
 ## [0.1.0] - 2026-07-15
 
