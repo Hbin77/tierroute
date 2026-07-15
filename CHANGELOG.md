@@ -7,8 +7,22 @@ the public API is pre-1.0.
 
 ## [Unreleased]
 
+### Added
+
+- Fitted prompt-feature schemas and deterministic per-model ridge training.
+- Inner-LODO out-of-fold prediction with a separate isotonic calibrator per model.
+- Canonical, fail-closed JSON predictor artifacts and `tierroute train`/
+  `tierroute route --artifact` CLI paths.
+- A dependency-free wheel CI job plus a fully offline fit/save/load/route smoke test.
+
 ### Changed
 
+- Replace the optional NumPy training path with a project-owned deterministic
+  centered-ridge Cholesky reference solver, and remove the `training` extra and lock.
+- Record the exact ridge solver ID in strict predictor artifacts and CLI training
+  output. Full bge-m3-scale fitting remains gated on a reviewed accelerated backend
+  with numerical parity tests; a conservative work guard rejects accidental oversized
+  reference-solver jobs before Gram construction.
 - Replace the pandas/NumPy RouterBench reader with a dependency-free,
   non-dispatching standard-library decoder for the exact pinned artifact.
 - Remove the `routerbench` optional extra, `requirements-routerbench.lock`,
@@ -17,17 +31,19 @@ the public API is pre-1.0.
 - Pin a canonical decoded-table digest and exact row, column, model, and domain counts
   as a regression oracle independent of the artifact checksum.
 
+### Planned
+
+- Train and compare a calibrated GBM against the bilinear predictor on licensed data.
+- Add a local-only inference backend for the pinned MIT-licensed bge-m3 revision.
+- Connect official SK Telecom data and scoring only after its schema, weights, and
+  redistribution terms are confirmed.
+
 ### Security
 
 - Authenticate RouterBench bytes before structural decoding; referenced pickle globals
   remain inert and no callable named by the payload is imported or invoked.
-
-### Planned
-
-- Train and compare calibrated GBM and bilinear quality predictors on licensed data.
-- Add a local-only inference backend for the pinned MIT-licensed bge-m3 revision.
-- Connect official SK Telecom data and scoring only after its schema, weights, and
-  redistribution terms are confirmed.
+- Predictor artifacts accept strict JSON only; duplicate keys, unknown fields,
+  non-finite numbers, invalid dimensions, and pickle bytes fail closed.
 
 ## [0.1.0] - 2026-07-15
 

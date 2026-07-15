@@ -123,3 +123,32 @@ def test_lambda_policy_maximizes_quality_minus_cost_and_respects_budget() -> Non
     assert isinstance(action, CallModel)
     assert action.model_id == "middle"
     assert action.predicted_quality == pytest.approx(0.8)
+
+
+def test_lambda_policy_uses_batch_predictor_once_per_prompt() -> None:
+    class RecordingBatchPredictor:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+        def predict(self, prompt: str, model_id: str) -> float:
+            raise AssertionError(f"scalar path used for {prompt}/{model_id}")
+
+        def predict_many(self, prompt: str, model_ids: object) -> dict[str, float]:
+            ids = tuple(model_ids)  # type: ignore[arg-type]
+            self.calls.append((prompt, ids))
+            return {model_id: index / 10 for index, model_id in enumerate(ids)}
+
+    predictor = RecordingBatchPredictor()
+    router = LambdaThresholdRouter(predictor, lambda_cost=0)
+
+    action = router.route(state("batch this prompt"))
+
+    assert predictor.calls == [("batch this prompt", ("cheap", "middle", "premium"))]
+    assert isinstance(action, CallModel)
+    assert action.model_id == "premium"
+
+
+@pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf"), True])
+def test_lambda_policy_rejects_invalid_penalties(value: float) -> None:
+    with pytest.raises(ValueError, match="lambda_cost"):
+        LambdaThresholdRouter(StaticQualityPredictor({}), value)

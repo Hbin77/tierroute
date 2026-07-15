@@ -13,9 +13,10 @@ choose m = argmax_m [predicted_quality(prompt, m) - lambda(tier) * cost(m)]
 
 The project is being developed for the student division of the 2026 Open Source
 Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge.”**
-It is currently a pre-alpha W1 scaffold: the routing contracts, replay simulator,
-six baselines, metrics, and an external-data-free demo are implemented. The CLI
-selects a model but does **not** call an LLM or return a model completion.
+It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
+metrics, leakage-aware calibrated bilinear training, and an external-data-free demo
+are implemented. The CLI selects a model but does **not** call an LLM or return a
+model completion.
 
 ## Quickstart
 
@@ -50,6 +51,38 @@ The bundled prompts, costs, outputs, predicted qualities, and scorecard are
 project-authored **synthetic smoke-test values**. They verify wiring and are not a
 benchmark result, an empirical model comparison, or a competition score.
 
+### Offline predictor training
+
+Training and inference use no third-party numerical package. A project-owned,
+deterministic centered-ridge Cholesky solver fits every model target against one shared
+factorization and leaves the intercept unregularized. The resulting surface-feature
+artifact is strict canonical JSON and records the solver ID used to produce it:
+
+```bash
+tierroute train --output artifacts/synthetic-bilinear.json --json
+tierroute route "Prove that sqrt(2) is irrational." \
+  --tier balanced \
+  --artifact artifacts/synthetic-bilinear.json \
+  --json
+```
+
+Use `--data path/to/replay.json` on both commands for another version-1 replay dataset.
+The bundled-data command proves fit/save/load/route wiring only. It does not produce a
+reportable benchmark result. The CLI fits a deployable artifact on all supplied rows,
+using inner LODO predictions for per-model isotonic calibration. Reportable outer-LODO
+experiments must instead call `fit_calibrated_bilinear_for_fold` on each training fold
+and score only that fold's held-out domain. Artifact routing still uses the CLI's
+illustrative, hard-coded tier lambdas; learned nested-LODO lambda tuning is a separate
+next milestone, so this path is not yet a trained end-to-end budget policy.
+
+The built-in solver is an auditable reference backend for the surface schema and
+modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
+with the planned 1,024-dimensional bge-m3 embedding (roughly 1,030 total features)
+requires a separately reviewed accelerated backend and numerical parity tests.
+tierroute will not silently reduce or discard embedding dimensions to make that
+experiment fit this reference solver. A conservative operation-count guard fails fast
+before an unaudited workload can enter the cubic reference path.
+
 ## What is implemented
 
 - Exact `Decimal` cost accounting and typed `RouterState`/`RouterAction` contracts.
@@ -58,15 +91,18 @@ benchmark result, an empirical model comparison, or a competition score.
 - One-shot lambda routing and six reproducible baselines.
 - Full-information offline replay: labels stay hidden until a selected logged outcome
   is replayed, so the policy cannot read ground truth through `RouterState`.
-- Surface features (length, lines, code/math signals, and domain tags), a bilinear
-  predictor inference form, and dependency-free isotonic calibration.
+- A fitted surface-feature schema (log-scaled counts, code/math signals, and
+  prompt-derived domain tags), project-owned deterministic centered-ridge fitting,
+  inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
+- Canonical, strictly validated JSON predictor artifacts; pickle is never accepted for
+  predictor loading. Batch prediction vectorizes or embeds each prompt batch once.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out
   (LODO) folds. No random-split helper is provided.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
 
-The no-download CLI currently uses a transparent synthetic demo predictor. A local
-`bge-m3` embedding backend, training pipeline, and GBM-versus-bilinear experiment are
-planned; they are not represented as finished features.
+Without `--artifact`, the no-download CLI uses a transparent synthetic demo predictor.
+A local `bge-m3` embedding backend and GBM-versus-bilinear experiment remain planned;
+they are not represented as finished features.
 
 ## Router contract and architecture
 
@@ -87,13 +123,13 @@ oracle alone receives a private example key through a nominal evaluation-only bo
 ```text
 JSON / RouterBench boundary ──> typed replay examples ──> OfflineSimulator
                                       │                       │
-prompt ─> surface features ─> quality predictor ─> policy <── budget ledger
+prompt ─> fitted feature encoder ─> calibrated predictor ─> policy <─ budget ledger
                                                      │
                                             CallModel / SelectOutput
 
 core/        stable state, action, model, and validation contracts
-features/    offline surface features; local embedding contract
-predictors/  predictor protocol, bilinear form, isotonic calibration
+features/    offline surface features, fitted schema, local embedding contract
+predictors/  bilinear trainer, per-model calibration, strict JSON artifacts
 policies/    one-shot lambda policy and required baselines
 eval/        replay, accounting protocol, metrics, planning, and LODO
 adapters/    budget-scope and external-dataset uncertainty boundaries
@@ -149,7 +185,9 @@ observable before routing; split-only labels remain private.
 Runtime routing and evaluation make no network calls. Downloads must be explicit,
 separate preparation steps; automatic Hugging Face fallback is prohibited. Downloaded
 datasets and model weights are ignored by Git and must not be committed without a
-verified redistribution license.
+verified redistribution license. Locally fitted files under `artifacts/` are also
+ignored by default so data-derived parameters receive an explicit provenance and
+license review before any intentional release commit.
 
 ### Bundled synthetic data
 
@@ -220,6 +258,9 @@ The embedding contract pins `BAAI/bge-m3` at revision
 `5617a9f61b028005a4858fdac845db406aefb181` (MIT). Weights are not bundled and no
 runtime downloader exists. The planned provider will accept only a prepared local path
 and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model ID.
+Full training at roughly 1,030 total features also remains gated on an approved
+accelerated solver with parity tests against the project reference implementation;
+embedding dimensions will not be silently projected away.
 
 SK Telecom challenge data is likewise excluded until its license and redistribution
 terms are confirmed in writing.
@@ -234,13 +275,16 @@ HF_HUB_OFFLINE=1 pytest
 tierroute route "offline smoke" --tier fast
 tierroute evaluate
 tierroute demo
+tierroute train --output artifacts/synthetic-bilinear.json --json
+tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --json
 ```
 
 `make reproduce` installs the exact development lock and runs the complete bundled-data
-pipeline. CI runs linting, tests, the CLI smoke path, offline-mode checks, and a dependency-license
-gate. GPL-family dependencies are not accepted. See [CONTRIBUTING.md](CONTRIBUTING.md)
-for the contribution and compliance checklist and [SBOM.md](SBOM.md) for the dependency
-inventory.
+pipeline, including training and artifact-backed routing. CI runs linting, tests, a
+dependency-free wheel install, both CLI smoke paths, offline-mode checks, and a
+dependency-license gate. GPL-family dependencies are not accepted. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and compliance checklist and
+[SBOM.md](SBOM.md) for the dependency inventory.
 
 ## Open questions
 

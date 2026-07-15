@@ -10,6 +10,65 @@ permissions:
   contents: read
 
 jobs:
+  dependency-free-wheel:
+    name: Dependency-free wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Build and install a fresh wheel
+        run: |
+          wheelhouse="$RUNNER_TEMP/tierroute-wheelhouse"
+          clean_venv="$RUNNER_TEMP/tierroute-clean-venv"
+          mkdir -p "$wheelhouse"
+          python -m pip install --no-deps setuptools==83.0.0
+          python -m pip wheel --no-build-isolation --no-deps --wheel-dir "$wheelhouse" .
+          python -m venv "$clean_venv"
+          wheel="$(find "$wheelhouse" -maxdepth 1 -name 'tierroute-*.whl' -print -quit)"
+          test -n "$wheel"
+          "$clean_venv/bin/python" -m pip install --no-deps "$wheel"
+          "$clean_venv/bin/python" -m pip check
+          echo "TIERROUTE_CLEAN_VENV=$clean_venv" >> "$GITHUB_ENV"
+
+      - name: Prove numerical packages are absent
+        run: |
+          "$TIERROUTE_CLEAN_VENV/bin/python" - <<'PY'
+          import importlib.metadata
+          import importlib.util
+
+          requirements = importlib.metadata.requires("tierroute") or []
+          assert all("extra ==" in requirement for requirement in requirements)
+          for package in ("numpy", "pandas"):
+              assert importlib.util.find_spec(package) is None, package
+              try:
+                  importlib.metadata.version(package)
+              except importlib.metadata.PackageNotFoundError:
+                  continue
+              raise AssertionError(f"unexpected distribution installed: {package}")
+          PY
+
+      - name: Smoke-test routing and training from the clean wheel
+        run: |
+          hf_home="$RUNNER_TEMP/tierroute-clean-empty-hf-home"
+          mkdir -p "$hf_home"
+          PATH="$TIERROUTE_CLEAN_VENV/bin:$PATH" HF_HOME="$hf_home" \
+            "$TIERROUTE_CLEAN_VENV/bin/python" scripts/smoke.py
+          PATH="$TIERROUTE_CLEAN_VENV/bin:$PATH" HF_HOME="$hf_home" \
+            "$TIERROUTE_CLEAN_VENV/bin/python" scripts/training_smoke.py
+          test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
+
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -44,35 +103,9 @@ jobs:
 
       - name: Install exact development environment
         run: |
-          python -m pip install --no-deps \
-            --requirement requirements-dev.lock
+          python -m pip install --no-deps --requirement requirements-dev.lock
           python -m pip install --no-build-isolation --no-deps -e .
           python -m pip check
-
-      - name: Verify fresh core wheel has no numerical-package dependency
-        run: |
-          wheelhouse="$RUNNER_TEMP/tierroute-wheelhouse"
-          core_venv="$RUNNER_TEMP/tierroute-core-venv"
-          mkdir -p "$wheelhouse"
-          python -m pip wheel --no-build-isolation --no-deps --wheel-dir "$wheelhouse" .
-          python -m venv "$core_venv"
-          wheel="$(find "$wheelhouse" -maxdepth 1 -name 'tierroute-*.whl' -print -quit)"
-          test -n "$wheel"
-          "$core_venv/bin/python" -m pip install --no-deps "$wheel"
-          "$core_venv/bin/python" - <<'PY'
-          import importlib.metadata
-          import importlib.util
-
-          for package in ("numpy", "pandas"):
-              assert importlib.util.find_spec(package) is None, package
-              try:
-                  importlib.metadata.version(package)
-              except importlib.metadata.PackageNotFoundError:
-                  continue
-              raise AssertionError(f"unexpected distribution installed: {package}")
-          PY
-          HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
-            "$core_venv/bin/tierroute" route "fresh core wheel" --tier fast
 
       - name: Run Ruff and SPDX checks
         run: make lint spdx PYTHON=python
@@ -85,6 +118,9 @@ jobs:
 
       - name: Smoke-test the installed CLI offline
         run: python scripts/smoke.py
+
+      - name: Smoke-test offline predictor training and artifact routing
+        run: python scripts/training_smoke.py
 
       - name: Verify no model cache was populated
         run: test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"

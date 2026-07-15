@@ -7,7 +7,8 @@ model, dataset, font, media asset, or CI action is added or upgraded.
 
 The core `tierroute` runtime has no third-party Python dependency. The pinned
 RouterBench artifact is decoded with the Python standard library; development tools are
-isolated from the offline routing path.
+isolated from the offline routing path. Predictor training uses the project-owned
+standard-library centered-ridge solver and adds no distribution dependency.
 
 ## Build dependency
 
@@ -40,8 +41,9 @@ Exact versions are recorded in `requirements-dev.lock`.
 |---|---|---|---|---|---|
 | BAAI/bge-m3 | `5617a9f61b028005a4858fdac845db406aefb181` | MIT | https://huggingface.co/BAAI/bge-m3/tree/5617a9f61b028005a4858fdac845db406aefb181 | Planned multilingual prompt embeddings | Not downloaded or distributed in W1; runtime contract accepts local paths only |
 
-No LLM weights or commercial API client is bundled. The CLI's quality predictor is
-project-authored deterministic demo logic, not an AI model or benchmark result.
+No LLM weights or commercial API client is bundled. The default CLI predictor and the
+optional fitted bilinear artifact use project-authored logic; neither is an LLM nor a
+benchmark result.
 
 ## Data assets
 
@@ -63,9 +65,10 @@ license the separate Hugging Face dataset. tierroute contains no copied RouterBe
 ## License gate
 
 CI installs the exact development lock, then scans that clean environment with
-`pip-licenses`. It rejects GPL, LGPL, and AGPL family metadata and permits only the
-reviewed permissive license set. CI also installs the base wheel into a separate fresh
-environment and asserts that neither pandas nor NumPy is present, so optional developer
-or future training tools cannot mask the RouterBench reader boundary. This scan does not
-replace manual review of models, datasets, vendored files, or GitHub Actions; those
-assets must also be added to this SBOM before adoption.
+`pip-licenses`. It rejects distributions whose package
+metadata declares GPL, LGPL, or AGPL family terms and permits only the reviewed
+allowlist. CI also installs the base wheel into a separate fresh environment and
+asserts that neither pandas nor NumPy is present. Package metadata cannot enumerate
+every library bundled inside a binary wheel, so this scan does not replace manual
+review of wheel license files, models, datasets, vendored files, or GitHub Actions.
+Those assets must also be added to this SBOM before adoption.

@@ -27,6 +27,7 @@ from tierroute.policies import (
     OracleRouter,
     RandomRouter,
 )
+from tierroute.predictors import QualityPredictor
 
 _TIER_LAMBDAS = {
     BudgetTier.FAST: 0.80,
@@ -75,6 +76,7 @@ class RouteDecision:
     model_cost: Cost
     predicted_quality: float
     lambda_cost: float
+    quality_kind: str
     reason: str
     features: SurfaceFeatures
 
@@ -102,15 +104,26 @@ def model_catalogue(dataset: EvaluationDataset) -> tuple[ModelSpec, ...]:
     return catalogue
 
 
-def route_prompt(dataset: EvaluationDataset, prompt: str, tier: BudgetTier) -> RouteDecision:
-    """Make one offline lambda-policy decision using the bundled demo predictor."""
+def route_prompt(
+    dataset: EvaluationDataset,
+    prompt: str,
+    tier: BudgetTier,
+    *,
+    predictor: QualityPredictor | None = None,
+    quality_kind: str | None = None,
+) -> RouteDecision:
+    """Make one offline lambda-policy decision with a supplied or demo predictor."""
 
     try:
         tier_spec = next(spec for spec in dataset.tier_specs if spec.tier is tier)
     except StopIteration as error:
         raise ValueError(f"dataset does not configure tier {tier.value!r}") from error
     models = model_catalogue(dataset)
-    predictor = DemoQualityPredictor.from_catalogue(models)
+    if predictor is None:
+        predictor = DemoQualityPredictor.from_catalogue(models)
+        quality_kind = "synthetic demo prediction"
+    elif quality_kind is None:
+        quality_kind = "supplied predictor"
     lambda_cost = _TIER_LAMBDAS[tier]
     router = LambdaThresholdRouter(predictor, lambda_cost)
     state = RouterState(
@@ -134,6 +147,7 @@ def route_prompt(dataset: EvaluationDataset, prompt: str, tier: BudgetTier) -> R
         model_cost=model.cost,
         predicted_quality=predicted_quality,
         lambda_cost=lambda_cost,
+        quality_kind=quality_kind,
         reason=action.reason,
         features=extract_surface_features(prompt),
     )

@@ -2,6 +2,7 @@
 """End-to-end tests for clone-without-data quickstart commands."""
 
 import json
+from pathlib import Path
 
 from tierroute.adapters import load_evaluation_dataset
 from tierroute.cli import main
@@ -68,3 +69,40 @@ def test_evaluate_command_prints_all_required_baselines(capsys: object) -> None:
     assert "always-cheapest" in output
     assert "domain-best-table" in output
     assert "not benchmark claims" in output
+
+
+def test_train_then_route_with_canonical_artifact(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    artifact = tmp_path / "predictor.json"
+
+    assert main(["train", "--output", str(artifact), "--json"]) == 0
+    training = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+
+    assert artifact.is_file()
+    assert training["network_used"] is False
+    assert training["training_examples"] == 8
+    assert training["training_domains"] == ["code", "general", "math", "science"]
+    assert training["model_ids"] == ["expert", "steady", "swift"]
+    assert training["solver_id"] == "tierroute.centered-ridge-cholesky-python-v1"
+
+    assert (
+        main(
+            [
+                "route",
+                "Prove a difficult theorem.",
+                "--tier",
+                "balanced",
+                "--artifact",
+                str(artifact),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    route = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+
+    assert route["network_used"] is False
+    assert route["quality_kind"] == "calibrated bilinear artifact"
+    assert route["model"] in training["model_ids"]

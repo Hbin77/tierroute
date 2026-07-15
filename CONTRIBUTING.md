@@ -20,6 +20,8 @@ HF_HUB_OFFLINE=1 pytest
 tierroute route "offline smoke" --tier fast
 tierroute evaluate
 tierroute demo
+tierroute train --output artifacts/synthetic-bilinear.json --json
+tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --json
 ```
 
 All tests and demos must pass without network access. A preparation script may access
@@ -42,6 +44,11 @@ Use LODO for reportable validation. A domain-derived table, calibrator, threshol
 predictor must be fitted only on the training side of a fold. Random splits are not an
 acceptable substitute for domain-shift evaluation.
 
+For calibrated predictors, fit the isotonic layer from inner-LODO out-of-fold
+predictions inside the outer training fold. Never fit feature scaling, a tag vocabulary,
+or calibration on the outer held-out domain. Predictor artifacts use strict JSON only;
+do not introduce pickle, `eval`, or an automatic compatibility fallback.
+
 ## Code and test expectations
 
 1. Add `SPDX-License-Identifier: Apache-2.0` in the appropriate comment syntax to every
@@ -52,8 +59,8 @@ acceptable substitute for domain-shift evaluation.
 3. Add focused tests for behavior, failure paths, determinism, and offline operation.
 4. Keep public interfaces typed and explain non-obvious routing or metric choices in a
    short docstring or design comment.
-5. Run `ruff check .`, `ruff format --check .`, `HF_HUB_OFFLINE=1 pytest`, and all three
-   CLI smoke commands before opening a pull request.
+5. Run `make verify`, including both core and training/artifact CLI smoke paths, before
+   opening a pull request.
 
 ## Licensing, data, and dependencies
 

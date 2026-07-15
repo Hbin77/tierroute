@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import socket
 import urllib.request
+from pathlib import Path
 
 import pytest
 
 from tierroute.cli import main
 
 
-def test_route_evaluate_and_demo_never_open_a_socket(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_runtime_commands_never_open_a_socket(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     def deny_network(*args: object, **kwargs: object) -> None:
         del args, kwargs
@@ -25,4 +28,18 @@ def test_route_evaluate_and_demo_never_open_a_socket(
     assert main(["route", "offline prompt", "--tier", "fast", "--json"]) == 0
     assert main(["evaluate", "--json"]) == 0
     assert main(["demo"]) == 0
+    artifact = tmp_path / "predictor.json"
+    assert main(["train", "--output", str(artifact), "--json"]) == 0
+    assert (
+        main(
+            [
+                "route",
+                "offline artifact prompt",
+                "--artifact",
+                str(artifact),
+                "--json",
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()

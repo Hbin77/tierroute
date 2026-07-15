@@ -15,5 +15,7 @@ htmlcov/
 data/routerbench/
 models/
 
-.DS_Store
+# Locally fitted artifacts are reviewed before any intentional release commit.
+artifacts/
 
+.DS_Store
