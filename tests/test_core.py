@@ -15,6 +15,7 @@ from tierroute.core import (
     SelectOutput,
     add_cost,
     as_cost,
+    canonical_cost_text,
     divide_cost,
     scale_cost,
     subtract_cost,
@@ -113,6 +114,20 @@ def test_cost_arithmetic_is_exact_under_a_low_precision_context() -> None:
     assert scaled == Decimal("3.703703670370370367")
     assert terminating_quotient == Decimal("0.125")
     assert repeating_quotient == Decimal("0.333333333333333333333333333333333333333333333333333")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (Decimal(0), "0"),
+        (Decimal("-0E+999999999"), "0"),
+        (Decimal("1.2300"), "1.23"),
+        (Decimal("1E+2"), "100"),
+        (Decimal("0.0100"), "0.01"),
+    ],
+)
+def test_canonical_cost_text_is_encoding_independent(value: Decimal, expected: str) -> None:
+    assert canonical_cost_text(value) == expected
 
 
 def test_repeating_cost_division_ignores_ambient_rounding_traps() -> None:

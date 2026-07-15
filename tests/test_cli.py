@@ -29,7 +29,7 @@ def test_route_command_shows_decision_cost_and_predicted_quality(capsys: object)
 
     assert status == 0
     assert "selected model:" in output
-    assert "estimated cost:" in output
+    assert "quoted cost:" in output
     assert "predicted quality:" in output
     assert "network:           disabled" in output
 
@@ -44,6 +44,8 @@ def test_route_json_is_machine_readable_and_explicitly_synthetic(capsys: object)
     assert payload["quality_kind"] == "synthetic demo prediction"
     assert payload["lambda_cost"] == {"numerator": "2", "denominator": "25"}
     assert payload["accounting_scope"] == "per-query-illustrative"
+    assert payload["quoted_cost"] == payload["cost"]
+    assert payload["realized_cost"] is None
 
 
 def test_six_baselines_run_end_to_end_on_bundled_data() -> None:
@@ -114,6 +116,104 @@ def test_evaluate_json_declares_lodo_and_domain_fit_scope(capsys: object) -> Non
     assert payload["budget_scope"] == "per-query-illustrative"
     assert payload["validation_scope"] == "outer-lodo-original-order"
     assert payload["domain_table_fit"] == "outer-training-observable-tags-only"
+    cheapest = payload["baselines"][0]
+    assert cheapest["total_realized_cost"] == cheapest["total_cost"] == "4.8"
+    evidence = cheapest["cost_evidence"]
+    assert evidence["scope"] == ("executed-replay-calls; overall is cross-tier diagnostic only")
+    assert evidence["overall"] == {
+        "executed_calls": 24,
+        "exact_quote_calls": 24,
+        "underquoted_calls": 0,
+        "overquoted_calls": 0,
+        "realized_over_budget_calls": 0,
+        "total_quoted_cost": "4.8",
+        "total_realized_cost": "4.8",
+        "total_absolute_quote_error": "0",
+        "total_underquoted_amount": "0",
+        "total_overquoted_amount": "0",
+        "net_quote_error": {"direction": "equal", "magnitude": "0"},
+    }
+    assert evidence["by_tier"]["fast"] == {
+        "executed_calls": 8,
+        "exact_quote_calls": 8,
+        "underquoted_calls": 0,
+        "overquoted_calls": 0,
+        "realized_over_budget_calls": 0,
+        "total_quoted_cost": "1.6",
+        "total_realized_cost": "1.6",
+        "total_absolute_quote_error": "0",
+        "total_underquoted_amount": "0",
+        "total_overquoted_amount": "0",
+        "net_quote_error": {"direction": "equal", "magnitude": "0"},
+        "query_count": 8,
+        "failed_queries": 0,
+        "budget_adapter": "per-query",
+        "configured_limit": "0.35",
+        "effective_total_limit": "2.8",
+        "spent": "1.6",
+        "over_budget_calls": 0,
+    }
+    rejected = payload["baselines"][1]["cost_evidence"]["by_tier"]["fast"]
+    assert rejected["executed_calls"] == 0
+    assert rejected["failed_queries"] == 8
+    assert rejected["total_quoted_cost"] == "0"
+    assert rejected["total_realized_cost"] == rejected["spent"] == "0"
+    assert rejected["over_budget_calls"] == rejected["realized_over_budget_calls"] == 0
+
+
+def test_evaluate_json_preserves_offsetting_quote_errors(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = json.loads(bundled_synthetic_path().read_text(encoding="utf-8"))
+    first_swift = source["examples"][0]["outcomes"][0]
+    second_swift = source["examples"][1]["outcomes"][0]
+    first_swift.update({"quoted_cost": "0.20", "cost": "0"})
+    second_swift.update({"quoted_cost": "0.20", "cost": "0.40"})
+    for example in source["examples"]:
+        example["outcomes"][1].update({"quoted_cost": "0.30", "cost": "0.30"})
+    replay = tmp_path / "offsetting-costs.json"
+    replay.write_text(json.dumps(source), encoding="utf-8")
+
+    assert main(["evaluate", "--data", str(replay), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    evidence = payload["baselines"][0]["cost_evidence"]
+
+    assert evidence["overall"]["total_quoted_cost"] == "4.8"
+    assert evidence["overall"]["total_realized_cost"] == "4.8"
+    assert evidence["overall"]["total_absolute_quote_error"] == "1.2"
+    assert evidence["overall"]["underquoted_calls"] == 3
+    assert evidence["overall"]["overquoted_calls"] == 3
+    assert evidence["overall"]["net_quote_error"] == {
+        "direction": "equal",
+        "magnitude": "0",
+    }
+    assert evidence["by_tier"]["fast"]["total_absolute_quote_error"] == "0.4"
+    assert evidence["by_tier"]["fast"]["failed_queries"] == 1
+    assert evidence["by_tier"]["fast"]["over_budget_calls"] == 1
+    assert evidence["by_tier"]["fast"]["realized_over_budget_calls"] == 1
+
+
+def test_evaluate_json_serializes_executed_zero_quote_and_zero_cost_calls(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = json.loads(bundled_synthetic_path().read_text(encoding="utf-8"))
+    for example in source["examples"]:
+        example["outcomes"][0]["quoted_cost"] = "0"
+    source["examples"][0]["outcomes"][0]["cost"] = "0"
+    replay = tmp_path / "zero-costs.json"
+    replay.write_text(json.dumps(source), encoding="utf-8")
+
+    assert main(["evaluate", "--data", str(replay), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    evidence = payload["baselines"][0]["cost_evidence"]["overall"]
+
+    assert evidence["executed_calls"] == 24
+    assert evidence["exact_quote_calls"] == 3
+    assert evidence["underquoted_calls"] == 21
+    assert evidence["total_quoted_cost"] == "0"
+    assert evidence["total_realized_cost"] == "4.2"
 
 
 def test_train_then_route_with_canonical_artifact(
@@ -617,7 +717,7 @@ def test_cumulative_policy_route_requires_and_reports_current_remaining_budget(
     assert main([*arguments, "--remaining-budget", "0.50"]) == 0
     route = json.loads(capsys.readouterr().out)
     assert route["accounting_scope"] == "cumulative"
-    assert route["remaining_budget"] == "0.50"
+    assert route["remaining_budget"] == "0.5"
 
 
 def test_policy_route_requires_predictor_artifact(

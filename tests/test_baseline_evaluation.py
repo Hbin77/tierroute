@@ -130,6 +130,13 @@ def test_six_baselines_share_one_original_order_outer_lodo_population() -> None:
         assert domain_choices[(BudgetTier.PREMIUM, example_id)] == "cheap"
 
 
+def test_baseline_row_rejects_quote_evidence_from_another_report() -> None:
+    rows = _evaluate(_interleaved_examples()).by_name()
+
+    with pytest.raises(ValueError, match="derived from its replay report"):
+        replace(rows["always-cheapest"], quote_error=rows["always-premium"].quote_error)
+
+
 def test_held_out_outcomes_cannot_change_that_folds_domain_decisions() -> None:
     original = _interleaved_examples()
     poisoned = tuple(

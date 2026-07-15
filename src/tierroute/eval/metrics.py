@@ -1,14 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Tier-weighted quality and oracle-gap recovery metrics."""
+"""Offline quality, oracle-gap, and exact quote-error metrics."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from enum import Enum
 
-from tierroute.core import BudgetTier
-from tierroute.eval.schemas import EvaluationReport, TierResult
+from tierroute.core import (
+    BudgetTier,
+    Cost,
+    ModelSpec,
+    add_cost,
+    subtract_cost,
+    sum_costs,
+)
+from tierroute.eval.schemas import EvaluationReport, ReplayCall, TierResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +25,219 @@ class ScoreSummary:
 
     tier_quality: Mapping[BudgetTier, float | None]
     weighted_quality: float | None
+
+
+class QuoteCostDirection(str, Enum):
+    """Direction of an exact realized-minus-quoted aggregate difference."""
+
+    REALIZED_ABOVE_QUOTE = "realized-above-quote"
+    EQUAL = "equal"
+    REALIZED_BELOW_QUOTE = "realized-below-quote"
+
+
+@dataclass(frozen=True, slots=True)
+class ExactCostDifference:
+    """A signed cost difference represented without a signed ``Cost`` value."""
+
+    direction: QuoteCostDirection
+    magnitude: Cost
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.direction, QuoteCostDirection):
+            raise TypeError("direction must be a QuoteCostDirection")
+        ModelSpec("cost-difference", self.magnitude)
+        if (self.direction is QuoteCostDirection.EQUAL) != (self.magnitude == 0):
+            raise ValueError("equal cost differences must have exactly zero magnitude")
+
+
+@dataclass(frozen=True, slots=True)
+class QuoteErrorSummary:
+    """Exact quote-versus-realized diagnostics over executed replay calls."""
+
+    call_count: int
+    exact_quote_calls: int
+    underquoted_calls: int
+    overquoted_calls: int
+    realized_over_budget_calls: int
+    total_quoted_cost: Cost
+    total_realized_cost: Cost
+    total_absolute_quote_error: Cost
+    total_underquoted_amount: Cost
+    total_overquoted_amount: Cost
+    net_quote_error: ExactCostDifference
+
+    def __post_init__(self) -> None:
+        counts = (
+            self.call_count,
+            self.exact_quote_calls,
+            self.underquoted_calls,
+            self.overquoted_calls,
+            self.realized_over_budget_calls,
+        )
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in counts):
+            raise TypeError("quote-error counts must be integers")
+        if any(value < 0 for value in counts):
+            raise ValueError("quote-error counts must be non-negative")
+        if self.exact_quote_calls + self.underquoted_calls + self.overquoted_calls != (
+            self.call_count
+        ):
+            raise ValueError("quote direction counts must cover every executed call")
+        if self.realized_over_budget_calls > self.call_count:
+            raise ValueError("over-budget calls cannot exceed executed calls")
+        for name, value in (
+            ("total-quoted", self.total_quoted_cost),
+            ("total-realized", self.total_realized_cost),
+            ("absolute-error", self.total_absolute_quote_error),
+            ("underquoted-amount", self.total_underquoted_amount),
+            ("overquoted-amount", self.total_overquoted_amount),
+        ):
+            ModelSpec(name, value)
+        if not isinstance(self.net_quote_error, ExactCostDifference):
+            raise TypeError("net_quote_error must be an ExactCostDifference")
+        if self.call_count == 0 and any(
+            value != 0
+            for value in (
+                self.total_quoted_cost,
+                self.total_realized_cost,
+                self.total_absolute_quote_error,
+                self.total_underquoted_amount,
+                self.total_overquoted_amount,
+            )
+        ):
+            raise ValueError("a zero-call summary must have zero cost totals")
+        if (self.underquoted_calls == 0) != (self.total_underquoted_amount == 0):
+            raise ValueError("underquote count and amount must either both be zero or positive")
+        if (self.overquoted_calls == 0) != (self.total_overquoted_amount == 0):
+            raise ValueError("overquote count and amount must either both be zero or positive")
+        if self.total_absolute_quote_error != add_cost(
+            self.total_underquoted_amount,
+            self.total_overquoted_amount,
+        ):
+            raise ValueError("absolute quote error must include both error directions")
+        if add_cost(self.total_realized_cost, self.total_overquoted_amount) != add_cost(
+            self.total_quoted_cost,
+            self.total_underquoted_amount,
+        ):
+            raise ValueError("quote-error amounts do not conserve exact cost totals")
+        if self.net_quote_error != _exact_cost_difference(
+            self.total_quoted_cost,
+            self.total_realized_cost,
+        ):
+            raise ValueError("net quote error must match exact aggregate totals")
+
+
+@dataclass(frozen=True, slots=True)
+class TierQuoteErrorSummary:
+    """Quote diagnostics for one configured tier."""
+
+    tier: BudgetTier
+    summary: QuoteErrorSummary
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.tier, BudgetTier):
+            raise TypeError("tier must be a BudgetTier")
+        if not isinstance(self.summary, QuoteErrorSummary):
+            raise TypeError("summary must be a QuoteErrorSummary")
+
+
+@dataclass(frozen=True, slots=True)
+class QuoteErrorReport:
+    """Per-tier and cross-tier diagnostics, not a budget-compliance total."""
+
+    tiers: tuple[TierQuoteErrorSummary, ...]
+    overall: QuoteErrorSummary
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "tiers", tuple(self.tiers))
+        if not self.tiers:
+            raise ValueError("quote-error report must contain at least one tier")
+        if any(not isinstance(result, TierQuoteErrorSummary) for result in self.tiers):
+            raise TypeError("tiers must contain TierQuoteErrorSummary values")
+        if not isinstance(self.overall, QuoteErrorSummary):
+            raise TypeError("overall must be a QuoteErrorSummary")
+        tiers = [result.tier for result in self.tiers]
+        if len(tiers) != len(set(tiers)):
+            raise ValueError("quote-error report must contain unique tiers")
+        expected = _combine_quote_summaries(result.summary for result in self.tiers)
+        if self.overall != expected:
+            raise ValueError("overall quote-error summary must equal the exact tier aggregate")
+
+    def by_tier(self) -> dict[BudgetTier, QuoteErrorSummary]:
+        indexed: dict[BudgetTier, QuoteErrorSummary] = {}
+        for result in self.tiers:
+            if result.tier in indexed:
+                raise ValueError(f"duplicate tier in quote-error report: {result.tier.value}")
+            indexed[result.tier] = result.summary
+        return indexed
+
+
+def _exact_cost_difference(quoted: Cost, realized: Cost) -> ExactCostDifference:
+    if realized > quoted:
+        return ExactCostDifference(
+            QuoteCostDirection.REALIZED_ABOVE_QUOTE,
+            subtract_cost(realized, quoted),
+        )
+    if realized < quoted:
+        return ExactCostDifference(
+            QuoteCostDirection.REALIZED_BELOW_QUOTE,
+            subtract_cost(quoted, realized),
+        )
+    return ExactCostDifference(
+        QuoteCostDirection.EQUAL,
+        subtract_cost(quoted, realized),
+    )
+
+
+def _combine_quote_summaries(summaries: Iterable[QuoteErrorSummary]) -> QuoteErrorSummary:
+    ordered = tuple(summaries)
+    total_quoted = sum_costs(summary.total_quoted_cost for summary in ordered)
+    total_realized = sum_costs(summary.total_realized_cost for summary in ordered)
+    total_underquoted = sum_costs(summary.total_underquoted_amount for summary in ordered)
+    total_overquoted = sum_costs(summary.total_overquoted_amount for summary in ordered)
+    return QuoteErrorSummary(
+        call_count=sum(summary.call_count for summary in ordered),
+        exact_quote_calls=sum(summary.exact_quote_calls for summary in ordered),
+        underquoted_calls=sum(summary.underquoted_calls for summary in ordered),
+        overquoted_calls=sum(summary.overquoted_calls for summary in ordered),
+        realized_over_budget_calls=sum(summary.realized_over_budget_calls for summary in ordered),
+        total_quoted_cost=total_quoted,
+        total_realized_cost=total_realized,
+        total_absolute_quote_error=add_cost(total_underquoted, total_overquoted),
+        total_underquoted_amount=total_underquoted,
+        total_overquoted_amount=total_overquoted,
+        net_quote_error=_exact_cost_difference(total_quoted, total_realized),
+    )
+
+
+def _summarize_replay_calls(calls: Iterable[ReplayCall]) -> QuoteErrorSummary:
+    ordered = tuple(calls)
+    total_quoted = sum_costs(call.quoted_cost for call in ordered)
+    total_realized = sum_costs(call.realized_cost for call in ordered)
+    underquoted_amounts = tuple(
+        subtract_cost(call.realized_cost, call.quoted_cost)
+        for call in ordered
+        if call.realized_cost > call.quoted_cost
+    )
+    overquoted_amounts = tuple(
+        subtract_cost(call.quoted_cost, call.realized_cost)
+        for call in ordered
+        if call.realized_cost < call.quoted_cost
+    )
+    total_underquoted = sum_costs(underquoted_amounts)
+    total_overquoted = sum_costs(overquoted_amounts)
+    return QuoteErrorSummary(
+        call_count=len(ordered),
+        exact_quote_calls=sum(call.realized_cost == call.quoted_cost for call in ordered),
+        underquoted_calls=len(underquoted_amounts),
+        overquoted_calls=len(overquoted_amounts),
+        realized_over_budget_calls=sum(not call.within_budget for call in ordered),
+        total_quoted_cost=total_quoted,
+        total_realized_cost=total_realized,
+        total_absolute_quote_error=add_cost(total_underquoted, total_overquoted),
+        total_underquoted_amount=total_underquoted,
+        total_overquoted_amount=total_overquoted,
+        net_quote_error=_exact_cost_difference(total_quoted, total_realized),
+    )
 
 
 def _tier_comparison_signature(result: TierResult) -> tuple[object, ...]:
@@ -40,6 +261,38 @@ def _tier_comparison_signature(result: TierResult) -> tuple[object, ...]:
         result.budget.effective_total_limit,
         query_order,
     )
+
+
+def summarize_quote_error(report: EvaluationReport) -> QuoteErrorReport:
+    """Aggregate exact quote error while rejecting inconsistent replay evidence.
+
+    The overall row is a cross-tier diagnostic only. It must not be interpreted as a
+    shared budget because each tier owns an independent ledger and configured limit.
+    """
+
+    if not report.tiers:
+        raise ValueError("report must contain at least one tier")
+    seen_tiers: set[BudgetTier] = set()
+    tier_summaries: list[TierQuoteErrorSummary] = []
+    all_calls: list[ReplayCall] = []
+    for result in report.tiers:
+        _tier_comparison_signature(result)
+        tier = result.tier_spec.tier
+        if tier in seen_tiers:
+            raise ValueError(f"duplicate tier in report: {tier.value}")
+        seen_tiers.add(tier)
+        calls = tuple(call for query in result.queries for call in query.calls)
+        summary = _summarize_replay_calls(calls)
+        query_spend = sum_costs(query.cost for query in result.queries)
+        if query_spend != result.budget.spent:
+            raise ValueError(f"budget spend and query costs disagree for {tier.value}")
+        if summary.total_realized_cost != result.budget.spent:
+            raise ValueError(f"call evidence and budget spend disagree for {tier.value}")
+        if summary.realized_over_budget_calls != result.budget.over_budget_calls:
+            raise ValueError(f"over-budget call evidence disagrees for {tier.value}")
+        tier_summaries.append(TierQuoteErrorSummary(tier, summary))
+        all_calls.extend(calls)
+    return QuoteErrorReport(tuple(tier_summaries), _summarize_replay_calls(all_calls))
 
 
 def _aligned_tiers(

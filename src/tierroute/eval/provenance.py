@@ -7,20 +7,8 @@ import hashlib
 import json
 from collections.abc import Sequence
 
-from tierroute.core import Cost
+from tierroute.core import canonical_cost_text
 from tierroute.eval.schemas import EvaluationExample
-
-
-def _canonical_cost(value: Cost) -> str:
-    # Schemas have already established Decimal costs. Every exponent/sign encoding
-    # of numeric zero has the same budget meaning; normalize before fixed formatting
-    # so an extreme zero exponent cannot expand into an unbounded provenance string.
-    if value.is_zero():
-        return "0"
-    document = format(value, "f")
-    if "." in document:
-        document = document.rstrip("0").rstrip(".")
-    return document
 
 
 def _validated_examples(
@@ -47,8 +35,8 @@ def _canonical_rows(examples: tuple[EvaluationExample, ...]) -> list[dict[str, o
                 "models": [
                     {
                         "model_id": model.model_id,
-                        "quoted_cost": _canonical_cost(model.cost),
-                        "realized_cost": _canonical_cost(outcomes[model.model_id].cost),
+                        "quoted_cost": canonical_cost_text(model.cost),
+                        "realized_cost": canonical_cost_text(outcomes[model.model_id].cost),
                         "quality": outcomes[model.model_id].quality,
                     }
                     for model in sorted(

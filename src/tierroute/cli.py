@@ -15,7 +15,7 @@ from tierroute.adapters import (
     bundled_synthetic_path,
     load_evaluation_dataset,
 )
-from tierroute.core import BudgetTier, as_cost
+from tierroute.core import BudgetTier, as_cost, canonical_cost_text
 from tierroute.core.atomic_io import AtomicTextWrite, replace_text_bundle, validate_write_paths
 from tierroute.core.integer_text import integer_to_decimal
 from tierroute.demo import (
@@ -25,6 +25,7 @@ from tierroute.demo import (
     model_catalogue,
     route_prompt,
 )
+from tierroute.eval import QuoteErrorSummary
 from tierroute.policies.lambda_artifacts import LambdaPolicyArtifact
 from tierroute.policies.lambda_tuning import (
     TierLambdaTuningResult,
@@ -186,10 +187,12 @@ def _candidate_total_label(value: int | None) -> str:
 def _route_payload(decision: RouteDecision) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "tier": decision.tier.value,
-        "budget_limit": str(decision.budget_limit),
-        "remaining_budget": str(decision.remaining_budget),
+        "budget_limit": canonical_cost_text(decision.budget_limit),
+        "remaining_budget": canonical_cost_text(decision.remaining_budget),
         "model": decision.model_id,
-        "cost": str(decision.model_cost),
+        "cost": canonical_cost_text(decision.model_cost),
+        "quoted_cost": canonical_cost_text(decision.model_cost),
+        "realized_cost": None,
         "predicted_quality": round(decision.predicted_quality, 4),
         "lambda_cost": _fraction_payload(decision.lambda_cost),
         "accounting_scope": decision.accounting_scope,
@@ -219,10 +222,10 @@ def _route_payload(decision: RouteDecision) -> dict[str, Any]:
 def _print_route(decision: RouteDecision) -> None:
     print("tierroute routing decision")
     print(f"  tier:              {decision.tier.value}")
-    print(f"  budget limit:      {decision.budget_limit}")
-    print(f"  remaining budget:  {decision.remaining_budget}")
+    print(f"  budget limit:      {canonical_cost_text(decision.budget_limit)}")
+    print(f"  remaining budget:  {canonical_cost_text(decision.remaining_budget)}")
     print(f"  selected model:    {decision.model_id}")
-    print(f"  estimated cost:    {decision.model_cost}")
+    print(f"  quoted cost:       {canonical_cost_text(decision.model_cost)}")
     print(f"  predicted quality: {decision.predicted_quality:.3f} ({decision.quality_kind})")
     print(f"  policy:            one-shot lambda={_fraction_label(decision.lambda_cost)}")
     print(f"  accounting scope:  {decision.accounting_scope}")
@@ -245,7 +248,40 @@ def _print_route(decision: RouteDecision) -> None:
     print("  network:           disabled")
 
 
+def _quote_error_summary_payload(summary: QuoteErrorSummary) -> dict[str, Any]:
+    return {
+        "executed_calls": summary.call_count,
+        "exact_quote_calls": summary.exact_quote_calls,
+        "underquoted_calls": summary.underquoted_calls,
+        "overquoted_calls": summary.overquoted_calls,
+        "realized_over_budget_calls": summary.realized_over_budget_calls,
+        "total_quoted_cost": canonical_cost_text(summary.total_quoted_cost),
+        "total_realized_cost": canonical_cost_text(summary.total_realized_cost),
+        "total_absolute_quote_error": canonical_cost_text(summary.total_absolute_quote_error),
+        "total_underquoted_amount": canonical_cost_text(summary.total_underquoted_amount),
+        "total_overquoted_amount": canonical_cost_text(summary.total_overquoted_amount),
+        "net_quote_error": {
+            "direction": summary.net_quote_error.direction.value,
+            "magnitude": canonical_cost_text(summary.net_quote_error.magnitude),
+        },
+    }
+
+
 def _baseline_payload(result: BaselineResult) -> dict[str, Any]:
+    quote_error_by_tier = result.quote_error.by_tier()
+    tier_cost_evidence = {}
+    for tier_result in result.report.tiers:
+        tier = tier_result.tier_spec.tier
+        tier_cost_evidence[tier.value] = {
+            **_quote_error_summary_payload(quote_error_by_tier[tier]),
+            "query_count": len(tier_result.queries),
+            "failed_queries": sum(not query.feasible for query in tier_result.queries),
+            "budget_adapter": tier_result.budget.adapter_name,
+            "configured_limit": canonical_cost_text(tier_result.budget.configured_limit),
+            "effective_total_limit": canonical_cost_text(tier_result.budget.effective_total_limit),
+            "spent": canonical_cost_text(tier_result.budget.spent),
+            "over_budget_calls": tier_result.budget.over_budget_calls,
+        }
     return {
         "name": result.name,
         "tier_quality": {
@@ -260,7 +296,13 @@ def _baseline_payload(result: BaselineResult) -> dict[str, Any]:
         "oracle_gap_recovery": (
             None if result.gap_recovery is None else round(result.gap_recovery, 6)
         ),
-        "total_cost": str(result.total_cost),
+        "total_cost": canonical_cost_text(result.total_cost),
+        "total_realized_cost": canonical_cost_text(result.total_cost),
+        "cost_evidence": {
+            "scope": "executed-replay-calls; overall is cross-tier diagnostic only",
+            "overall": _quote_error_summary_payload(result.quote_error.overall),
+            "by_tier": tier_cost_evidence,
+        },
         "feasible": all(tier.feasible for tier in result.report.tiers),
     }
 
@@ -578,7 +620,9 @@ def main(argv: list[str] | None = None) -> int:
             decision = route_prompt(dataset, prompt, tier)
             print(
                 f"[{tier.value:<8}] {decision.model_id:<7} "
-                f"cost={decision.model_cost} predicted_quality={decision.predicted_quality:.3f}"
+                "quoted_cost="
+                f"{canonical_cost_text(decision.model_cost)} "
+                f"predicted_quality={decision.predicted_quality:.3f}"
             )
         print()
         _print_scorecard(dataset.name, evaluate_six_baselines(dataset))
