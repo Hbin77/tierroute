@@ -40,9 +40,7 @@ def fit_centered_ridge(
 
     if not targets_by_model:
         raise ValueError("targets_by_model must not be empty")
-    if any(
-        not isinstance(model_id, str) or not model_id.strip() for model_id in targets_by_model
-    ):
+    if any(not isinstance(model_id, str) or not model_id.strip() for model_id in targets_by_model):
         raise TypeError("targets_by_model keys must be non-empty strings")
     model_ids = tuple(sorted(targets_by_model))
     solution = solve_centered_ridge(
@@ -97,8 +95,7 @@ def solve_centered_ridge(
     )
 
     feature_means = tuple(
-        _mean((row[index] for row in features), sample_count)
-        for index in range(feature_count)
+        _mean((row[index] for row in features), sample_count) for index in range(feature_count)
     )
     target_means = tuple(_mean(column, sample_count) for column in targets)
     centered_features = tuple(
@@ -109,10 +106,7 @@ def solve_centered_ridge(
         for row in features
     )
     centered_targets = tuple(
-        tuple(
-            _finite_result(value - target_mean, operation="target centering")
-            for value in column
-        )
+        tuple(_finite_result(value - target_mean, operation="target centering") for value in column)
         for column, target_mean in zip(targets, target_means, strict=True)
     )
 
@@ -285,8 +279,7 @@ def _cholesky(matrix: tuple[tuple[float, ...], ...]) -> tuple[tuple[float, ...],
             if row_index == column_index:
                 if remainder <= 0.0:
                     raise ArithmeticError(
-                        "ridge normal matrix lost positive definiteness at "
-                        f"diagonal {row_index}"
+                        f"ridge normal matrix lost positive definiteness at diagonal {row_index}"
                     )
                 factor[row_index][column_index] = math.sqrt(remainder)
             else:
@@ -365,9 +358,7 @@ def _verify_residual(
         # A dimension-scaled backward-error threshold catches corrupted solves
         # while allowing ordinary roundoff from Cholesky and triangular solves.
         tolerance = _finite_result(
-            512.0
-            * max(1, dimension)
-            * max(sys.float_info.epsilon * scale, math.ulp(scale)),
+            512.0 * max(1, dimension) * max(sys.float_info.epsilon * scale, math.ulp(scale)),
             operation="residual tolerance",
         )
         if residual > tolerance:
