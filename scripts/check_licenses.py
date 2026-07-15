@@ -74,12 +74,17 @@ _EXPRESSION_OPERATOR = re.compile(r"\s+(?:AND|OR|WITH)\s+|\s*;\s*", re.IGNORECAS
 _MAX_AUDIT_FILE_BYTES = 4 * 1024 * 1024
 _MAX_AUDIT_TOTAL_BYTES = 64 * 1024 * 1024
 _MAX_AUDIT_FILES = 10_000
-# Exact PSF-2.0-family license evidence shipped by typing_extensions==4.16.0.
-# Its compatibility footnotes mention GPL-covered *other* software and a
-# historical Python 1.6.1 distribution. A hash exception is intentionally
-# narrower than prose heuristics: any modified evidence is scanned normally.
+# Exact PSF-family license evidence shipped by reviewed locked tools. These
+# documents contain GPL compatibility or historical discussion but no GPL code.
+# Hash exceptions are intentionally narrower than prose heuristics: any modified
+# evidence is scanned normally.
 _REVIEWED_PERMISSIVE_LICENSE_DOCUMENT_SHA256 = frozenset(
-    {"3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"}
+    {
+        # typing_extensions==4.16.0 licenses/LICENSE
+        "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+        # pip==26.1.2 vendored distlib==0.4.0 LICENSE.txt
+        "808e10c8a6ab8deb149ff9b3fb19f447a808094606d712a9ca57fead3552599d",
+    }
 )
 
 

@@ -79,8 +79,8 @@ the public API is pre-1.0.
   ledger-adapter metadata is capped at 4 KiB.
 - Dependency license enforcement now scans bounded regular-file evidence, nested
   vendored metadata, common third-party notice layouts, and GPL-family filenames. Its
-  sole document exception is an exact reviewed PSF license hash used by the Python 3.10
-  lock; modified evidence fails closed.
+  only document exceptions are exact reviewed PSF-family license hashes used by the
+  development lock; modified evidence fails closed.
 - Lambda-search preflight now counts all breakpoint pair scans in linear catalogue
   time and rejects more than 10,000,000 scans. It also estimates repeated candidate
   evidence against the hard 8 MiB policy-artifact limit before predictor fitting.

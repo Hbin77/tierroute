@@ -31,6 +31,7 @@ Exact versions are recorded in `requirements-dev.lock`.
 | flit_core | 3.12.0 | BSD-3-Clause | https://github.com/pypa/flit | Locked no-build-isolation editable installs | Direct build tool |
 | iniconfig | 2.3.0 | MIT | https://github.com/pytest-dev/iniconfig | pytest configuration | Transitive |
 | packaging | 26.2 | Apache-2.0 OR BSD-2-Clause | https://github.com/pypa/packaging | Version/specifier handling | Transitive |
+| pip | 26.1.2 | MIT | https://github.com/pypa/pip | Deterministic environment installer and wheel frontend | Direct development/CI tool; not shipped at runtime |
 | pluggy | 1.6.0 | MIT | https://github.com/pytest-dev/pluggy | pytest plugin system | Transitive |
 | Pygments | 2.20.0 | BSD-2-Clause | https://github.com/pygments/pygments | pytest trace highlighting | Transitive |
 | prettytable | 3.18.0 | BSD-3-Clause | https://github.com/prettytable/prettytable | pip-licenses output | Transitive |
@@ -73,9 +74,9 @@ CI installs the exact development lock, scans top-level distribution metadata wi
 vendored `.dist-info/METADATA`. Either layer rejects GPL, LGPL, or AGPL family terms;
 top-level metadata must also match the reviewed allowlist. CI installs the base wheel
 into a fresh environment and asserts that flit_core, setuptools, pandas, and NumPy are
-absent. The only document-level exception is the exact reviewed PSF license evidence
-for `typing_extensions==4.16.0`, SHA-256
-`3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf`; modified
-evidence is scanned normally. This automated scan still does not replace pre-adoption
-review of native binary linkage, models, datasets, vendored files, or GitHub Actions.
-Those assets must also be added to this SBOM before adoption.
+absent. Document-level exceptions are exact reviewed PSF-family license evidence for
+`typing_extensions==4.16.0` and pip's vendored `distlib==0.4.0`; their hashes and audit
+trail are recorded in `docs/dependency-license-audit.md`, and modified evidence is
+scanned normally. This automated scan still does not replace pre-adoption review of
+native binary linkage, models, datasets, vendored files, or GitHub Actions. Those
+assets must also be added to this SBOM before adoption.

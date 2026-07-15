@@ -31,14 +31,20 @@ wheel does not depend on or contain flit_core.
 
 ## Reviewed permissive license evidence
 
-The Python 3.10 lock installs `typing_extensions==4.16.0` under the PSF license.
-Its installed `licenses/LICENSE` has SHA-256
-`3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf`.
-That permissive license text includes GPL compatibility discussion and a historical
-Python 1.6.1 reference, so keyword scanning alone produces a false positive. The deep
-gate exempts only this exact reviewed document hash. Any byte change falls back to the
-normal fail-closed scan, and the Python 3.10 CI test verifies the installed evidence
-against the recorded hash.
+Some PSF-family license texts contain GPL compatibility discussion and historical
+Python distribution references, so keyword scanning alone produces false positives.
+The deep gate exempts only these exact reviewed document hashes:
+
+| Distribution and evidence | Evidence SHA-256 |
+|---|---|
+| `typing_extensions==4.16.0` `licenses/LICENSE` | `3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf` |
+| `pip==26.1.2` vendored `distlib==0.4.0` `LICENSE.txt` | `808e10c8a6ab8deb149ff9b3fb19f447a808094606d712a9ca57fead3552599d` |
+
+The audited `pip-26.1.2-py3-none-any.whl` has SHA-256
+`382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab`.
+Any evidence byte change falls back to the normal fail-closed scan. Python 3.10 CI
+verifies the installed typing-extensions evidence, while every CI job runs the deep
+gate over the pinned pip evidence.
 
 ## Rejected candidates
 

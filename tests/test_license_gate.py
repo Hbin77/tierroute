@@ -29,6 +29,15 @@ def _load_license_gate() -> ModuleType:
 check_licenses = _load_license_gate()
 
 
+def test_reviewed_permissive_license_hashes_are_exactly_pinned() -> None:
+    assert check_licenses._REVIEWED_PERMISSIVE_LICENSE_DOCUMENT_SHA256 == frozenset(
+        {
+            "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+            "808e10c8a6ab8deb149ff9b3fb19f447a808094606d712a9ca57fead3552599d",
+        }
+    )
+
+
 @dataclass
 class _FakeDistribution:
     root: Path
@@ -187,6 +196,27 @@ def test_installed_python310_typing_extensions_license_hash_is_reviewed() -> Non
 
     assert digest in check_licenses._REVIEWED_PERMISSIVE_LICENSE_DOCUMENT_SHA256
     assert not check_licenses._document_declares_banned_license(payload.decode("utf-8"))
+
+
+def test_installed_pip_distlib_license_evidence_is_reviewed() -> None:
+    distribution = importlib.metadata.distribution("pip")
+    assert distribution.version == "26.1.2"
+    license_files = [
+        file
+        for file in distribution.files or []
+        if "/".join(file.parts).casefold().endswith("pip/_vendor/distlib/license.txt")
+    ]
+    assert len(license_files) == 2
+
+    payloads = [Path(distribution.locate_file(file)).read_bytes() for file in license_files]
+    assert {len(payload) for payload in payloads} == {14_531}
+    assert {hashlib.sha256(payload).hexdigest() for payload in payloads} == {
+        "808e10c8a6ab8deb149ff9b3fb19f447a808094606d712a9ca57fead3552599d"
+    }
+    assert all(
+        not check_licenses._document_declares_banned_license(payload.decode("utf-8"))
+        for payload in payloads
+    )
 
 
 @pytest.mark.parametrize(
