@@ -1,4 +1,0 @@
-# SPDX-License-Identifier: Apache-2.0
-# Optional, pinned numerical environment for predictor training.
-
-numpy==2.2.6

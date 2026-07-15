@@ -11,7 +11,7 @@ PYTHON ?= python3
 help:
 	@echo "tierroute developer targets"
 	@echo "  install              install tierroute in editable mode"
-	@echo "  install-dev          install exact dev/training locks and editable tierroute"
+	@echo "  install-dev          install the exact dev lock and editable tierroute"
 	@echo "  verify               run static checks, tests, licenses, and offline smoke"
 	@echo "  reproduce            install and run the complete no-external-data pipeline"
 	@echo "  training-smoke       fit, load, and route with a local predictor artifact"
@@ -22,9 +22,7 @@ install:
 	$(PYTHON) -m pip install --no-deps -e .
 
 install-dev:
-	$(PYTHON) -m pip install --no-deps \
-		--requirement requirements-dev.lock \
-		--requirement requirements-training.lock
+	$(PYTHON) -m pip install --no-deps --requirement requirements-dev.lock
 	$(PYTHON) -m pip install --no-build-isolation --no-deps -e .
 
 check-install:

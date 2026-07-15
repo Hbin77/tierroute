@@ -10,9 +10,11 @@ def test_package_has_version() -> None:
     assert tierroute.__version__ == "0.1.0"
 
 
-def test_routerbench_reader_adds_no_distribution_requirement() -> None:
+def test_runtime_and_training_add_no_distribution_requirement() -> None:
     requirements = importlib.metadata.requires("tierroute") or ()
     normalized = tuple(requirement.lower() for requirement in requirements)
 
     assert all("routerbench" not in requirement for requirement in normalized)
     assert all(not requirement.startswith("pandas") for requirement in normalized)
+    assert all(not requirement.startswith("numpy") for requirement in normalized)
+    assert all('extra == "training"' not in requirement for requirement in normalized)
