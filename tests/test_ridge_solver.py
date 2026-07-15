@@ -49,6 +49,42 @@ def test_underdetermined_collinear_features_remain_finite() -> None:
     assert all(math.isfinite(value) for value in (*solution.weights[0], solution.intercepts[0]))
 
 
+def test_reference_solver_fails_before_unreviewed_workload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normal_matrix_called = False
+
+    def unexpected_normal_matrix(*args: object, **kwargs: object) -> object:
+        nonlocal normal_matrix_called
+        normal_matrix_called = True
+        raise AssertionError((args, kwargs))
+
+    monkeypatch.setattr(ridge_solver, "_MAX_REFERENCE_MULTIPLY_ACCUMULATIONS", 10)
+    monkeypatch.setattr(ridge_solver, "_normal_matrix", unexpected_normal_matrix)
+
+    with pytest.raises(ValueError, match="reviewed accelerated backend"):
+        solve_centered_ridge(
+            ((0.0, 1.0), (1.0, 0.0), (2.0, 3.0)),
+            ((1.0, 2.0, 3.0),),
+            ridge=1.0,
+        )
+
+    assert normal_matrix_called is False
+
+
+def test_reference_work_estimate_covers_all_dominant_products() -> None:
+    # Gram=18, Cholesky=1, two RHS=24, and two residuals=8.
+    assert ridge_solver._multiply_accumulation_estimate(6, 2, 2) == 51
+    assert (
+        ridge_solver._multiply_accumulation_estimate(34_778, 16, 11)
+        < ridge_solver._MAX_REFERENCE_MULTIPLY_ACCUMULATIONS
+    )
+    assert (
+        ridge_solver._multiply_accumulation_estimate(34_778, 1_030, 11)
+        > ridge_solver._MAX_REFERENCE_MULTIPLY_ACCUMULATIONS
+    )
+
+
 def test_centered_ridge_matches_an_analytically_solvable_case() -> None:
     features = (
         (0.0, 0.0),

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from numbers import Real
 
 CENTERED_RIDGE_SOLVER_ID = "tierroute.centered-ridge-cholesky-python-v1"
+_MAX_REFERENCE_MULTIPLY_ACCUMULATIONS = 100_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +94,18 @@ def solve_centered_ridge(
         name="target_columns",
         expected_width=sample_count,
     )
+    work_estimate = _multiply_accumulation_estimate(
+        sample_count,
+        feature_count,
+        len(targets),
+    )
+    if work_estimate > _MAX_REFERENCE_MULTIPLY_ACCUMULATIONS:
+        raise ValueError(
+            "reference ridge work estimate "
+            f"{work_estimate:,} exceeds the audited limit "
+            f"{_MAX_REFERENCE_MULTIPLY_ACCUMULATIONS:,}; "
+            "use a separately reviewed accelerated backend with parity tests"
+        )
 
     feature_means = tuple(
         _mean((row[index] for row in features), sample_count) for index in range(feature_count)
@@ -139,6 +152,25 @@ def solve_centered_ridge(
         intercepts.append(intercept)
 
     return RidgeSolution(weights, tuple(intercepts))
+
+
+def _multiply_accumulation_estimate(
+    sample_count: int,
+    feature_count: int,
+    target_count: int,
+) -> int:
+    """Bound the dominant products before allocating the Gram matrix.
+
+    The count covers the symmetric Gram matrix, Cholesky factorization, all
+    target right-hand sides, and residual verification. It is a conservative
+    operation guard, not a wall-clock benchmark or a promise of performance.
+    """
+
+    gram = sample_count * feature_count * (feature_count + 1) // 2
+    cholesky = feature_count * (feature_count - 1) * (feature_count + 1) // 6
+    right_hand_sides = target_count * sample_count * feature_count
+    residuals = target_count * feature_count * feature_count
+    return gram + cholesky + right_hand_sides + residuals
 
 
 def _coerce_rectangular(

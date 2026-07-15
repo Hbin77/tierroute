@@ -21,7 +21,8 @@ the public API is pre-1.0.
   centered-ridge Cholesky reference solver, and remove the `training` extra and lock.
 - Record the exact ridge solver ID in strict predictor artifacts and CLI training
   output. Full bge-m3-scale fitting remains gated on a reviewed accelerated backend
-  with numerical parity tests.
+  with numerical parity tests; a conservative work guard rejects accidental oversized
+  reference-solver jobs before Gram construction.
 - Replace the pandas/NumPy RouterBench reader with a dependency-free,
   non-dispatching standard-library decoder for the exact pinned artifact.
 - Remove the `routerbench` optional extra, `requirements-routerbench.lock`,

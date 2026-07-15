@@ -80,7 +80,8 @@ modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench
 with the planned 1,024-dimensional bge-m3 embedding (roughly 1,030 total features)
 requires a separately reviewed accelerated backend and numerical parity tests.
 tierroute will not silently reduce or discard embedding dimensions to make that
-experiment fit this reference solver.
+experiment fit this reference solver. A conservative operation-count guard fails fast
+before an unaudited workload can enter the cubic reference path.
 
 ## What is implemented
 
