@@ -17,6 +17,7 @@ from tierroute.adapters import (
 )
 from tierroute.core import BudgetTier, as_cost
 from tierroute.core.atomic_io import AtomicTextWrite, replace_text_bundle, validate_write_paths
+from tierroute.core.integer_text import integer_to_decimal
 from tierroute.demo import (
     BaselineResult,
     RouteDecision,
@@ -28,6 +29,7 @@ from tierroute.policies.lambda_artifacts import LambdaPolicyArtifact
 from tierroute.policies.lambda_tuning import (
     TierLambdaTuningResult,
     cross_fitted_prediction_table,
+    preflight_lambda_search,
     tune_tier_lambdas,
 )
 from tierroute.predictors import (
@@ -134,8 +136,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _fraction_payload(value: Fraction) -> dict[str, str]:
     return {
-        "numerator": str(value.numerator),
-        "denominator": str(value.denominator),
+        "numerator": integer_to_decimal(value.numerator),
+        "denominator": integer_to_decimal(value.denominator),
     }
 
 
@@ -171,7 +173,10 @@ def _save_training_artifacts(
 
 
 def _fraction_label(value: Fraction) -> str:
-    return str(value.numerator) if value.denominator == 1 else str(value)
+    numerator = integer_to_decimal(value.numerator)
+    if value.denominator == 1:
+        return numerator
+    return f"{numerator}/{integer_to_decimal(value.denominator)}"
 
 
 def _candidate_total_label(value: int | None) -> str:
@@ -448,6 +453,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "train":
+        if args.policy_output is not None:
+            candidate_cap = (
+                None
+                if args.exhaustive_lambda_search
+                else (args.max_lambda_candidates or DEFAULT_MAX_LAMBDA_CANDIDATES)
+            )
+            preflight_lambda_search(
+                dataset.examples,
+                dataset.tier_specs,
+                max_candidates_per_tier=candidate_cap,
+                allow_large_exhaustive=args.allow_large_exhaustive_search,
+            )
         config = BilinearTrainingConfig(ridge=args.ridge, seed=args.seed)
         tuning = None
         policy = None
@@ -471,11 +488,7 @@ def main(argv: list[str] | None = None) -> int:
                 dataset.tier_specs,
                 predictions,
                 ledger_factory,
-                max_candidates_per_tier=(
-                    None
-                    if args.exhaustive_lambda_search
-                    else (args.max_lambda_candidates or DEFAULT_MAX_LAMBDA_CANDIDATES)
-                ),
+                max_candidates_per_tier=candidate_cap,
                 allow_large_exhaustive=args.allow_large_exhaustive_search,
             )
             policy = LambdaPolicyArtifact.from_tuning(

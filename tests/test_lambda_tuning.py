@@ -22,6 +22,8 @@ from tierroute.policies.lambda_tuning import (
     exact_lambda_candidates,
     fit_tiered_lambda_router_for_fold,
     nested_lodo_lambda_evaluation,
+    preflight_exhaustive_lambda_search,
+    preflight_lambda_search,
     tune_tier_lambdas,
 )
 from tierroute.predictors import StaticQualityPredictor
@@ -92,6 +94,25 @@ def test_cumulative_tuning_rejects_exact_overspend_in_any_decimal_context() -> N
                 CumulativeBudgetLedger,
                 lambda_grids={BudgetTier.FAST: (0,)},
             )
+
+
+def test_bounded_candidates_support_ten_thousand_digit_cost_ratios() -> None:
+    models = (
+        ModelSpec("free", Decimal("0")),
+        ModelSpec("huge", Decimal("1e10000")),
+    )
+    examples = (_example("huge-root", "general", models, {"free": 0.0, "huge": 1.0}),)
+    predictions = _table(examples, {"free": 0.0, "huge": 1.0})
+
+    candidates = derive_lambda_candidate_set(
+        examples,
+        TierSpec(BudgetTier.FAST, Decimal("1e10000"), 1.0),
+        predictions,
+        max_candidates=2,
+    )
+
+    assert len(candidates.values) == 2
+    assert candidates.observed_breakpoint_count == 1
 
 
 def test_grid_tunes_distinct_lambdas_and_direct_weighted_metric() -> None:
@@ -293,7 +314,7 @@ def test_bounded_candidates_are_labeled_deterministic_and_order_independent() ->
     assert exhaustive.total_derived_values == len(exhaustive.values)
     assert capped.exhaustive is False
     assert capped.total_derived_values is None
-    assert capped.strategy == "bounded-bottom-hash-v1"
+    assert capped.strategy == "bounded-bottom-hash-v2"
     assert capped.observed_breakpoint_count == 6
     assert len(capped.values) <= 3
     assert capped.values[0] == exhaustive.values[0]
@@ -393,7 +414,195 @@ def test_exhaustive_preflight_fails_before_candidate_materialization(
     assert "allow_large_exhaustive=True" in message
 
 
-def test_capped_and_acknowledged_exhaustive_searches_bypass_preflight(
+def test_public_exhaustive_helpers_preflight_before_root_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = (
+        ModelSpec("cheap", Decimal("0")),
+        ModelSpec("premium", Decimal("1")),
+    )
+    examples = (_example("q1", "general", models, {"cheap": 0.5, "premium": 1.0}),)
+    predictions = _table(examples, {"cheap": 0.0, "premium": 1.0})
+    spec = TierSpec(BudgetTier.FAST, Decimal("1"), 1.0)
+    monkeypatch.setattr(lambda_tuning, "MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES", 1)
+
+    def forbidden_materialization(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("root materialization must not start")
+
+    monkeypatch.setattr(
+        lambda_tuning,
+        "_materialize_exact_candidates",
+        forbidden_materialization,
+    )
+
+    with pytest.raises(ValueError, match="refused before candidate materialization"):
+        exact_lambda_candidates(examples, spec, predictions)
+    with pytest.raises(ValueError, match="refused before candidate materialization"):
+        derive_lambda_candidate_set(examples, spec, predictions)
+
+
+def test_exhaustive_preflight_accounts_for_exact_rational_width() -> None:
+    models = tuple(
+        ModelSpec(f"model-{index:03d}", Decimal(f"{index + 1}e-100000")) for index in range(100)
+    )
+    examples = (
+        _example(
+            "wide-roots",
+            "general",
+            models,
+            {model.model_id: 0.5 for model in models},
+        ),
+    )
+    spec = TierSpec(BudgetTier.FAST, Decimal("1"), 1.0)
+
+    with pytest.raises(ValueError, match="estimated exact-rational peak bytes") as caught:
+        preflight_exhaustive_lambda_search(examples, (spec,))
+
+    message = str(caught.value)
+    assert "candidate upper bound=9,902" in message
+    assert "utility-evaluation upper bound=990,200" in message
+    predictions = _table(examples, {model.model_id: 0.5 for model in models})
+    with pytest.raises(ValueError, match="bounded lambda search refused"):
+        derive_lambda_candidate_set(
+            examples,
+            spec,
+            predictions,
+            max_candidates=100_000,
+        )
+    preflight_exhaustive_lambda_search(examples, (spec,), allow_large_exhaustive=True)
+
+
+def test_bounded_preflight_counts_all_pair_scans_without_enumerating_pairs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = (
+        ModelSpec("same-a", Decimal("1")),
+        ModelSpec("same-b", Decimal("1.0")),
+        ModelSpec("second", Decimal("2")),
+        ModelSpec("third", Decimal("3")),
+    )
+    examples = (
+        _example(
+            "pair-scan",
+            "general",
+            models,
+            {model.model_id: 0.5 for model in models},
+        ),
+    )
+    spec = TierSpec(BudgetTier.FAST, Decimal("3"), 1.0)
+    monkeypatch.setattr(lambda_tuning, "MAX_UNCONFIRMED_BREAKPOINT_PAIR_SCANS", 5)
+
+    with pytest.raises(ValueError, match=r"breakpoint pair-scan upper bound=6 \(limit=5\)"):
+        preflight_lambda_search(
+            examples,
+            (spec,),
+            max_candidates_per_tier=2,
+        )
+
+
+def test_preflight_rejects_candidate_evidence_that_cannot_fit_policy_artifact() -> None:
+    models = tuple(
+        ModelSpec(f"model-{index}", Decimal(f"{index + 1}e-100000")) for index in range(6)
+    )
+    examples = (
+        _example(
+            "wide-policy",
+            "general",
+            models,
+            {model.model_id: 0.5 for model in models},
+        ),
+    )
+    specs = tuple(
+        TierSpec(tier, Decimal("1"), weight)
+        for tier, weight in (
+            (BudgetTier.FAST, 0.6),
+            (BudgetTier.BALANCED, 0.3),
+            (BudgetTier.PREMIUM, 0.1),
+        )
+    )
+
+    with pytest.raises(ValueError, match="estimated policy-artifact bytes"):
+        preflight_lambda_search(
+            examples,
+            specs,
+            max_candidates_per_tier=257,
+        )
+    preflight_lambda_search(
+        examples,
+        specs,
+        max_candidates_per_tier=257,
+        allow_large_exhaustive=True,
+    )
+
+
+def test_policy_estimate_combines_root_widths_across_examples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    narrow_gap_models = (
+        ModelSpec("left", Decimal(0)),
+        ModelSpec("right", Decimal("1e-100000")),
+    )
+    wide_gap_models = (
+        ModelSpec("left", Decimal(0)),
+        ModelSpec("right", Decimal("1e50000")),
+    )
+    examples = (
+        _example(
+            "large-root",
+            "first",
+            narrow_gap_models,
+            {"left": 0.0, "right": 1.0},
+        ),
+        _example(
+            "small-root",
+            "second",
+            wide_gap_models,
+            {"left": 0.0, "right": 1.0},
+        ),
+    )
+    spec = TierSpec(BudgetTier.FAST, Decimal("1e50000"), 1.0)
+    monkeypatch.setattr(lambda_tuning, "MAX_POLICY_ARTIFACT_BYTES", 1_200_000)
+
+    with pytest.raises(ValueError, match="estimated policy-artifact bytes"):
+        preflight_lambda_search(
+            examples,
+            (spec,),
+            max_candidates_per_tier=257,
+        )
+
+
+def test_policy_estimate_accounts_for_exact_domain_metadata() -> None:
+    models = (ModelSpec("only", Decimal(1)),)
+    oversized_domain = "d" * lambda_tuning.MAX_POLICY_ARTIFACT_BYTES
+    examples = (
+        _example(
+            "large-domain",
+            oversized_domain,
+            models,
+            {"only": 0.5},
+        ),
+    )
+
+    with pytest.raises(ValueError, match="estimated policy-artifact bytes"):
+        preflight_lambda_search(
+            examples,
+            (TierSpec(BudgetTier.FAST, Decimal(1), 1.0),),
+            max_candidates_per_tier=2,
+        )
+
+
+def test_bounded_hash_v2_has_a_stable_binary_identity_golden_vector() -> None:
+    priority = lambda_tuning._breakpoint_priority(Fraction(1, 2))
+
+    assert priority == (
+        int("942f60554e3c9188c500946c7d9232dd277a33d012c86c4c18fb5c278e496b74", 16),
+        1,
+        2,
+    )
+
+
+def test_large_search_acknowledgement_applies_to_bounded_and_exhaustive_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     models = (
@@ -410,12 +619,21 @@ def test_capped_and_acknowledged_exhaustive_searches_bypass_preflight(
         1,
     )
 
+    with pytest.raises(ValueError, match="bounded lambda search refused"):
+        tune_tier_lambdas(
+            examples,
+            (spec,),
+            predictions,
+            PerQueryBudgetLedger,
+            max_candidates_per_tier=2,
+        )
     capped = tune_tier_lambdas(
         examples,
         (spec,),
         predictions,
         PerQueryBudgetLedger,
         max_candidates_per_tier=2,
+        allow_large_exhaustive=True,
     )
     acknowledged = tune_tier_lambdas(
         examples,
@@ -741,8 +959,12 @@ def test_fold_and_nested_helpers_thread_exhaustive_preflight_options(
     fold = DomainFold("a", examples[1:], (examples[0],))
     spec = TierSpec(BudgetTier.FAST, Decimal("8"), 1.0)
 
+    training_calls = 0
+
     def trainer(rows: tuple[EvaluationExample, ...]) -> StaticQualityPredictor:
+        nonlocal training_calls
         del rows
+        training_calls += 1
         return StaticQualityPredictor({"cheap": 0.5, "premium": 0.8})
 
     monkeypatch.setattr(lambda_tuning, "MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES", 1)
@@ -759,6 +981,7 @@ def test_fold_and_nested_helpers_thread_exhaustive_preflight_options(
             trainer,
             PerQueryBudgetLedger,
         )
+    assert training_calls == 0
     acknowledged_fold = fit_tiered_lambda_router_for_fold(
         fold,
         (spec,),
@@ -772,8 +995,10 @@ def test_fold_and_nested_helpers_thread_exhaustive_preflight_options(
         trainer,
         PerQueryBudgetLedger,
         max_candidates_per_tier=2,
+        allow_large_exhaustive=True,
     )
 
+    calls_before_refused_nested = training_calls
     with pytest.raises(ValueError, match="exhaustive lambda search refused"):
         nested_lodo_lambda_evaluation(
             examples,
@@ -781,6 +1006,7 @@ def test_fold_and_nested_helpers_thread_exhaustive_preflight_options(
             trainer,
             CumulativeBudgetLedger,
         )
+    assert training_calls == calls_before_refused_nested
     acknowledged_nested = nested_lodo_lambda_evaluation(
         examples,
         (spec,),
@@ -794,6 +1020,7 @@ def test_fold_and_nested_helpers_thread_exhaustive_preflight_options(
         trainer,
         CumulativeBudgetLedger,
         max_candidates_per_tier=2,
+        allow_large_exhaustive=True,
     )
 
     assert acknowledged_fold.tuning.selections[0].candidates.exhaustive is True

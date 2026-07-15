@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import tierroute.policies.lambda_artifacts as lambda_artifacts
 from tierroute.adapters import PerQueryBudgetLedger
 from tierroute.core import BudgetTier, CallModel, ModelSpec, RouterState
 from tierroute.eval import (
@@ -28,6 +29,7 @@ from tierroute.policies.lambda_artifacts import (
 from tierroute.policies.lambda_tuning import (
     CrossFittedPredictionTable,
     TierLambdaTuningResult,
+    derive_lambda_candidate_set,
     tune_tier_lambdas,
 )
 from tierroute.predictors import BilinearPredictorArtifact, IsotonicCalibrator
@@ -168,6 +170,133 @@ def test_unknown_bounded_candidate_total_round_trips_as_json_null(
     assert restored["observed_breakpoint_count"] == 17
 
 
+def test_ten_thousand_digit_lambda_round_trips_without_interpreter_tuning(
+    policy_artifact: LambdaPolicyArtifact,
+) -> None:
+    huge_lambda = Fraction(1, 10**10000)
+    candidate_sets = tuple(
+        replace(
+            item,
+            values=(huge_lambda,),
+            total_derived_values=1,
+            exhaustive=False,
+            strategy="explicit-grid-v1",
+            observed_breakpoint_count=0,
+        )
+        for item in policy_artifact.candidate_sets
+    )
+    huge_policy = replace(
+        policy_artifact,
+        lambda_by_tier={tier: huge_lambda for tier in policy_artifact.lambda_by_tier},
+        candidate_sets=candidate_sets,
+    )
+
+    document = huge_policy.to_json()
+    restored = LambdaPolicyArtifact.from_json(document)
+
+    denominator = json.loads(document)["lambdas"]["fast"]["denominator"]
+    assert len(denominator) == 10001
+    assert restored.lambda_by_tier == huge_policy.lambda_by_tier
+
+
+def test_policy_artifact_accepts_lambda_from_minimum_legal_cost(
+    policy_artifact: LambdaPolicyArtifact,
+) -> None:
+    models = (
+        ModelSpec("free", Decimal(0)),
+        ModelSpec("positive", Decimal("1e-100000")),
+    )
+    example = EvaluationExample(
+        example_id="wide-lambda",
+        prompt="Choose an exact cost boundary.",
+        domain="math",
+        outcomes=(
+            CandidateOutcome("free", "free", Decimal(0), 0.0),
+            CandidateOutcome("positive", "positive", Decimal("1e-100000"), 1.0),
+        ),
+        candidate_models=models,
+    )
+    predictions = CrossFittedPredictionTable(
+        {("wide-lambda", "free"): 0.0, ("wide-lambda", "positive"): 1.0}
+    )
+    candidates = derive_lambda_candidate_set(
+        (example,),
+        TierSpec(BudgetTier.FAST, Decimal("1e-100000"), 1.0),
+        predictions,
+        max_candidates=2,
+    )
+    selected = candidates.values[-1]
+    assert selected > 10**100000
+
+    aligned_candidates = tuple(
+        replace(candidates, tier=item.tier) for item in policy_artifact.candidate_sets
+    )
+    wide_policy = replace(
+        policy_artifact,
+        lambda_by_tier={tier: selected for tier in policy_artifact.lambda_by_tier},
+        candidate_sets=aligned_candidates,
+    )
+
+    assert LambdaPolicyArtifact.from_json(wide_policy.to_json()).lambda_by_tier == (
+        wide_policy.lambda_by_tier
+    )
+
+
+def test_policy_artifact_rejects_oversized_exact_integers_before_parsing(
+    policy_artifact: LambdaPolicyArtifact,
+) -> None:
+    payload = copy.deepcopy(policy_artifact.to_dict())
+    payload["lambdas"]["fast"] = {  # type: ignore[index]
+        "numerator": "1",
+        "denominator": "1" + "0" * lambda_artifacts.MAX_POLICY_INTEGER_DECIMAL_DIGITS,
+    }
+
+    with pytest.raises(ValueError, match="denominator exceeds the policy artifact integer limit"):
+        LambdaPolicyArtifact.from_dict(payload)
+
+    oversized = Fraction(1, 10**lambda_artifacts.MAX_POLICY_INTEGER_DECIMAL_DIGITS)
+    with pytest.raises(ValueError, match="policy artifact integer limit"):
+        replace(
+            policy_artifact,
+            lambda_by_tier={tier: oversized for tier in policy_artifact.lambda_by_tier},
+        )
+
+
+def test_policy_artifact_bounds_ledger_adapter_metadata(
+    policy_artifact: LambdaPolicyArtifact,
+) -> None:
+    oversized_name = "l" * (lambda_artifacts.MAX_POLICY_LEDGER_ADAPTER_NAME_BYTES + 1)
+
+    with pytest.raises(ValueError, match="ledger_adapter_name exceeds"):
+        replace(policy_artifact, ledger_adapter_name=oversized_name)
+
+
+def test_policy_artifact_document_and_candidate_limits_apply_before_load(
+    policy_artifact: LambdaPolicyArtifact,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = policy_artifact.to_json()
+    path = tmp_path / "policy.json"
+    path.write_text(document, encoding="utf-8")
+    monkeypatch.setattr(lambda_artifacts, "MAX_POLICY_ARTIFACT_BYTES", len(document) - 1)
+
+    with pytest.raises(ValueError, match="artifact exceeds"):
+        LambdaPolicyArtifact.from_json(document)
+    with pytest.raises(ValueError, match="artifact exceeds"):
+        LambdaPolicyArtifact.load(path)
+    with pytest.raises(ValueError, match="artifact exceeds"):
+        policy_artifact.to_json()
+
+    payload = copy.deepcopy(policy_artifact.to_dict())
+    monkeypatch.setattr(lambda_artifacts, "MAX_POLICY_ARTIFACT_BYTES", 8 * 1024 * 1024)
+    monkeypatch.setattr(lambda_artifacts, "MAX_POLICY_CANDIDATES_PER_TIER", 1)
+    with pytest.raises(ValueError, match="per-tier candidate limit"):
+        LambdaPolicyArtifact.from_dict(payload)
+    with pytest.raises(ValueError, match="per-tier candidate limit"):
+        replace(policy_artifact)
+
+
 def test_from_tuning_binds_provenance_and_builds_a_router(
     predictor_artifact: BilinearPredictorArtifact,
     tuning_result: TierLambdaTuningResult,
@@ -272,6 +401,7 @@ def test_tuning_data_validation_binds_content_and_replay_order(
         '{"artifact_version":NaN}',
         '{"artifact_version":Infinity}',
         '{"artifact_version":-Infinity}',
+        "[" * 2_000 + "0" + "]" * 2_000,
     ],
 )
 def test_parser_rejects_non_strict_json(document: str) -> None:

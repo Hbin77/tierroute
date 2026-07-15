@@ -35,6 +35,8 @@ from tierroute.policies.lambda_tuning import (
     exact_lambda_candidates,
     fit_tiered_lambda_router_for_fold,
     nested_lodo_lambda_evaluation,
+    preflight_exhaustive_lambda_search,
+    preflight_lambda_search,
     tune_tier_lambdas,
 )
 
@@ -65,6 +67,8 @@ __all__ = [
     "fit_tiered_lambda_router_for_fold",
     "nested_lodo_lambda_evaluation",
     "predictor_artifact_sha256",
+    "preflight_exhaustive_lambda_search",
+    "preflight_lambda_search",
     "route_from_predictions",
     "tune_tier_lambdas",
 ]

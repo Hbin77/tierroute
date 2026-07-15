@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -21,6 +22,7 @@ from tierroute.core import (
     RoutingContractError,
     SelectOutput,
 )
+from tierroute.core.integer_text import integer_identity_bytes, integer_to_decimal
 from tierroute.eval import (
     BudgetLedgerFactory,
     DomainFold,
@@ -42,6 +44,7 @@ from tierroute.policies.lambda_threshold import (
     as_lambda,
     route_from_predictions,
 )
+from tierroute.policies.resource_limits import MAX_POLICY_ARTIFACT_BYTES
 from tierroute.predictors.base import (
     BatchPromptQualityPredictor,
     BatchQualityPredictor,
@@ -52,6 +55,11 @@ PredictionKey = tuple[str, str]
 PredictorTrainer = Callable[[tuple[EvaluationExample, ...]], QualityPredictor]
 MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES = 100_000
 MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS = 100_000_000
+MAX_UNCONFIRMED_EXHAUSTIVE_ESTIMATED_BYTES = 256 * 1024 * 1024
+MAX_UNCONFIRMED_BREAKPOINT_PAIR_SCANS = 10_000_000
+
+_BINARY64_DIFFERENCE_NUMERATOR_DECIMAL_DIGITS = 632
+_BINARY64_DIFFERENCE_DENOMINATOR_DECIMAL_DIGITS = 324
 
 
 def _quality_fraction(value: int | float) -> Fraction:
@@ -108,53 +116,207 @@ def _model_ids(examples: tuple[EvaluationExample, ...]) -> tuple[str, ...]:
     return expected
 
 
-def _validate_exhaustive_search_size(
+def _validate_search_size(
     examples: tuple[EvaluationExample, ...],
     tier_specs: tuple[TierSpec, ...],
     model_count: int,
     *,
+    max_candidates_per_tier: int | None,
     allow_large_exhaustive: bool,
 ) -> None:
-    """Reject an unacknowledged exhaustive search before roots are materialized.
+    """Reject an unacknowledged exact search before roots are materialized.
 
     One unequal-cost model pair can contribute at most one non-negative root. If there
     are ``r`` such pair occurrences, the exact set has at most ``r + 1`` boundaries
     (including zero), the adjacent midpoints, and one tail value: ``2 * (r + 1)``
     candidates. Multiplying that count by tiers, rows, and models bounds the dominant
-    exact-utility work performed by simulator replay. Duplicate or negative roots make
-    the real workload smaller, so callers can explicitly override a conservative bound.
+    exact-utility work performed by simulator replay. Decimal cost width also bounds a
+    conservative peak for the exact rational integers. Duplicate or negative roots and
+    fraction reduction make real work smaller, so callers may explicitly acknowledge a
+    reviewed conservative false positive.
     """
 
     if not isinstance(allow_large_exhaustive, bool):
         raise TypeError("allow_large_exhaustive must be a boolean")
+    if max_candidates_per_tier is not None:
+        if isinstance(max_candidates_per_tier, bool) or not isinstance(
+            max_candidates_per_tier, int
+        ):
+            raise TypeError("max_candidates_per_tier must be an integer or None")
+        if max_candidates_per_tier < 2:
+            raise ValueError("max_candidates_per_tier must be at least two")
     if allow_large_exhaustive:
         return
 
+    pair_scan_occurrences = 0
     unequal_cost_pair_occurrences = 0
+    maximum_cost_fraction_digits = 2
+    maximum_root_numerator_digits = 1
+    maximum_root_denominator_digits = 1
     for example in examples:
         models = example.candidate_models
-        unequal_cost_pair_occurrences += sum(
-            left.cost != right.cost
-            for index, left in enumerate(models)
-            for right in models[index + 1 :]
-        )
-    candidate_upper_bound = 2 * (unequal_cost_pair_occurrences + 1)
+        total_pairs = len(models) * (len(models) - 1) // 2
+        pair_scan_occurrences += total_pairs
+        cost_frequencies = Counter(model.cost for model in models)
+        equal_cost_pairs = sum(count * (count - 1) // 2 for count in cost_frequencies.values())
+        unequal_pairs = total_pairs - equal_cost_pairs
+        unequal_cost_pair_occurrences += unequal_pairs
+        nonzero_cost_parts: list[tuple[int, int]] = []
+        for model in models:
+            _, digits, raw_exponent = model.cost.as_tuple()
+            if not isinstance(raw_exponent, int):
+                raise ValueError("model costs must be finite")
+            trailing_zeros = 0
+            for digit in reversed(digits):
+                if digit != 0:
+                    break
+                trailing_zeros += 1
+            if trailing_zeros == len(digits):
+                continue
+            significant_digits = len(digits) - trailing_zeros
+            canonical_exponent = raw_exponent + trailing_zeros
+            nonzero_cost_parts.append((significant_digits, canonical_exponent))
+            # Upper-bound the combined numerator/denominator decimal digits of the
+            # exact Fraction(cost). Reduction can only make the real value smaller.
+            maximum_cost_fraction_digits = max(
+                maximum_cost_fraction_digits,
+                significant_digits + abs(canonical_exponent) + 1,
+            )
+        if unequal_pairs:
+            # Align the example's costs at its smallest canonical exponent. The
+            # resulting coefficient width bounds any nonzero cost difference.
+            common_exponent = min(exponent for _, exponent in nonzero_cost_parts)
+            cost_difference_digits = (
+                max(digits + exponent - common_exponent for digits, exponent in nonzero_cost_parts)
+                + 1
+            )
+            root_numerator_digits = _BINARY64_DIFFERENCE_NUMERATOR_DECIMAL_DIGITS
+            root_denominator_digits = (
+                _BINARY64_DIFFERENCE_DENOMINATOR_DECIMAL_DIGITS + cost_difference_digits
+            )
+            if common_exponent < 0:
+                root_numerator_digits += -common_exponent
+            else:
+                root_denominator_digits += common_exponent
+            maximum_root_numerator_digits = max(
+                maximum_root_numerator_digits,
+                root_numerator_digits,
+            )
+            maximum_root_denominator_digits = max(
+                maximum_root_denominator_digits,
+                root_denominator_digits,
+            )
+    # Adjacent global boundaries can originate in different examples. Combine the
+    # largest numerator and denominator bounds across the whole dataset so their
+    # midpoint remains covered even when neither per-example root has both widths.
+    root_characters = maximum_root_numerator_digits + maximum_root_denominator_digits
+    midpoint_characters = maximum_root_numerator_digits + 3 * maximum_root_denominator_digits + 2
+    tail_characters = (
+        max(maximum_root_numerator_digits, maximum_root_denominator_digits)
+        + maximum_root_denominator_digits
+        + 1
+    )
+    maximum_candidate_fraction_characters = max(
+        2,
+        root_characters,
+        midpoint_characters,
+        tail_characters,
+    )
+    derived_candidate_upper_bound = 2 * (unequal_cost_pair_occurrences + 1)
+    candidate_upper_bound = (
+        derived_candidate_upper_bound
+        if max_candidates_per_tier is None
+        else min(derived_candidate_upper_bound, max_candidates_per_tier)
+    )
     utility_evaluation_upper_bound = (
         candidate_upper_bound * len(tier_specs) * len(examples) * model_count
     )
+    # A cost difference can require four cost-fraction components. A float-quality
+    # difference contributes fewer than 1,024 decimal digits, and midpoint creation
+    # can double the resulting root width. Convert that conservative digit count to
+    # Python-integer payload bytes, then include object/reference headroom and the
+    # simultaneously live boundary/candidate collections.
+    candidate_fraction_digits = 8 * maximum_cost_fraction_digits + 2_050
+    fraction_payload_bytes = (candidate_fraction_digits * 4 + 8) // 9
+    estimated_peak_bytes = candidate_upper_bound * (2 * fraction_payload_bytes + 576)
+    # Policy artifacts repeat retained evidence for each tier. This upper bound uses
+    # the actual cost exponents plus the full finite-binary64 quality range, and adds
+    # one selected lambda per tier and fixed JSON/provenance headroom. It catches a
+    # hard 8 MiB artifact failure before predictor fitting; callers can acknowledge a
+    # reviewed conservative false positive through the same Python API escape hatch.
+    metadata_bytes = 64 * 1024
+    try:
+        metadata_bytes += sum(
+            len(json.dumps(domain, ensure_ascii=False).encode("utf-8")) + 1
+            for domain in sorted({example.domain for example in examples})
+        )
+    except UnicodeEncodeError as error:
+        raise ValueError("evaluation domains must contain valid Unicode text") from error
+    metadata_bytes += sum(len(str(spec.budget_limit).encode("utf-8")) + 64 for spec in tier_specs)
+    estimated_policy_artifact_bytes = (candidate_upper_bound + 1) * len(tier_specs) * (
+        maximum_candidate_fraction_characters + 64
+    ) + metadata_bytes
     if (
-        candidate_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES
+        pair_scan_occurrences <= MAX_UNCONFIRMED_BREAKPOINT_PAIR_SCANS
+        and candidate_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES
         and utility_evaluation_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS
+        and estimated_peak_bytes <= MAX_UNCONFIRMED_EXHAUSTIVE_ESTIMATED_BYTES
+        and estimated_policy_artifact_bytes <= MAX_POLICY_ARTIFACT_BYTES
     ):
         return
+    search_kind = "exhaustive" if max_candidates_per_tier is None else "bounded"
     raise ValueError(
-        "exhaustive lambda search refused before candidate materialization: "
+        f"{search_kind} lambda search refused before candidate materialization or fitting: "
+        f"derived candidate upper bound={derived_candidate_upper_bound:,}; "
+        f"breakpoint pair-scan upper bound={pair_scan_occurrences:,} "
+        f"(limit={MAX_UNCONFIRMED_BREAKPOINT_PAIR_SCANS:,}); "
         f"candidate upper bound={candidate_upper_bound:,} "
         f"(limit={MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES:,}); "
         f"utility-evaluation upper bound={utility_evaluation_upper_bound:,} "
         f"(limit={MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS:,}); "
-        "set max_candidates_per_tier (for example 257), or set "
+        f"estimated exact-rational peak bytes={estimated_peak_bytes:,} "
+        f"(limit={MAX_UNCONFIRMED_EXHAUSTIVE_ESTIMATED_BYTES:,}); "
+        f"estimated policy-artifact bytes={estimated_policy_artifact_bytes:,} "
+        f"(limit={MAX_POLICY_ARTIFACT_BYTES:,}); "
+        "lower max_candidates_per_tier (for example 64), or set "
         "allow_large_exhaustive=True after reviewing resource requirements"
+    )
+
+
+def preflight_lambda_search(
+    examples: Sequence[EvaluationExample],
+    tier_specs: Sequence[TierSpec],
+    *,
+    max_candidates_per_tier: int | None,
+    allow_large_exhaustive: bool = False,
+) -> None:
+    """Refuse an unacknowledged bounded or exhaustive workload before fitting."""
+
+    ordered = _ordered_examples(examples)
+    specs = _tier_specs(tier_specs)
+    model_ids = _model_ids(ordered)
+    _validate_search_size(
+        ordered,
+        specs,
+        len(model_ids),
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
+
+
+def preflight_exhaustive_lambda_search(
+    examples: Sequence[EvaluationExample],
+    tier_specs: Sequence[TierSpec],
+    *,
+    allow_large_exhaustive: bool = False,
+) -> None:
+    """Compatibility wrapper for an uncapped exact-search preflight."""
+
+    preflight_lambda_search(
+        examples,
+        tier_specs,
+        max_candidates_per_tier=None,
+        allow_large_exhaustive=allow_large_exhaustive,
     )
 
 
@@ -226,8 +388,8 @@ class CrossFittedPredictionTable:
                 models.append(
                     {
                         "model_id": model.model_id,
-                        "numerator": str(numerator),
-                        "denominator": str(denominator),
+                        "numerator": integer_to_decimal(numerator),
+                        "denominator": integer_to_decimal(denominator),
                     }
                 )
             payload.append({"example_id": example.example_id, "models": models})
@@ -301,6 +463,8 @@ def exact_lambda_candidates(
     examples: Sequence[EvaluationExample],
     tier_spec: TierSpec,
     predictions: CrossFittedPredictionTable,
+    *,
+    allow_large_exhaustive: bool = False,
 ) -> tuple[Fraction, ...]:
     """Return boundaries and one representative for every exact policy interval.
 
@@ -314,6 +478,11 @@ def exact_lambda_candidates(
 
     if not isinstance(tier_spec, TierSpec):
         raise TypeError("tier_spec must be a TierSpec")
+    preflight_exhaustive_lambda_search(
+        examples,
+        (tier_spec,),
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
     candidates, _ = _materialize_exact_candidates(examples, predictions)
     return candidates
 
@@ -374,7 +543,7 @@ def _materialize_exact_candidates(
 
 
 def _breakpoint_priority(value: Fraction) -> tuple[int, int, int]:
-    document = f"{value.numerator}/{value.denominator}".encode()
+    document = integer_identity_bytes(value.numerator) + integer_identity_bytes(value.denominator)
     digest = int.from_bytes(hashlib.sha256(document).digest(), "big")
     return digest, value.numerator, value.denominator
 
@@ -399,7 +568,7 @@ def _bounded_candidates(
     predictions: CrossFittedPredictionTable,
     maximum: int,
 ) -> tuple[tuple[Fraction, ...], int, bool]:
-    """Retain a deterministic bottom-hash sample of unique roots in bounded memory."""
+    """Retain a deterministic v2 bottom-hash sample of unique roots in bounded memory."""
 
     ordered = _ordered_examples(examples)
     predictions.validate_examples(ordered)
@@ -471,6 +640,7 @@ class LambdaCandidateSet:
             raise ValueError("an exhaustive candidate set must retain every derived value")
         if not isinstance(self.strategy, str) or self.strategy not in {
             "bounded-bottom-hash-v1",
+            "bounded-bottom-hash-v2",
             "exhaustive-breakpoints-v1",
             "explicit-grid-v1",
         }:
@@ -483,7 +653,7 @@ class LambdaCandidateSet:
             raise ValueError("observed_breakpoint_count must be non-negative")
         if self.strategy == "exhaustive-breakpoints-v1" and not self.exhaustive:
             raise ValueError("exhaustive-breakpoints strategy must be exhaustive")
-        if self.strategy == "bounded-bottom-hash-v1" and (
+        if self.strategy in {"bounded-bottom-hash-v1", "bounded-bottom-hash-v2"} and (
             self.exhaustive or self.total_derived_values is not None
         ):
             raise ValueError(
@@ -503,14 +673,25 @@ def derive_lambda_candidate_set(
     predictions: CrossFittedPredictionTable,
     *,
     max_candidates: int | None = None,
+    allow_large_exhaustive: bool = False,
 ) -> LambdaCandidateSet:
     """Derive the complete exact set or a bounded-memory approximation."""
 
+    if not isinstance(tier_spec, TierSpec):
+        raise TypeError("tier_spec must be a TierSpec")
+    if not isinstance(allow_large_exhaustive, bool):
+        raise TypeError("allow_large_exhaustive must be a boolean")
     if max_candidates is not None:
         if isinstance(max_candidates, bool) or not isinstance(max_candidates, int):
             raise TypeError("max_candidates must be an integer or None")
         if max_candidates < 2:
             raise ValueError("max_candidates must be at least two")
+    preflight_lambda_search(
+        examples,
+        (tier_spec,),
+        max_candidates_per_tier=max_candidates,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
     if max_candidates is None:
         retained, observed = _materialize_exact_candidates(examples, predictions)
         exhaustive = True
@@ -523,7 +704,7 @@ def derive_lambda_candidate_set(
             max_candidates,
         )
         total = len(retained) if exhaustive else None
-        strategy = "exhaustive-breakpoints-v1" if exhaustive else "bounded-bottom-hash-v1"
+        strategy = "exhaustive-breakpoints-v1" if exhaustive else "bounded-bottom-hash-v2"
     return LambdaCandidateSet(
         tier=tier_spec.tier,
         values=retained,
@@ -677,6 +858,7 @@ def _candidate_map(
     examples: tuple[EvaluationExample, ...],
     predictions: CrossFittedPredictionTable,
     max_candidates_per_tier: int | None,
+    allow_large_exhaustive: bool,
 ) -> Mapping[BudgetTier, LambdaCandidateSet]:
     tiers = {spec.tier for spec in tier_specs}
     if configured is not None and set(configured) != tiers:
@@ -692,6 +874,7 @@ def _candidate_map(
             tier_specs[0],
             predictions,
             max_candidates=max_candidates_per_tier,
+            allow_large_exhaustive=allow_large_exhaustive,
         )
     for spec in tier_specs:
         if shared is not None:
@@ -747,13 +930,13 @@ def tune_tier_lambdas(
         raise TypeError("allow_large_exhaustive must be a boolean")
     if lambda_grids is not None and max_candidates_per_tier is not None:
         raise ValueError("lambda_grids and max_candidates_per_tier are mutually exclusive")
-    model_ids = _model_ids(ordered)
+    _model_ids(ordered)
     predictions.validate_examples(ordered)
-    if lambda_grids is None and max_candidates_per_tier is None:
-        _validate_exhaustive_search_size(
+    if lambda_grids is None:
+        preflight_lambda_search(
             ordered,
             specs,
-            len(model_ids),
+            max_candidates_per_tier=max_candidates_per_tier,
             allow_large_exhaustive=allow_large_exhaustive,
         )
     candidates_by_tier = _candidate_map(
@@ -762,6 +945,7 @@ def tune_tier_lambdas(
         ordered,
         predictions,
         max_candidates_per_tier,
+        allow_large_exhaustive,
     )
     simulator = OfflineSimulator(ledger_factory)
     selections = []
@@ -850,6 +1034,12 @@ def fit_tiered_lambda_router_for_fold(
     to :func:`tune_tier_lambdas`.
     """
 
+    preflight_lambda_search(
+        fold.training,
+        tier_specs,
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
     predictions = cross_fitted_prediction_table(fold.training, train_predictor)
     tuning = tune_tier_lambdas(
         fold.training,
@@ -989,10 +1179,20 @@ def nested_lodo_lambda_evaluation(
     specs = _tier_specs(tier_specs)
     if len({example.domain for example in ordered}) < 3:
         raise ValueError("nested LODO lambda evaluation requires at least three domains")
+    outer_folds = leave_one_domain_out(ordered)
+    # Check every fold before fitting the first predictor. Domain sizes can differ, so
+    # a later fold can have a larger bounded or exhaustive workload than the first one.
+    for fold in outer_folds:
+        preflight_lambda_search(
+            fold.training,
+            specs,
+            max_candidates_per_tier=max_candidates_per_tier,
+            allow_large_exhaustive=allow_large_exhaustive,
+        )
     outer_predictions: dict[PredictionKey, float] = {}
     per_example_lambdas: dict[tuple[BudgetTier, str], Fraction] = {}
     fold_results = []
-    for fold in leave_one_domain_out(ordered):
+    for fold in outer_folds:
         inner_predictions = cross_fitted_prediction_table(fold.training, train_predictor)
         tuning = tune_tier_lambdas(
             fold.training,

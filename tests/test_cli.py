@@ -9,9 +9,15 @@ from pathlib import Path
 import pytest
 
 from tierroute.adapters import bundled_synthetic_path, load_evaluation_dataset
-from tierroute.cli import DEFAULT_MAX_LAMBDA_CANDIDATES, main
+from tierroute.cli import (
+    DEFAULT_MAX_LAMBDA_CANDIDATES,
+    _fraction_label,
+    _fraction_payload,
+    main,
+)
 from tierroute.core import BudgetTier, atomic_io
 from tierroute.demo import evaluate_six_baselines, route_prompt
+from tierroute.policies import lambda_tuning
 from tierroute.policies.lambda_artifacts import LambdaPolicyArtifact
 from tierroute.policies.lambda_tuning import tune_tier_lambdas
 from tierroute.predictors import BilinearPredictorArtifact
@@ -77,6 +83,17 @@ def test_demo_router_changes_model_with_tier_and_difficulty() -> None:
         lambda_cost=Fraction(1, 3),
     )
     assert injected.lambda_cost == Fraction(1, 3)
+
+
+def test_cli_fraction_rendering_supports_ten_thousand_digits() -> None:
+    value = Fraction(1, 10**10000)
+
+    payload = _fraction_payload(value)
+    label = _fraction_label(value)
+
+    assert payload["numerator"] == "1"
+    assert len(payload["denominator"]) == 10001
+    assert label == f"1/{payload['denominator']}"
 
 
 def test_evaluate_command_prints_all_required_baselines(capsys: object) -> None:
@@ -353,6 +370,44 @@ def test_cli_default_and_large_exhaustive_acknowledgement_are_forwarded(
     assert calls[-1] == (None, True)
 
 
+@pytest.mark.parametrize("search_args", [[], ["--exhaustive-lambda-search"]])
+def test_cli_search_preflight_runs_before_predictor_fitting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    search_args: list[str],
+) -> None:
+    fitted = False
+
+    def forbidden_fit(*args: object, **kwargs: object) -> None:
+        nonlocal fitted
+        del args, kwargs
+        fitted = True
+        raise AssertionError("predictor fitting must not start")
+
+    monkeypatch.setattr(lambda_tuning, "MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES", 1)
+    monkeypatch.setattr("tierroute.cli.fit_calibrated_bilinear", forbidden_fit)
+    predictor = tmp_path / "predictor.json"
+    policy = tmp_path / "policy.json"
+
+    with pytest.raises(ValueError, match="refused before candidate materialization"):
+        main(
+            [
+                "train",
+                "--output",
+                str(predictor),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                *search_args,
+            ]
+        )
+
+    assert fitted is False
+    assert not predictor.exists()
+    assert not policy.exists()
+
+
 def test_train_then_route_with_canonical_exact_policy(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -395,13 +450,13 @@ def test_train_then_route_with_canonical_exact_policy(
             assert detail["strategy"] == "exhaustive-breakpoints-v1"
         else:
             assert detail["derived_candidates"] is None
-            assert detail["strategy"] == "bounded-bottom-hash-v1"
+            assert detail["strategy"] == "bounded-bottom-hash-v2"
     balanced_search = training["lambda_search"]["balanced"]
     assert balanced_search["derived_candidates"] is None
     assert balanced_search["exhaustive"] is False
     assert balanced_search["observed_breakpoint_count"] > 0
     assert balanced_search["retained_candidates"] == 2
-    assert balanced_search["strategy"] == "bounded-bottom-hash-v1"
+    assert balanced_search["strategy"] == "bounded-bottom-hash-v2"
 
     assert (
         main(

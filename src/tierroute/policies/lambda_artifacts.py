@@ -14,6 +14,7 @@ from types import MappingProxyType
 
 from tierroute.core import BudgetTier, as_cost
 from tierroute.core.atomic_io import AtomicTextWrite, replace_text_bundle
+from tierroute.core.integer_text import decimal_to_integer, integer_to_decimal
 from tierroute.eval import (
     EvaluationExample,
     TierSpec,
@@ -23,10 +24,17 @@ from tierroute.eval import (
 from tierroute.features import EmbeddingProvider
 from tierroute.policies.lambda_threshold import TieredLambdaRouter
 from tierroute.policies.lambda_tuning import LambdaCandidateSet, TierLambdaTuningResult
+from tierroute.policies.resource_limits import (
+    MAX_POLICY_ARTIFACT_BYTES,
+    MAX_POLICY_CANDIDATES_PER_TIER,
+    MAX_POLICY_INTEGER_DECIMAL_DIGITS,
+    MAX_POLICY_LEDGER_ADAPTER_NAME_BYTES,
+)
 from tierroute.predictors.artifacts import BilinearPredictorArtifact
 
 LAMBDA_POLICY_ARTIFACT_VERSION = 1
 LAMBDA_NUMERIC_CONVENTION = "exact-fraction-v1"
+_MAX_POLICY_INTEGER_EXCLUSIVE = 10**MAX_POLICY_INTEGER_DECIMAL_DIGITS
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _INTEGER_PATTERN = re.compile(r"0|-?[1-9][0-9]*")
 _POSITIVE_INTEGER_PATTERN = re.compile(r"[1-9][0-9]*")
@@ -66,10 +74,22 @@ def _utf8_text(value: object, context: str) -> str:
 
 
 def _fraction_dict(value: Fraction) -> dict[str, str]:
+    _validate_fraction_size(value, "fraction")
     return {
-        "numerator": str(value.numerator),
-        "denominator": str(value.denominator),
+        "numerator": integer_to_decimal(value.numerator),
+        "denominator": integer_to_decimal(value.denominator),
     }
+
+
+def _validate_fraction_size(value: Fraction, context: str) -> None:
+    if (
+        abs(value.numerator) >= _MAX_POLICY_INTEGER_EXCLUSIVE
+        or value.denominator >= _MAX_POLICY_INTEGER_EXCLUSIVE
+    ):
+        raise ValueError(
+            f"{context} exceeds the policy artifact integer limit "
+            f"({MAX_POLICY_INTEGER_DECIMAL_DIGITS:,} decimal digits)"
+        )
 
 
 def _fraction(value: object, context: str, *, nonnegative: bool = False) -> Fraction:
@@ -77,16 +97,42 @@ def _fraction(value: object, context: str, *, nonnegative: bool = False) -> Frac
     _strict_fields(payload, {"numerator", "denominator"}, context)
     numerator = payload["numerator"]
     denominator = payload["denominator"]
+    if isinstance(numerator, str):
+        numerator_digits = len(numerator) - int(numerator.startswith("-"))
+        if numerator_digits > MAX_POLICY_INTEGER_DECIMAL_DIGITS:
+            raise ValueError(f"{context}.numerator exceeds the policy artifact integer limit")
+    if isinstance(denominator, str) and len(denominator) > MAX_POLICY_INTEGER_DECIMAL_DIGITS:
+        raise ValueError(f"{context}.denominator exceeds the policy artifact integer limit")
     if not isinstance(numerator, str) or not _INTEGER_PATTERN.fullmatch(numerator):
         raise ValueError(f"{context}.numerator must be a canonical integer string")
     if not isinstance(denominator, str) or not _POSITIVE_INTEGER_PATTERN.fullmatch(denominator):
         raise ValueError(f"{context}.denominator must be a canonical positive integer string")
-    result = Fraction(int(numerator), int(denominator))
-    if str(result.numerator) != numerator or str(result.denominator) != denominator:
+    result = Fraction(decimal_to_integer(numerator), decimal_to_integer(denominator))
+    if (
+        integer_to_decimal(result.numerator) != numerator
+        or integer_to_decimal(result.denominator) != denominator
+    ):
         raise ValueError(f"{context} must be a reduced canonical fraction")
     if nonnegative and result < 0:
         raise ValueError(f"{context} must be non-negative")
     return result
+
+
+def _validate_artifact_document(document: str) -> None:
+    if not isinstance(document, str):
+        raise ValueError("lambda policy artifact must be text")
+    if len(document) > MAX_POLICY_ARTIFACT_BYTES:
+        raise ValueError(
+            f"lambda policy artifact exceeds {MAX_POLICY_ARTIFACT_BYTES:,} UTF-8 bytes"
+        )
+    try:
+        encoded = document.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ValueError("lambda policy artifact is not valid UTF-8 text") from error
+    if len(encoded) > MAX_POLICY_ARTIFACT_BYTES:
+        raise ValueError(
+            f"lambda policy artifact exceeds {MAX_POLICY_ARTIFACT_BYTES:,} UTF-8 bytes"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +166,8 @@ class LambdaPolicyArtifact:
             raise ValueError("lambda_by_tier must use non-empty BudgetTier keys")
         if any(not isinstance(value, Fraction) or value < 0 for value in lambdas.values()):
             raise ValueError("lambda_by_tier values must be non-negative Fractions")
+        for tier, value in lambdas.items():
+            _validate_fraction_size(value, f"lambda_by_tier[{tier.value}]")
         for name in (
             "predictor_sha256",
             "tuning_data_sha256",
@@ -147,13 +195,25 @@ class LambdaPolicyArtifact:
         tiers = tuple(spec.tier for spec in specs)
         if not specs or len(tiers) != len(set(tiers)) or set(tiers) != set(lambdas):
             raise ValueError("tier_specs and lambda_by_tier must cover identical unique tiers")
-        _utf8_text(self.ledger_adapter_name, "ledger_adapter_name")
+        ledger_adapter_name = _utf8_text(self.ledger_adapter_name, "ledger_adapter_name")
+        if len(ledger_adapter_name.encode("utf-8")) > MAX_POLICY_LEDGER_ADAPTER_NAME_BYTES:
+            raise ValueError(
+                "ledger_adapter_name exceeds the policy artifact metadata limit "
+                f"({MAX_POLICY_LEDGER_ADAPTER_NAME_BYTES:,} UTF-8 bytes)"
+            )
         candidate_sets = tuple(self.candidate_sets)
         if any(not isinstance(item, LambdaCandidateSet) for item in candidate_sets):
             raise TypeError("candidate_sets must contain LambdaCandidateSet values")
         if tuple(item.tier for item in candidate_sets) != tiers:
             raise ValueError("candidate_sets must align with tier_specs order")
         for candidate_set in candidate_sets:
+            if len(candidate_set.values) > MAX_POLICY_CANDIDATES_PER_TIER:
+                raise ValueError(
+                    "candidate set exceeds the policy artifact per-tier candidate limit "
+                    f"({MAX_POLICY_CANDIDATES_PER_TIER:,})"
+                )
+            for value in candidate_set.values:
+                _validate_fraction_size(value, f"candidate_sets[{candidate_set.tier.value}]")
             if lambdas[candidate_set.tier] not in candidate_set.values:
                 raise ValueError("each selected lambda must occur in its candidate set")
         object.__setattr__(self, "lambda_by_tier", MappingProxyType(lambdas))
@@ -287,7 +347,7 @@ class LambdaPolicyArtifact:
     def to_json(self) -> str:
         """Serialize deterministic strict JSON."""
 
-        return (
+        document = (
             json.dumps(
                 self.to_dict(),
                 ensure_ascii=False,
@@ -297,6 +357,8 @@ class LambdaPolicyArtifact:
             )
             + "\n"
         )
+        _validate_artifact_document(document)
+        return document
 
     def save(self, path: str | Path) -> Path:
         """Atomically save the canonical JSON artifact."""
@@ -309,6 +371,8 @@ class LambdaPolicyArtifact:
     @classmethod
     def from_json(cls, document: str) -> LambdaPolicyArtifact:
         """Parse strict JSON without pickle or code execution."""
+
+        _validate_artifact_document(document)
 
         def reject_constant(value: str) -> object:
             raise ValueError(f"non-standard JSON number {value!r} is forbidden")
@@ -327,7 +391,7 @@ class LambdaPolicyArtifact:
                 parse_constant=reject_constant,
                 object_pairs_hook=unique_object,
             )
-        except (TypeError, ValueError) as error:
+        except (TypeError, ValueError, RecursionError) as error:
             raise ValueError("lambda policy artifact is not valid strict JSON") from error
         return cls.from_dict(_mapping(payload, "artifact"))
 
@@ -336,8 +400,17 @@ class LambdaPolicyArtifact:
         """Load one local policy artifact without network access."""
 
         try:
-            document = Path(path).read_text(encoding="utf-8")
+            with Path(path).open("rb") as stream:
+                payload = stream.read(MAX_POLICY_ARTIFACT_BYTES + 1)
         except (OSError, UnicodeError) as error:
+            raise ValueError(f"cannot read lambda policy artifact: {path}") from error
+        if len(payload) > MAX_POLICY_ARTIFACT_BYTES:
+            raise ValueError(
+                f"lambda policy artifact exceeds {MAX_POLICY_ARTIFACT_BYTES:,} UTF-8 bytes"
+            )
+        try:
+            document = payload.decode("utf-8")
+        except UnicodeDecodeError as error:
             raise ValueError(f"cannot read lambda policy artifact: {path}") from error
         return cls.from_json(document)
 
@@ -357,6 +430,8 @@ class LambdaPolicyArtifact:
             "artifact",
         )
         lambdas_payload = _mapping(payload["lambdas"], "lambdas")
+        if len(lambdas_payload) > len(BudgetTier):
+            raise ValueError("lambdas contains too many budget tiers")
         lambdas: dict[BudgetTier, Fraction] = {}
         for raw_tier, value in lambdas_payload.items():
             try:
@@ -386,6 +461,8 @@ class LambdaPolicyArtifact:
         specs_payload = tuning["tier_specs"]
         if not isinstance(specs_payload, list):
             raise ValueError("tuning.tier_specs must be an array")
+        if len(specs_payload) > len(BudgetTier):
+            raise ValueError("tuning.tier_specs contains too many entries")
         specs = []
         for index, value in enumerate(specs_payload):
             item = _mapping(value, f"tuning.tier_specs[{index}]")
@@ -412,6 +489,8 @@ class LambdaPolicyArtifact:
         candidates_payload = tuning["candidate_sets"]
         if not isinstance(candidates_payload, list):
             raise ValueError("tuning.candidate_sets must be an array")
+        if len(candidates_payload) > len(BudgetTier):
+            raise ValueError("tuning.candidate_sets contains too many entries")
         candidate_sets = []
         for index, value in enumerate(candidates_payload):
             item = _mapping(value, f"tuning.candidate_sets[{index}]")
@@ -430,6 +509,11 @@ class LambdaPolicyArtifact:
             values = item["values"]
             if not isinstance(item["tier"], str) or not isinstance(values, list):
                 raise ValueError("candidate set tier must be a string and values an array")
+            if len(values) > MAX_POLICY_CANDIDATES_PER_TIER:
+                raise ValueError(
+                    "candidate set exceeds the policy artifact per-tier candidate limit "
+                    f"({MAX_POLICY_CANDIDATES_PER_TIER:,})"
+                )
             candidate_sets.append(
                 LambdaCandidateSet(
                     tier=BudgetTier(item["tier"]),
