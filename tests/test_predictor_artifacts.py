@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 from dataclasses import replace
@@ -30,6 +31,9 @@ def test_artifact_json_is_canonical_and_round_trips(
     loaded = BilinearPredictorArtifact.load(path)
 
     assert document.endswith("\n")
+    assert hashlib.sha256(document.encode("utf-8")).hexdigest() == (
+        "8b1a5dd9d0bbf921144d0133e90d370f15a7ec899772d3e8c7b8295868a5a8b6"
+    )
     assert loaded.solver_id == "tierroute.centered-ridge-cholesky-python-v1"
     assert loaded.to_json() == document
     assert (

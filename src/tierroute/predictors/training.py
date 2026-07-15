@@ -14,10 +14,16 @@ from tierroute.eval import (
     leave_one_domain_out,
 )
 from tierroute.features import EmbeddingProvider, PromptFeatureEncoder
-from tierroute.predictors._ridge import fit_centered_ridge
+from tierroute.predictors._ridge import CENTERED_RIDGE_SOLVER_ID
 from tierroute.predictors.artifacts import BilinearPredictorArtifact
 from tierroute.predictors.base import BilinearQualityPredictor
 from tierroute.predictors.calibration import IsotonicCalibrator
+from tierroute.predictors.solvers import (
+    RidgeSolver,
+    fit_targets_with_solver,
+    resolve_ridge_solver,
+    validate_ridge_solver_id,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,12 +32,14 @@ class BilinearTrainingConfig:
 
     ridge: float = 1.0
     seed: int = 0
+    solver_id: str = CENTERED_RIDGE_SOLVER_ID
 
     def __post_init__(self) -> None:
         if isinstance(self.ridge, bool) or not math.isfinite(self.ridge) or self.ridge <= 0:
             raise ValueError("ridge must be finite and positive")
         if isinstance(self.seed, bool) or not isinstance(self.seed, int):
             raise TypeError("seed must be an integer")
+        validate_ridge_solver_id(self.solver_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +81,7 @@ def _fit_base(
     examples: Sequence[EvaluationExample],
     config: BilinearTrainingConfig,
     embedding_provider: EmbeddingProvider | None,
+    solver: RidgeSolver,
 ) -> _FittedBase:
     ordered = _ordered_examples(examples)
     model_ids = _model_ids(ordered)
@@ -80,6 +89,11 @@ def _fit_base(
     encoder = PromptFeatureEncoder.fit(
         prompts,
         embedding_provider=embedding_provider,
+    )
+    solver.preflight(
+        sample_count=len(ordered),
+        feature_count=encoder.schema.dimension,
+        target_count=len(model_ids),
     )
     feature_rows = encoder.transform_many(prompts)
     if len(feature_rows) != len(ordered) or any(
@@ -93,7 +107,12 @@ def _fit_base(
         )
         for model_id in model_ids
     }
-    fitted = fit_centered_ridge(feature_rows, targets_by_model, ridge=config.ridge)
+    fitted = fit_targets_with_solver(
+        solver,
+        feature_rows,
+        targets_by_model,
+        ridge=config.ridge,
+    )
     model_weights = {model_id: fitted[model_id][0] for model_id in model_ids}
     model_bias = {model_id: fitted[model_id][1] for model_id in model_ids}
     if any(
@@ -125,6 +144,7 @@ def fit_calibrated_bilinear(
     """
 
     config = config or BilinearTrainingConfig()
+    solver = resolve_ridge_solver(config.solver_id)
     ordered = _ordered_examples(training_examples)
     model_ids = _model_ids(ordered)
     folds = leave_one_domain_out(ordered)
@@ -132,7 +152,7 @@ def fit_calibrated_bilinear(
     oof_targets: dict[str, list[float]] = {model_id: [] for model_id in model_ids}
 
     for fold in folds:
-        fitted = _fit_base(fold.training, config, embedding_provider)
+        fitted = _fit_base(fold.training, config, embedding_provider, solver)
         predictions_by_example = fitted.predictor.predict_batch(
             tuple(example.prompt for example in fold.test),
             model_ids,
@@ -156,7 +176,7 @@ def fit_calibrated_bilinear(
         )
         for model_id in model_ids
     }
-    fitted = _fit_base(ordered, config, embedding_provider)
+    fitted = _fit_base(ordered, config, embedding_provider, solver)
     return BilinearPredictorArtifact(
         feature_schema=fitted.encoder.schema,
         model_weights=fitted.model_weights,
@@ -167,6 +187,7 @@ def fit_calibrated_bilinear(
         training_domains=tuple(sorted({example.domain for example in ordered})),
         ridge=config.ridge,
         seed=config.seed,
+        solver_id=solver.solver_id,
     )
 
 

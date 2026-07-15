@@ -17,6 +17,11 @@ from tierroute.predictors.calibration import (
     IsotonicCalibrator,
     PerModelCalibratedQualityPredictor,
 )
+from tierroute.predictors.solvers import (
+    KNOWN_RIDGE_SOLVER_IDS,
+    RidgeSolver,
+    resolve_ridge_solver,
+)
 from tierroute.predictors.training import (
     BilinearTrainingConfig,
     fit_calibrated_bilinear,
@@ -25,6 +30,7 @@ from tierroute.predictors.training import (
 )
 
 __all__ = [
+    "KNOWN_RIDGE_SOLVER_IDS",
     "PREDICTOR_ARTIFACT_VERSION",
     "BatchPromptQualityPredictor",
     "BatchQualityPredictor",
@@ -35,8 +41,10 @@ __all__ = [
     "IsotonicCalibrator",
     "PerModelCalibratedQualityPredictor",
     "QualityPredictor",
+    "RidgeSolver",
     "StaticQualityPredictor",
     "fit_calibrated_bilinear",
     "fit_calibrated_bilinear_for_fold",
+    "resolve_ridge_solver",
     "training_data_sha256",
 ]

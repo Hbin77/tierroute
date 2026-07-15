@@ -127,7 +127,11 @@ backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-
 표면 특징을 합친 약 1,030차원으로 RouterBench 전체 보고 실험을 하려면 별도로
 검토한 가속 backend와 수치 parity 테스트가 필요합니다. 참조 solver에 맞추기 위해
 임베딩 차원을 조용히 줄이거나 버리지 않습니다. 보수적인 연산량 guard가 검토되지
-않은 큰 작업이 cubic 참조 경로에 들어가기 전에 즉시 실패시킵니다.
+않은 큰 작업이 cubic 참조 경로에 들어가기 전에 즉시 실패시킵니다. 학습은 정적으로
+검토한 solver ID 하나를 한 번만 resolve하고 같은 solver를 모든 inner-LODO fit과
+최종 refit에 전달합니다. 밀집 임베딩을 materialize하기 전에 preflight하며,
+추론은 저장된 coefficient만 쓰므로 선택적 학습 backend 없이도 artifact를 읽습니다.
+알 수 없는 solver ID는 계속 fail-closed 처리합니다.
 
 ## 현재 구현 범위
 
