@@ -144,8 +144,7 @@ def _validate_exhaustive_search_size(
     )
     if (
         candidate_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES
-        and utility_evaluation_upper_bound
-        <= MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS
+        and utility_evaluation_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS
     ):
         return
     raise ValueError(
