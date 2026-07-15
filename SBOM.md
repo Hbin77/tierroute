@@ -5,8 +5,9 @@
 Last audited: 2026-07-15. Update this file in the same commit whenever a dependency,
 model, dataset, font, media asset, or CI action is added or upgraded.
 
-The core `tierroute` runtime has no third-party Python dependency. Optional data readers
-and development tools are isolated from the offline routing path.
+The core `tierroute` runtime has no third-party Python dependency. The pinned
+RouterBench artifact is decoded with the Python standard library; development tools are
+isolated from the offline routing path.
 
 ## Build dependency
 
@@ -33,21 +34,6 @@ Exact versions are recorded in `requirements-dev.lock`.
 | tomli | 2.4.1 | MIT | https://github.com/hukkin/tomli | TOML parsing on Python 3.10 | Conditional transitive (`python_version < 3.11`) |
 | typing-extensions | 4.16.0 | PSF-2.0 | https://github.com/python/typing_extensions | Backported typing APIs on Python 3.10 | Conditional transitive (`python_version < 3.11`) |
 
-## Optional RouterBench reader
-
-These packages are not installed by `pip install -e .`. They are pinned in
-`requirements-routerbench.lock` and the `routerbench` extra solely to authenticate and
-read the upstream pickle during opt-in local validation.
-
-| Component | Version | License | Source | Purpose | Relationship |
-|---|---:|---|---|---|---|
-| numpy | 2.2.6 | BSD-3-Clause | https://github.com/numpy/numpy | pandas numerical arrays | Direct optional pin |
-| pandas | 2.3.3 | BSD-3-Clause | https://github.com/pandas-dev/pandas | Read authenticated RouterBench DataFrame pickle | Direct optional pin |
-| python-dateutil | 2.9.0.post0 | Apache-2.0 OR BSD-3-Clause | https://github.com/dateutil/dateutil | pandas date utilities | Transitive |
-| pytz | 2026.2 | MIT | https://github.com/stub42/pytz | pandas timezone data | Transitive |
-| six | 1.17.0 | MIT | https://github.com/benjaminp/six | python-dateutil compatibility | Transitive |
-| tzdata | 2026.3 | Apache-2.0 | https://github.com/python/tzdata | pandas timezone database | Transitive |
-
 ## Models and model-serving assets
 
 | Asset | Revision | License | Source | Purpose | Repository status |
@@ -62,7 +48,7 @@ project-authored deterministic demo logic, not an AI model or benchmark result.
 | Asset | Revision / checksum | License | Source | Purpose | Repository status |
 |---|---|---|---|---|---|
 | tierroute synthetic smoke dataset | `src/tierroute/data/synthetic.json` | Apache-2.0 | Project-authored | Clone-without-download quickstart and CI | Distributed; sidecar SPDX license included |
-| RouterBench 0-shot | HF revision `784021482c3f320c6619ed4b3bb3b41a21424fcb`; SHA-256 `ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e65d36d` | NOASSERTION | https://huggingface.co/datasets/withmartian/routerbench | Optional external harness validation | Never committed or redistributed; upstream license clarification required |
+| RouterBench 0-shot | HF revision `784021482c3f320c6619ed4b3bb3b41a21424fcb`; artifact SHA-256 `ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e65d36d`; decoded semantic SHA-256 `7b4749ad5c4bdb338c2317b306c382680b1a23dc83c73e29ab805b8f7e472e87` | NOASSERTION | https://huggingface.co/datasets/withmartian/routerbench/tree/784021482c3f320c6619ed4b3bb3b41a21424fcb | Optional external harness validation | Never committed or redistributed; upstream license clarification required |
 
 RouterBench's GitHub code repository is MIT-licensed, but that declaration does not
 license the separate Hugging Face dataset. tierroute contains no copied RouterBench code.
@@ -76,8 +62,10 @@ license the separate Hugging Face dataset. tierroute contains no copied RouterBe
 
 ## License gate
 
-CI installs both the exact development lock and the optional RouterBench reader lock,
-then scans that clean environment with `pip-licenses`. It rejects GPL, LGPL, and AGPL
-family metadata and permits only the reviewed permissive license set. This scan does
-not replace manual review of models, datasets, vendored files, or GitHub Actions; those
+CI installs the exact development lock, then scans that clean environment with
+`pip-licenses`. It rejects GPL, LGPL, and AGPL family metadata and permits only the
+reviewed permissive license set. CI also installs the base wheel into a separate fresh
+environment and asserts that neither pandas nor NumPy is present, so optional developer
+or future training tools cannot mask the RouterBench reader boundary. This scan does not
+replace manual review of models, datasets, vendored files, or GitHub Actions; those
 assets must also be added to this SBOM before adoption.

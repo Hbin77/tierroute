@@ -162,7 +162,7 @@ cost, and quality for each prompt.
 
 RouterBench is not bundled. Its dataset card declares no license at the pinned revision,
 so tierroute records it as **`NOASSERTION`** and does not grant redistribution rights.
-Review the [upstream dataset card](https://huggingface.co/datasets/withmartian/routerbench)
+Review the [dataset card at the pinned revision](https://huggingface.co/datasets/withmartian/routerbench/blob/784021482c3f320c6619ed4b3bb3b41a21424fcb/README.md)
 and obtain any permission you require before opting in.
 
 - Artifact: `routerbench_0shot.pkl`
@@ -170,37 +170,49 @@ and obtain any permission you require before opting in.
 - Size: `99,567,659` bytes
 - SHA-256: `ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e65d36d`
 
-Install the pinned optional reader (or use
-`python -m pip install --requirement requirements-routerbench.lock`), then run the
-explicit download:
+No optional reader packages are required. Run the explicit download from an installed
+core checkout:
 
 ```bash
-python -m pip install -e '.[routerbench]'
 python scripts/download_routerbench.py \
   --output data/routerbench/routerbench_0shot.pkl
 ```
 
-The file is a pandas pickle. **Pickle deserialization can execute arbitrary code.** The
-adapter verifies the exact pinned size and SHA-256 before calling `pandas.read_pickle`,
-but integrity verification is not a sandbox and does not establish that upstream bytes
-are safe. Load it only if you trust that exact upstream artifact, preferably in an
-isolated environment. Pandas and NumPy are pinned optional reader dependencies rather
-than core runtime dependencies.
+The upstream file uses the pickle wire format, but tierroute does **not** call
+`pickle.load`, `pickle.Unpickler`, or `pandas.read_pickle`. The adapter first requires
+the exact pinned size and SHA-256, then uses a project-owned, non-dispatching standard-
+library opcode decoder. Referenced globals remain inert data: no callable named by the
+payload is imported or invoked. Unexpected opcodes, globals, block layouts, dtypes, shapes, memo
+references, trailing bytes, or table schema are rejected. This decoder intentionally
+supports only the exact artifact above and adds no pandas or NumPy dependency.
 
-After downloading, validate and replay a deterministic prefix with networking forced
-off:
+As a decoder regression oracle, local validation also requires exactly 36,497 rows by
+37 columns and the canonical semantic SHA-256
+`7b4749ad5c4bdb338c2317b306c382680b1a23dc83c73e29ab805b8f7e472e87`. The
+semantic digest frames column order, UTF-8 strings, and IEEE-754 binary64 values; it
+does not replace the artifact SHA-256 used for authentication. The declared benchmark
+mapping retains 34,778 examples across 11 models and 7 LODO domains.
+
+After downloading, validate and replay a deterministic prefix with Hugging Face offline
+mode set. The validator itself contains no network client and reads only the local path:
 
 ```bash
 HF_HUB_OFFLINE=1 python scripts/validate_routerbench.py --limit 200
 ```
 
-The full pinned artifact validation converts 34,778 in-scope examples across 11 models
-and identifies 7 LODO domains before replaying the requested prefix. Those counts are
-artifact/schema validation facts, **not** a model-quality benchmark claim. The current
+The full pinned artifact validation checks 34,778 in-scope rows across 11 models and
+identifies 7 LODO domains, then converts only the requested replay prefix to keep memory
+bounded. Those counts are artifact/schema validation facts, **not** a model-quality
+benchmark claim. The current
 `evaluate --data` option remains JSON-only and does not accept this pickle directly.
 Because RouterBench stores post-response realized costs, validation fits model-level
 pre-call quotes on a separate calibration prefix and never exposes the routed row's
 realized charge to a policy.
+
+The authenticated wire table is materialized in memory. Allow at least 512 MiB of
+headroom; the default prefix validation measured about 290 MB maximum RSS on the
+reference Python 3.12 environment. `--limit` bounds typed replay retention, while
+`--limit 0` intentionally replays all post-calibration rows.
 
 ### bge-m3 (planned, local-only)
 

@@ -157,7 +157,7 @@ Apache-2.0으로 배포합니다. replay JSON은 `schema_version: 1`이며 tier 
 
 RouterBench는 저장소에 포함하지 않습니다. 고정 revision의 dataset card에 라이선스가
 선언되어 있지 않아 tierroute는 **`NOASSERTION`**으로 기록하며 재배포 권리를 부여하지
-않습니다. 사용 전 [upstream dataset card](https://huggingface.co/datasets/withmartian/routerbench)를
+않습니다. 사용 전 [고정 revision의 dataset card](https://huggingface.co/datasets/withmartian/routerbench/blob/784021482c3f320c6619ed4b3bb3b41a21424fcb/README.md)를
 검토하고 필요한 허가를 직접 확보해야 합니다.
 
 - 파일: `routerbench_0shot.pkl`
@@ -165,35 +165,48 @@ RouterBench는 저장소에 포함하지 않습니다. 고정 revision의 datase
 - 크기: `99,567,659` bytes
 - SHA-256: `ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e65d36d`
 
-고정된 선택 reader를 설치하거나
-`python -m pip install --requirement requirements-routerbench.lock`을 사용한 뒤,
-명시적 다운로드를 실행합니다.
+별도 reader 패키지는 필요하지 않습니다. core를 설치한 checkout에서 명시적
+다운로드를 실행합니다.
 
 ```bash
-python -m pip install -e '.[routerbench]'
 python scripts/download_routerbench.py \
   --output data/routerbench/routerbench_0shot.pkl
 ```
 
-이 파일은 pandas pickle입니다. **pickle 역직렬화는 임의 코드를 실행할 수 있습니다.**
-어댑터는 `pandas.read_pickle` 전에 크기와 SHA-256이 정확히 일치하는지 확인하지만,
-무결성 검사는 sandbox가 아니며 upstream 파일의 안전성을 증명하지 않습니다. 해당
-고정 파일을 신뢰할 때만 격리 환경에서 여십시오. pandas와 NumPy는 core 런타임이 아닌
-고정된 선택 reader 의존성입니다.
+upstream 파일은 pickle wire format을 사용하지만 tierroute는 `pickle.load`,
+`pickle.Unpickler`, `pandas.read_pickle`을 호출하지 않습니다. 어댑터는 먼저 정확히
+고정된 크기와 SHA-256을 요구한 뒤, 프로젝트가 작성한 non-dispatching 표준
+라이브러리 opcode decoder로 구조만 해석합니다. 참조된 global은 비활성 데이터로
+남아 payload가 지칭하는 callable을 import하거나 실행하지 않습니다. 예상하지 않은 opcode,
+global, block layout, dtype, shape, memo 참조, trailing byte, table schema는 거부합니다.
+이 decoder는 위의 정확한 artifact만 의도적으로 지원하며 pandas와 NumPy 의존성을
+추가하지 않습니다.
 
-다운로드 후 네트워크를 강제로 끈 상태에서 전체 파일을 검증하고 결정론적 prefix를
-replay합니다.
+decoder 회귀 oracle로 로컬 검증은 정확히 36,497행×37열과 canonical semantic
+SHA-256 `7b4749ad5c4bdb338c2317b306c382680b1a23dc83c73e29ab805b8f7e472e87`도
+요구합니다. semantic digest는 열 순서, UTF-8 문자열, IEEE-754 binary64 값을 framing하며,
+인증에 사용하는 artifact SHA-256을 대체하지 않습니다. 선언된 benchmark mapping에는
+11개 모델과 7개 LODO domain에 속한 34,778개 예제가 남습니다.
+
+다운로드 후 Hugging Face offline mode를 설정하고 전체 파일과 결정론적 prefix를
+검증합니다. validator 자체에는 network client가 없으며 지정한 로컬 경로만 읽습니다.
 
 ```bash
 HF_HUB_OFFLINE=1 python scripts/validate_routerbench.py --limit 200
 ```
 
-고정 artifact 전체 검증은 in-scope example 34,778개를 모델 11개 형식으로 변환하고
-LODO domain 7개를 식별한 뒤 지정한 prefix를 replay합니다. 이 개수는 artifact/schema
-검증 사실이며 **모델 품질 benchmark claim이 아닙니다.** 현재 `evaluate --data`는 이
+고정 artifact 전체 검증은 in-scope row 34,778개, 모델 11개, LODO domain 7개를
+확인한 뒤 메모리를 제한하기 위해 지정한 replay prefix만 typed example로 변환합니다.
+이 개수는 artifact/schema 검증 사실이며 **모델 품질 benchmark claim이 아닙니다.** 현재
+`evaluate --data`는 이
 pickle이 아니라 replay JSON만 입력받습니다. RouterBench 비용은 응답 후 실현 비용이므로
 검증 스크립트는 별도 calibration prefix에서 모델별 호출 전 견적을 맞추고, 라우팅할
 행의 실제 청구액은 정책에 노출하지 않습니다.
+
+인증된 wire table은 메모리에 materialize됩니다. 최소 512 MiB 여유를 권장하며 기준
+Python 3.12 환경에서 기본 prefix 검증의 최대 RSS는 약 290 MB였습니다. `--limit`는
+typed replay 보유량을 제한하고, `--limit 0`은 의도적으로 calibration 이후 전체 행을
+replay합니다.
 
 ### bge-m3(계획, local-only)
 
