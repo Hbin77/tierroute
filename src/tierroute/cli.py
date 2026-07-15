@@ -12,9 +12,11 @@ from typing import Any
 from tierroute.adapters import (
     CumulativeBudgetLedger,
     PerQueryBudgetLedger,
+    bundled_synthetic_path,
     load_evaluation_dataset,
 )
 from tierroute.core import BudgetTier, as_cost
+from tierroute.core.atomic_io import AtomicTextWrite, replace_text_bundle, validate_write_paths
 from tierroute.demo import (
     BaselineResult,
     RouteDecision,
@@ -128,6 +130,37 @@ def _fraction_payload(value: Fraction) -> dict[str, str]:
         "numerator": str(value.numerator),
         "denominator": str(value.denominator),
     }
+
+
+def _save_training_artifacts(
+    artifact: BilinearPredictorArtifact,
+    output: Path,
+    *,
+    policy: LambdaPolicyArtifact | None,
+    policy_output: Path | None,
+    data_source: Path,
+) -> tuple[Path, Path | None]:
+    """Commit a predictor and optional bound policy as one rollback-safe bundle."""
+
+    predictor_document = artifact.to_json()
+    writes = [AtomicTextWrite(output, predictor_document, BilinearPredictorArtifact.from_json)]
+    if policy is None:
+        if policy_output is not None:
+            raise AssertionError("policy output was supplied without a policy")
+    else:
+        if policy_output is None:
+            raise AssertionError("policy output is required for a policy")
+        policy.validate_predictor(artifact)
+
+        def validate_bound_policy(document: str) -> None:
+            restored_predictor = BilinearPredictorArtifact.from_json(predictor_document)
+            restored_policy = LambdaPolicyArtifact.from_json(document)
+            restored_policy.validate_predictor(restored_predictor)
+
+        writes.append(AtomicTextWrite(policy_output, policy.to_json(), validate_bound_policy))
+
+    saved = replace_text_bundle(tuple(writes), protected_paths=(data_source,))
+    return saved[0], None if len(saved) == 1 else saved[1]
 
 
 def _fraction_label(value: Fraction) -> str:
@@ -322,8 +355,14 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("train --max-lambda-candidates requires --policy-output")
         if args.max_lambda_candidates is not None and args.max_lambda_candidates < 2:
             parser.error("train --max-lambda-candidates must be at least 2")
-        if args.policy_output is not None and args.output.resolve() == args.policy_output.resolve():
-            parser.error("train --output and --policy-output must be different paths")
+        data_source = args.data if args.data is not None else bundled_synthetic_path()
+        destinations = (
+            (args.output,) if args.policy_output is None else (args.output, args.policy_output)
+        )
+        try:
+            validate_write_paths(destinations, protected_paths=(data_source,))
+        except ValueError as error:
+            parser.error(f"train artifact paths are unsafe: {error}")
     dataset = load_evaluation_dataset(getattr(args, "data", None))
 
     if args.command == "route":
@@ -431,8 +470,14 @@ def main(argv: list[str] | None = None) -> int:
                 dataset.tier_specs,
                 args.budget_scope,
             )
-        output = artifact.save(args.output)
-        policy_output = None if policy is None else policy.save(args.policy_output)
+        data_source = args.data if args.data is not None else bundled_synthetic_path()
+        output, policy_output = _save_training_artifacts(
+            artifact,
+            args.output,
+            policy=policy,
+            policy_output=args.policy_output,
+            data_source=data_source,
+        )
         payload = _training_payload(
             artifact,
             output,

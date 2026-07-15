@@ -2,6 +2,7 @@
 """End-to-end tests for clone-without-data quickstart commands."""
 
 import json
+import os
 from fractions import Fraction
 from pathlib import Path
 
@@ -9,9 +10,10 @@ import pytest
 
 from tierroute.adapters import bundled_synthetic_path, load_evaluation_dataset
 from tierroute.cli import main
-from tierroute.core import BudgetTier
+from tierroute.core import BudgetTier, atomic_io
 from tierroute.demo import evaluate_six_baselines, route_prompt
 from tierroute.policies.lambda_artifacts import LambdaPolicyArtifact
+from tierroute.predictors import BilinearPredictorArtifact
 
 
 def test_route_command_shows_decision_cost_and_predicted_quality(capsys: object) -> None:
@@ -170,6 +172,92 @@ def test_train_rejects_predictor_and_policy_destination_alias(
     assert caught.value.code == 2
     assert "must be different paths" in capsys.readouterr().err
     assert not destination.exists()
+
+
+def test_train_bundle_avoids_the_old_fixed_temporary_name_collision(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    predictor = tmp_path / ".policy.json.tmp"
+    policy = tmp_path / "policy.json"
+
+    assert (
+        main(
+            [
+                "train",
+                "--output",
+                str(predictor),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--max-lambda-candidates",
+                "2",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    loaded_predictor = BilinearPredictorArtifact.load(predictor)
+    loaded_policy = LambdaPolicyArtifact.load(policy)
+    loaded_policy.validate_predictor(loaded_predictor)
+
+
+def test_train_rejects_output_aliasing_the_source_before_clobbering_it(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "replay.json"
+    original = bundled_synthetic_path().read_bytes()
+    source.write_bytes(original)
+
+    with pytest.raises(SystemExit) as caught:
+        main(["train", "--data", str(source), "--output", str(source)])
+
+    assert caught.value.code == 2
+    assert "protected input path" in capsys.readouterr().err
+    assert source.read_bytes() == original
+
+
+def test_train_bundle_rolls_back_both_outputs_when_policy_replace_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    predictor = tmp_path / "predictor.json"
+    policy = tmp_path / "policy.json"
+    predictor.write_text("old predictor", encoding="utf-8")
+    policy.write_text("old policy", encoding="utf-8")
+    real_replace = os.replace
+
+    def fail_policy_stage(source: str | Path, destination: str | Path) -> None:
+        if Path(destination) == policy and ".stage." in Path(source).name:
+            raise OSError("injected policy replacement failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(atomic_io.os, "replace", fail_policy_stage)
+
+    with pytest.raises(OSError, match="injected policy"):
+        main(
+            [
+                "train",
+                "--output",
+                str(predictor),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--max-lambda-candidates",
+                "2",
+            ]
+        )
+
+    assert predictor.read_text(encoding="utf-8") == "old predictor"
+    assert policy.read_text(encoding="utf-8") == "old policy"
+    assert not [
+        path for path in tmp_path.iterdir() if ".stage." in path.name or ".backup." in path.name
+    ]
 
 
 def test_lambda_search_options_are_policy_only_and_mutually_exclusive(
