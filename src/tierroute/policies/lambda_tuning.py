@@ -50,6 +50,8 @@ from tierroute.predictors.base import (
 
 PredictionKey = tuple[str, str]
 PredictorTrainer = Callable[[tuple[EvaluationExample, ...]], QualityPredictor]
+MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES = 100_000
+MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS = 100_000_000
 
 
 def _quality_fraction(value: int | float) -> Fraction:
@@ -104,6 +106,57 @@ def _model_ids(examples: tuple[EvaluationExample, ...]) -> tuple[str, ...]:
         if current != expected:
             raise ValueError("lambda tuning requires a stable model catalogue")
     return expected
+
+
+def _validate_exhaustive_search_size(
+    examples: tuple[EvaluationExample, ...],
+    tier_specs: tuple[TierSpec, ...],
+    model_count: int,
+    *,
+    allow_large_exhaustive: bool,
+) -> None:
+    """Reject an unacknowledged exhaustive search before roots are materialized.
+
+    One unequal-cost model pair can contribute at most one non-negative root. If there
+    are ``r`` such pair occurrences, the exact set has at most ``r + 1`` boundaries
+    (including zero), the adjacent midpoints, and one tail value: ``2 * (r + 1)``
+    candidates. Multiplying that count by tiers, rows, and models bounds the dominant
+    exact-utility work performed by simulator replay. Duplicate or negative roots make
+    the real workload smaller, so callers can explicitly override a conservative bound.
+    """
+
+    if not isinstance(allow_large_exhaustive, bool):
+        raise TypeError("allow_large_exhaustive must be a boolean")
+    if allow_large_exhaustive:
+        return
+
+    unequal_cost_pair_occurrences = 0
+    for example in examples:
+        models = example.candidate_models
+        unequal_cost_pair_occurrences += sum(
+            left.cost != right.cost
+            for index, left in enumerate(models)
+            for right in models[index + 1 :]
+        )
+    candidate_upper_bound = 2 * (unequal_cost_pair_occurrences + 1)
+    utility_evaluation_upper_bound = (
+        candidate_upper_bound * len(tier_specs) * len(examples) * model_count
+    )
+    if (
+        candidate_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES
+        and utility_evaluation_upper_bound
+        <= MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS
+    ):
+        return
+    raise ValueError(
+        "exhaustive lambda search refused before candidate materialization: "
+        f"candidate upper bound={candidate_upper_bound:,} "
+        f"(limit={MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES:,}); "
+        f"utility-evaluation upper bound={utility_evaluation_upper_bound:,} "
+        f"(limit={MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS:,}); "
+        "set max_candidates_per_tier (for example 257), or set "
+        "allow_large_exhaustive=True after reviewing resource requirements"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -675,6 +728,7 @@ def tune_tier_lambdas(
     *,
     lambda_grids: Mapping[BudgetTier, Sequence[LambdaInput]] | None = None,
     max_candidates_per_tier: int | None = None,
+    allow_large_exhaustive: bool = False,
 ) -> TierLambdaTuningResult:
     """Tune each tier's realized quality through the real simulator.
 
@@ -684,14 +738,25 @@ def tune_tier_lambdas(
     The guarantee is exhaustive when ``max_candidates_per_tier`` is ``None``. A cap
     streams every root into a deterministic bounded-memory sample, then rank-spaces
     the small derived candidate set; metadata labels that approximation explicitly.
+    Large exhaustive upper bounds fail before root materialization unless the caller
+    explicitly sets ``allow_large_exhaustive=True`` after reviewing resource needs.
     """
 
     ordered = _ordered_examples(examples)
     specs = _tier_specs(tier_specs)
+    if not isinstance(allow_large_exhaustive, bool):
+        raise TypeError("allow_large_exhaustive must be a boolean")
     if lambda_grids is not None and max_candidates_per_tier is not None:
         raise ValueError("lambda_grids and max_candidates_per_tier are mutually exclusive")
-    _model_ids(ordered)
+    model_ids = _model_ids(ordered)
     predictions.validate_examples(ordered)
+    if lambda_grids is None and max_candidates_per_tier is None:
+        _validate_exhaustive_search_size(
+            ordered,
+            specs,
+            len(model_ids),
+            allow_large_exhaustive=allow_large_exhaustive,
+        )
     candidates_by_tier = _candidate_map(
         specs,
         lambda_grids,
@@ -776,8 +841,15 @@ def fit_tiered_lambda_router_for_fold(
     tier_specs: Sequence[TierSpec],
     train_predictor: PredictorTrainer,
     ledger_factory: BudgetLedgerFactory,
+    *,
+    max_candidates_per_tier: int | None = None,
+    allow_large_exhaustive: bool = False,
 ) -> TunedLambdaRouterForFold:
-    """Tune on inner-LODO predictions, then refit only on outer training rows."""
+    """Tune on inner-LODO predictions, then refit only on outer training rows.
+
+    Search caps and explicit large-exhaustive acknowledgement are forwarded unchanged
+    to :func:`tune_tier_lambdas`.
+    """
 
     predictions = cross_fitted_prediction_table(fold.training, train_predictor)
     tuning = tune_tier_lambdas(
@@ -785,6 +857,8 @@ def fit_tiered_lambda_router_for_fold(
         tier_specs,
         predictions,
         ledger_factory,
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
     )
     final_predictor = train_predictor(fold.training)
     return TunedLambdaRouterForFold(
@@ -899,6 +973,7 @@ def nested_lodo_lambda_evaluation(
     ledger_factory: BudgetLedgerFactory,
     *,
     max_candidates_per_tier: int | None = None,
+    allow_large_exhaustive: bool = False,
 ) -> NestedLodoLambdaResult:
     """Run true nested LODO and replay all outer predictions once in original order.
 
@@ -907,6 +982,8 @@ def nested_lodo_lambda_evaluation(
     The injected ledger factory receives each replay's query count and alone decides
     whether a configured limit is fixed-total or scales with population size; this
     orchestration never guesses or rescales unresolved challenge semantics.
+    Search caps and large-exhaustive acknowledgement apply independently inside every
+    outer fold before the final original-order replay.
     """
 
     ordered = _ordered_examples(examples)
@@ -924,6 +1001,7 @@ def nested_lodo_lambda_evaluation(
             inner_predictions,
             ledger_factory,
             max_candidates_per_tier=max_candidates_per_tier,
+            allow_large_exhaustive=allow_large_exhaustive,
         )
         final_predictor = train_predictor(fold.training)
         held_out_predictions = CrossFittedPredictionTable.from_predictor(

@@ -355,6 +355,90 @@ def test_derived_candidates_are_computed_once_and_reused_across_tiers(
     ]
 
 
+def test_exhaustive_preflight_fails_before_candidate_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = (
+        ModelSpec("cheap", Decimal("0")),
+        ModelSpec("premium", Decimal("1")),
+    )
+    examples = (_example("q1", "general", models, {"cheap": 0.5, "premium": 1.0}),)
+    predictions = _table(examples, {"cheap": 0.0, "premium": 1.0})
+    spec = TierSpec(BudgetTier.FAST, Decimal("1"), 1.0)
+    monkeypatch.setattr(lambda_tuning, "MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES", 3)
+    monkeypatch.setattr(
+        lambda_tuning,
+        "MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS",
+        7,
+    )
+
+    def forbidden_candidate_map(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("candidate materialization must not start")
+
+    monkeypatch.setattr(lambda_tuning, "_candidate_map", forbidden_candidate_map)
+
+    with pytest.raises(ValueError, match="refused before candidate materialization") as caught:
+        tune_tier_lambdas(
+            examples,
+            (spec,),
+            predictions,
+            PerQueryBudgetLedger,
+        )
+
+    message = str(caught.value)
+    assert "candidate upper bound=4 (limit=3)" in message
+    assert "utility-evaluation upper bound=8 (limit=7)" in message
+    assert "max_candidates_per_tier" in message
+    assert "allow_large_exhaustive=True" in message
+
+
+def test_capped_and_acknowledged_exhaustive_searches_bypass_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = (
+        ModelSpec("cheap", Decimal("0")),
+        ModelSpec("premium", Decimal("1")),
+    )
+    examples = (_example("q1", "general", models, {"cheap": 0.5, "premium": 1.0}),)
+    predictions = _table(examples, {"cheap": 0.0, "premium": 1.0})
+    spec = TierSpec(BudgetTier.FAST, Decimal("1"), 1.0)
+    monkeypatch.setattr(lambda_tuning, "MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES", 1)
+    monkeypatch.setattr(
+        lambda_tuning,
+        "MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS",
+        1,
+    )
+
+    capped = tune_tier_lambdas(
+        examples,
+        (spec,),
+        predictions,
+        PerQueryBudgetLedger,
+        max_candidates_per_tier=2,
+    )
+    acknowledged = tune_tier_lambdas(
+        examples,
+        (spec,),
+        predictions,
+        PerQueryBudgetLedger,
+        allow_large_exhaustive=True,
+    )
+
+    assert len(capped.selections[0].candidates.values) == 2
+    assert capped.selections[0].candidates.exhaustive is False
+    assert acknowledged.selections[0].candidates.exhaustive is True
+    with pytest.raises(TypeError, match="allow_large_exhaustive must be a boolean"):
+        tune_tier_lambdas(
+            examples,
+            (spec,),
+            predictions,
+            PerQueryBudgetLedger,
+            max_candidates_per_tier=2,
+            allow_large_exhaustive=1,  # type: ignore[arg-type]
+        )
+
+
 def test_exhaustive_candidates_match_dense_decision_signature_oracle() -> None:
     models = (
         ModelSpec("cheap", Decimal("0")),
@@ -636,6 +720,90 @@ def test_outer_fold_tuning_never_observes_held_out_rows() -> None:
     assert all("q-a" not in call and "outer-sentinel" not in call for call in observed)
     assert first.tuning.lambda_by_tier == second.tuning.lambda_by_tier
     assert first.tuning.prediction_sha256 == second.tuning.prediction_sha256
+
+
+def test_fold_and_nested_helpers_thread_exhaustive_preflight_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models = (
+        ModelSpec("cheap", Decimal("1")),
+        ModelSpec("premium", Decimal("2")),
+    )
+    examples = tuple(
+        _example(
+            f"q-{domain}",
+            domain,
+            models,
+            {"cheap": 0.5, "premium": 0.8},
+        )
+        for domain in ("a", "b", "c", "d")
+    )
+    fold = DomainFold("a", examples[1:], (examples[0],))
+    spec = TierSpec(BudgetTier.FAST, Decimal("8"), 1.0)
+
+    def trainer(rows: tuple[EvaluationExample, ...]) -> StaticQualityPredictor:
+        del rows
+        return StaticQualityPredictor({"cheap": 0.5, "premium": 0.8})
+
+    monkeypatch.setattr(lambda_tuning, "MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES", 1)
+    monkeypatch.setattr(
+        lambda_tuning,
+        "MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS",
+        1,
+    )
+
+    with pytest.raises(ValueError, match="exhaustive lambda search refused"):
+        fit_tiered_lambda_router_for_fold(
+            fold,
+            (spec,),
+            trainer,
+            PerQueryBudgetLedger,
+        )
+    acknowledged_fold = fit_tiered_lambda_router_for_fold(
+        fold,
+        (spec,),
+        trainer,
+        PerQueryBudgetLedger,
+        allow_large_exhaustive=True,
+    )
+    capped_fold = fit_tiered_lambda_router_for_fold(
+        fold,
+        (spec,),
+        trainer,
+        PerQueryBudgetLedger,
+        max_candidates_per_tier=2,
+    )
+
+    with pytest.raises(ValueError, match="exhaustive lambda search refused"):
+        nested_lodo_lambda_evaluation(
+            examples,
+            (spec,),
+            trainer,
+            CumulativeBudgetLedger,
+        )
+    acknowledged_nested = nested_lodo_lambda_evaluation(
+        examples,
+        (spec,),
+        trainer,
+        CumulativeBudgetLedger,
+        allow_large_exhaustive=True,
+    )
+    capped_nested = nested_lodo_lambda_evaluation(
+        examples,
+        (spec,),
+        trainer,
+        CumulativeBudgetLedger,
+        max_candidates_per_tier=2,
+    )
+
+    assert acknowledged_fold.tuning.selections[0].candidates.exhaustive is True
+    assert len(capped_fold.tuning.selections[0].candidates.values) <= 2
+    assert all(
+        item.tuning.selections[0].candidates.exhaustive for item in acknowledged_nested.folds
+    )
+    assert all(
+        len(item.tuning.selections[0].candidates.values) <= 2 for item in capped_nested.folds
+    )
 
 
 def test_nested_lodo_replays_outer_predictions_once_in_original_order() -> None:
