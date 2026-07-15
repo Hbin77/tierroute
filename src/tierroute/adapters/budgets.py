@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from tierroute.core import Cost
+from tierroute.core import Cost, add_cost, scale_cost, subtract_cost
 from tierroute.eval.schemas import BudgetReport
 
 
@@ -58,12 +58,12 @@ class PerQueryBudgetLedger:
         _validate_charge(cost)
         if self._active_query is None:
             raise RuntimeError("begin_query must be called before charging")
-        self._spent += cost
+        self._spent = add_cost(self._spent, cost)
         if cost > self._remaining:
             self._over_budget_calls += 1
             self._remaining = Decimal(0)
             return False
-        self._remaining -= cost
+        self._remaining = subtract_cost(self._remaining, cost)
         return True
 
     def finish_query(self) -> None:
@@ -75,7 +75,7 @@ class PerQueryBudgetLedger:
         return BudgetReport(
             adapter_name="per-query",
             configured_limit=self.budget_limit,
-            effective_total_limit=self.budget_limit * self.expected_queries,
+            effective_total_limit=scale_cost(self.budget_limit, self.expected_queries),
             spent=self._spent,
             over_budget_calls=self._over_budget_calls,
             query_order=tuple(self._query_order),
@@ -116,12 +116,12 @@ class CumulativeBudgetLedger:
         _validate_charge(cost)
         if self._active_query is None:
             raise RuntimeError("begin_query must be called before charging")
-        self._spent += cost
+        self._spent = add_cost(self._spent, cost)
         if cost > self._remaining:
             self._over_budget_calls += 1
             self._remaining = Decimal(0)
             return False
-        self._remaining -= cost
+        self._remaining = subtract_cost(self._remaining, cost)
         return True
 
     def finish_query(self) -> None:

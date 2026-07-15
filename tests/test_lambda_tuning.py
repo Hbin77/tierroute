@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from itertools import product
 
@@ -65,6 +65,33 @@ def _table(
             for model in example.candidate_models
         }
     )
+
+
+def test_cumulative_tuning_rejects_exact_overspend_in_any_decimal_context() -> None:
+    model = ModelSpec("only", Decimal("0"))
+    realized_costs = (Decimal("0.33333333333333333333333333333"),) * 3 + (Decimal("5e-29"),)
+    examples = tuple(
+        _example(
+            f"exact-{index}",
+            "general",
+            (model,),
+            {"only": 0.5},
+            realized_costs={"only": cost},
+        )
+        for index, cost in enumerate(realized_costs)
+    )
+    predictions = _table(examples, {"only": 0.5})
+
+    with localcontext() as context:
+        context.prec = 2
+        with pytest.raises(ValueError, match="no fully feasible lambda"):
+            tune_tier_lambdas(
+                examples,
+                (TierSpec(BudgetTier.FAST, Decimal("1"), 1.0),),
+                predictions,
+                CumulativeBudgetLedger,
+                lambda_grids={BudgetTier.FAST: (0,)},
+            )
 
 
 def test_grid_tunes_distinct_lambdas_and_direct_weighted_metric() -> None:

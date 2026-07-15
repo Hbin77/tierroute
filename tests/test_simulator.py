@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """End-to-end tests for full-information offline replay."""
 
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 from tierroute.adapters import CumulativeBudgetLedger, PerQueryBudgetLedger
 from tierroute.core import BudgetTier, CallModel, ModelSpec, SelectOutput
@@ -154,6 +154,33 @@ def test_realized_overspend_is_recorded_and_exhausts_cumulative_budget() -> None
     assert result.queries[1].cost == Decimal(0)
     assert result.budget.spent == Decimal("9")
     assert result.budget.over_budget_calls == 1
+
+
+def test_simulator_costs_do_not_depend_on_decimal_context() -> None:
+    model = ModelSpec("only", Decimal("0"))
+    realized_costs = (Decimal("0.33333333333333333333333333333"),) * 3 + (Decimal("5e-29"),)
+    examples = tuple(
+        EvaluationExample(
+            f"exact-{index}",
+            f"prompt {index}",
+            "general",
+            (CandidateOutcome("only", "answer", cost, 0.5),),
+            (model,),
+        )
+        for index, cost in enumerate(realized_costs)
+    )
+
+    with localcontext() as context:
+        context.prec = 2
+        result = OfflineSimulator(CumulativeBudgetLedger).run_tier(
+            AlwaysCheapestRouter(),
+            examples,
+            TierSpec(BudgetTier.FAST, Decimal("1"), 1.0),
+        )
+
+    assert [query.feasible for query in result.queries] == [True, True, True, False]
+    assert result.queries[-1].cost == Decimal("5e-29")
+    assert result.budget.spent == Decimal("1.00000000000000000000000000004")
 
 
 def test_split_domain_is_not_exposed_without_explicit_router_metadata() -> None:

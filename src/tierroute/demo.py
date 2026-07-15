@@ -8,7 +8,15 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 from tierroute.adapters import EvaluationDataset, PerQueryBudgetLedger
-from tierroute.core import BudgetTier, CallModel, Cost, ModelSpec, RouterState, validate_action
+from tierroute.core import (
+    BudgetTier,
+    CallModel,
+    Cost,
+    ModelSpec,
+    RouterState,
+    sum_costs,
+    validate_action,
+)
 from tierroute.eval import (
     EvaluationReport,
     OfflineSimulator,
@@ -219,10 +227,7 @@ def evaluate_six_baselines(dataset: EvaluationDataset) -> tuple[BaselineResult, 
                 report=report,
                 score=summarize_report(report),
                 gap_recovery=oracle_gap_recovery(report, cheapest_report, oracle_report),
-                total_cost=sum(
-                    (query.cost for tier in report.tiers for query in tier.queries),
-                    start=dataset.tier_specs[0].budget_limit * 0,
-                ),
+                total_cost=sum_costs(query.cost for tier in report.tiers for query in tier.queries),
             )
         )
     return tuple(rows)
