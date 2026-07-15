@@ -23,6 +23,7 @@ from tierroute.eval.schemas import (
     EvaluationExample,
     EvaluationReport,
     QueryResult,
+    ReplayCall,
     TierResult,
     TierSpec,
 )
@@ -95,9 +96,11 @@ class OfflineSimulator:
         ledger: BudgetLedger,
     ) -> QueryResult:
         history: list[CallRecord] = []
+        replayed_calls: list[ReplayCall] = []
         charged = Decimal(0)
         trace: list[str] = []
         outcome_by_model = {outcome.model_id: outcome for outcome in example.outcomes}
+        quoted_cost_by_model = {model.model_id: model.cost for model in example.candidate_models}
 
         while True:
             state = RouterState(
@@ -112,7 +115,14 @@ class OfflineSimulator:
                 action = self._route_action(router, state, example.example_id)
                 validate_action(state, action)
             except RoutingContractError as error:
-                return self._failed_query(example, tier_spec, charged, trace, str(error))
+                return self._failed_query(
+                    example,
+                    tier_spec,
+                    charged,
+                    trace,
+                    replayed_calls,
+                    str(error),
+                )
 
             if isinstance(action, CallModel):
                 if len(history) >= self.max_calls_per_query:
@@ -121,18 +131,31 @@ class OfflineSimulator:
                         tier_spec,
                         charged,
                         trace,
+                        replayed_calls,
                         f"max_calls_per_query={self.max_calls_per_query} exceeded",
                     )
                 outcome = outcome_by_model[action.model_id]
                 remaining_before_call = ledger.remaining_budget
                 charged = add_cost(charged, outcome.cost)
                 trace.append(f"call {outcome.model_id}: {action.reason}")
-                if not ledger.charge_realized(outcome.cost):
+                within_budget = ledger.charge_realized(outcome.cost)
+                replayed_calls.append(
+                    ReplayCall(
+                        model_id=outcome.model_id,
+                        quoted_cost=quoted_cost_by_model[outcome.model_id],
+                        realized_cost=outcome.cost,
+                        remaining_budget_before=remaining_before_call,
+                        remaining_budget_after=ledger.remaining_budget,
+                        within_budget=within_budget,
+                    )
+                )
+                if not within_budget:
                     return self._failed_query(
                         example,
                         tier_spec,
                         charged,
                         trace,
+                        replayed_calls,
                         "realized cost "
                         f"{outcome.cost} exceeded remaining budget {remaining_before_call}",
                     )
@@ -161,6 +184,8 @@ class OfflineSimulator:
                     output=record.output,
                     predicted_quality=float(prediction) if prediction is not None else None,
                     decision_reason=" -> ".join(trace),
+                    calls=tuple(replayed_calls),
+                    selected_call_index=action.history_index,
                 )
 
             raise AssertionError("validate_action accepted an unknown action type")
@@ -179,6 +204,7 @@ class OfflineSimulator:
         tier_spec: TierSpec,
         charged: Decimal,
         trace: list[str],
+        replayed_calls: list[ReplayCall],
         error: str,
     ) -> QueryResult:
         return QueryResult(
@@ -191,4 +217,5 @@ class OfflineSimulator:
             output=None,
             decision_reason=" -> ".join(trace),
             error=error,
+            calls=tuple(replayed_calls),
         )

@@ -20,6 +20,7 @@ from tierroute.eval.schemas import (
     EvaluationExample,
     EvaluationReport,
     QueryResult,
+    ReplayCall,
     TierResult,
     TierSpec,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "EvaluationReport",
     "OfflineSimulator",
     "QueryResult",
+    "ReplayCall",
     "ScoreSummary",
     "TierResult",
     "TierSpec",

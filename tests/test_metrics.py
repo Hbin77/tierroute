@@ -11,6 +11,7 @@ from tierroute.eval import (
     BudgetReport,
     EvaluationReport,
     QueryResult,
+    ReplayCall,
     TierResult,
     TierSpec,
     oracle_gap_recovery,
@@ -28,6 +29,20 @@ WEIGHTS = {
 def report(name: str, qualities: dict[BudgetTier, float | None]) -> EvaluationReport:
     tiers = []
     for tier, quality in qualities.items():
+        calls = (
+            (
+                ReplayCall(
+                    "model",
+                    Decimal("1"),
+                    Decimal("1"),
+                    Decimal("1"),
+                    Decimal(0),
+                    True,
+                ),
+            )
+            if quality is not None
+            else ()
+        )
         query = QueryResult(
             "q1",
             tier,
@@ -37,6 +52,8 @@ def report(name: str, qualities: dict[BudgetTier, float | None]) -> EvaluationRe
             quality,
             "output" if quality is not None else None,
             error=None if quality is not None else "infeasible",
+            calls=calls,
+            selected_call_index=0 if quality is not None else None,
         )
         budget = BudgetReport("test", Decimal("1"), Decimal("1"), query.cost, 0, ("q1",))
         tiers.append(TierResult(TierSpec(tier, Decimal("1"), WEIGHTS[tier]), (query,), budget))

@@ -127,6 +127,114 @@ def test_policy_sees_quoted_cost_but_ledger_charges_hidden_realized_cost() -> No
 
     assert result.queries[0].selected_model_id == "quoted-cheap"
     assert result.queries[0].cost == Decimal("9")
+    assert result.queries[0].selected_call_index == 0
+    assert result.queries[0].calls[0].quoted_cost == Decimal("0.1")
+    assert result.queries[0].calls[0].realized_cost == Decimal("9")
+    assert result.queries[0].calls[0].remaining_budget_before == Decimal("9")
+    assert result.queries[0].calls[0].remaining_budget_after == Decimal(0)
+    assert result.queries[0].calls[0].within_budget
+
+
+def test_unaffordable_quote_fails_before_a_cheaper_realized_call_is_attempted() -> None:
+    example = EvaluationExample(
+        "quote-too-high",
+        "prompt",
+        "general",
+        (CandidateOutcome("model", "answer", Decimal("0.1"), 0.9),),
+        (ModelSpec("model", Decimal("2")),),
+    )
+
+    result = OfflineSimulator(PerQueryBudgetLedger).run_tier(
+        AlwaysPremiumRouter("model"),
+        (example,),
+        TierSpec(BudgetTier.FAST, Decimal("1"), 1.0),
+    )
+
+    assert not result.feasible
+    assert result.queries[0].calls == ()
+    assert result.queries[0].cost == Decimal(0)
+    assert result.budget.spent == Decimal(0)
+    assert result.budget.over_budget_calls == 0
+
+
+def test_affordable_overquote_records_only_the_lower_realized_charge() -> None:
+    example = EvaluationExample(
+        "overquote",
+        "prompt",
+        "general",
+        (CandidateOutcome("model", "answer", Decimal("0.2"), 0.9),),
+        (ModelSpec("model", Decimal("0.8")),),
+    )
+
+    result = OfflineSimulator(PerQueryBudgetLedger).run_tier(
+        AlwaysPremiumRouter("model"),
+        (example,),
+        TierSpec(BudgetTier.FAST, Decimal("1"), 1.0),
+    )
+
+    query = result.queries[0]
+    assert query.feasible
+    assert query.cost == result.budget.spent == Decimal("0.2")
+    assert query.calls[0].quoted_cost == Decimal("0.8")
+    assert query.calls[0].realized_cost == Decimal("0.2")
+    assert query.calls[0].within_budget
+
+
+def test_zero_cost_call_remains_visible_and_selectable() -> None:
+    example = EvaluationExample(
+        "zero",
+        "prompt",
+        "general",
+        (CandidateOutcome("free", "answer", Decimal(0), 0.5),),
+        (ModelSpec("free", Decimal(0)),),
+    )
+
+    result = OfflineSimulator(PerQueryBudgetLedger).run_tier(
+        AlwaysCheapestRouter(),
+        (example,),
+        TierSpec(BudgetTier.FAST, Decimal(0), 1.0),
+    )
+
+    query = result.queries[0]
+    assert query.feasible
+    assert query.selected_call_index == 0
+    assert len(query.calls) == 1
+    assert query.calls[0].quoted_cost == query.calls[0].realized_cost == Decimal(0)
+    assert query.calls[0].within_budget
+
+
+def test_multi_call_replay_records_each_charge_and_selected_call_index() -> None:
+    class TwoCallsThenFirst:
+        def route(self, state: object) -> CallModel | SelectOutput:
+            history = state.call_history  # type: ignore[attr-defined]
+            if not history:
+                return CallModel("cheap", reason="first")
+            if len(history) == 1:
+                return CallModel("premium", reason="second")
+            return SelectOutput(0, reason="keep first")
+
+    result = OfflineSimulator(PerQueryBudgetLedger, max_calls_per_query=2).run_tier(
+        TwoCallsThenFirst(),
+        EXAMPLES[:1],
+        TierSpec(BudgetTier.FAST, Decimal("3"), 1.0),
+    )
+
+    query = result.queries[0]
+    assert query.feasible
+    assert query.selected_model_id == "cheap"
+    assert query.selected_call_index == 0
+    assert [call.model_id for call in query.calls] == ["cheap", "premium"]
+    assert [call.quoted_cost for call in query.calls] == [Decimal("1"), Decimal("2")]
+    assert [call.realized_cost for call in query.calls] == [Decimal("1"), Decimal("2")]
+    assert [call.remaining_budget_before for call in query.calls] == [
+        Decimal("3"),
+        Decimal("2"),
+    ]
+    assert [call.remaining_budget_after for call in query.calls] == [
+        Decimal("2"),
+        Decimal(0),
+    ]
+    assert query.cost == Decimal("3")
 
 
 def test_realized_overspend_is_recorded_and_exhausts_cumulative_budget() -> None:
@@ -150,8 +258,13 @@ def test_realized_overspend_is_recorded_and_exhausts_cumulative_budget() -> None
 
     assert result.feasible is False
     assert result.queries[0].cost == Decimal("9")
+    assert len(result.queries[0].calls) == 1
+    assert result.queries[0].calls[0].quoted_cost == Decimal("0.1")
+    assert result.queries[0].calls[0].realized_cost == Decimal("9")
+    assert not result.queries[0].calls[0].within_budget
     assert "realized cost 9 exceeded" in (result.queries[0].error or "")
     assert result.queries[1].cost == Decimal(0)
+    assert result.queries[1].calls == ()
     assert result.budget.spent == Decimal("9")
     assert result.budget.over_budget_calls == 1
 
