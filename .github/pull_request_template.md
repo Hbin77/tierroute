@@ -4,6 +4,17 @@
 
 <!-- What problem does this solve, and why is this the right package boundary? -->
 
+## AI assistance disclosure
+
+<!-- Use `None` when no AI assistant materially contributed. Do not guess a model snapshot or line percentage. -->
+
+- Tool/service used:
+- Exact model/version/snapshot, or `not exposed/not retained`:
+- Material activities (requirements/design/code/tests/docs/debugging/review):
+- Affected paths or algorithms:
+- Human validation performed in this PR (or `Pending`/`None`):
+- Audit-ledger entry (see `docs/ai-assistance-audit.md`):
+
 ## Verification
 
 <!-- List exact commands and relevant results. Do not claim synthetic scores as benchmarks. -->
@@ -28,4 +39,7 @@ tierroute demo
 - [ ] Every third-party asset and direct/transitive dependency has a compatible, documented license; no GPL-family dependency is introduced.
 - [ ] `SBOM.md` and user documentation are updated for dependency, asset, interface, or reproducibility changes.
 - [ ] Challenge-specific uncertainty stays in `adapters/`; cascade behavior is not enabled without confirmed sequential-call semantics.
+- [ ] Material AI assistance is disclosed without an invented model snapshot or authored-line percentage.
+- [ ] AI-agent, subagent, and CI review is not represented as independent human review or owner sign-off.
+- [ ] A contest-critical change links its named human walkthrough record, or explicitly records that walkthrough as pending.
 - [ ] Commits follow Conventional Commits and contain no unrelated generated-file churn.
