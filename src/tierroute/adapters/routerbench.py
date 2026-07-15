@@ -29,7 +29,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from tierroute.core import Cost, ModelSpec, as_cost
+from tierroute.core import Cost, ModelSpec, add_cost, as_cost, divide_cost
 from tierroute.eval.schemas import CandidateOutcome, EvaluationExample
 
 ROUTERBENCH_FILENAME = "routerbench_0shot.pkl"
@@ -1078,8 +1078,12 @@ def estimate_routerbench_quoted_costs(
         elif model_ids != expected_models:
             raise RouterBenchSchemaError("calibration rows have inconsistent model columns")
         for model_id in model_ids:
-            totals[model_id] += as_cost(str(row[f"{model_id}{_COST_SUFFIX}"]))
+            totals[model_id] = add_cost(
+                totals[model_id], as_cost(str(row[f"{model_id}{_COST_SUFFIX}"]))
+            )
             counts[model_id] += 1
     if expected_models is None:
         raise AssertionError("non-empty calibration_rows produced no model catalogue")
-    return {model_id: totals[model_id] / counts[model_id] for model_id in expected_models}
+    return {
+        model_id: divide_cost(totals[model_id], counts[model_id]) for model_id in expected_models
+    }

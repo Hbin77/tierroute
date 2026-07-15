@@ -13,7 +13,20 @@ the public API is pre-1.0.
 - Inner-LODO out-of-fold prediction with a separate isotonic calibrator per model.
 - Canonical, fail-closed JSON predictor artifacts and `tierroute train`/
   `tierroute route --artifact` CLI paths.
-- A dependency-free wheel CI job plus a fully offline fit/save/load/route smoke test.
+- Exact rational one-shot utility shared by runtime routing and offline evaluation,
+  including deterministic behavior for non-float-representable `Decimal` costs.
+- Cross-fitted tier-lambda tuning that directly replays the weighted budget metric,
+  with full exact breakpoint search or an explicitly approximate, bounded-memory
+  bottom-hash search that records its strategy and observed breakpoint occurrences.
+- True nested-LODO policy evaluation with one original-order outer-OOF replay for
+  cumulative accounting.
+- Canonical policy artifacts bound to predictor, data, replay-order, tier-spec, ledger,
+  and candidate-search provenance, with the OOF prediction digest recorded as
+  reproducibility audit metadata.
+- `train --policy-output --budget-scope` and `route --policy-artifact` offline CLI
+  reproduction paths; cumulative routes require explicit remaining budget state.
+- A dependency-free wheel CI job plus a fully offline predictor/policy
+  fit/save/load/route smoke test.
 
 ### Changed
 
@@ -30,6 +43,16 @@ the public API is pre-1.0.
   `load_routerbench_table`, which returns the immutable project-owned table.
 - Pin a canonical decoded-table digest and exact row, column, model, and domain counts
   as a regression oracle independent of the artifact checksum.
+- Make cost addition, subtraction, integer scaling, replay totals, and quote estimation
+  independent of the caller's mutable `Decimal` context. Canonicalize equivalent tuple
+  representations, enforce an explicit 100,000-position/digit resource range, and
+  reject out-of-range exact or repeating-quotient results before underflow.
+- Refuse unacknowledged bounded or exhaustive lambda searches above conservative
+  retained-candidate, utility-work, or 256 MiB exact-rational state bounds before
+  predictor fitting; the CLI requires a separate explicit exhaustive-search override.
+- Version bounded root sampling as `bounded-bottom-hash-v2`, using signed,
+  self-delimiting integer identities for arbitrarily large exact roots while retaining
+  version-1 artifact loading.
 
 ### Planned
 
@@ -44,6 +67,23 @@ the public API is pre-1.0.
   remain inert and no callable named by the payload is imported or invoked.
 - Predictor artifacts accept strict JSON only; duplicate keys, unknown fields,
   non-finite numbers, invalid dimensions, and pickle bytes fail closed.
+- Policy artifacts additionally reject malformed/noncanonical rational values,
+  predictor/data/order mismatches, invalid Unicode metadata, and unsafe binary input.
+  Bounded reads now reject artifacts above 8 MiB, 404,096 digits per exact integer, or
+  100,000 retained candidates per tier before expensive big-integer parsing. The
+  integer limit covers candidates derivable from the public core cost contract;
+  ledger-adapter metadata is capped at 4 KiB.
+- Lambda-search preflight now counts all breakpoint pair scans in linear catalogue
+  time and rejects more than 10,000,000 scans. It also estimates repeated candidate
+  evidence against the hard 8 MiB policy-artifact limit before predictor fitting.
+- Exact scaling now combines 2/5 factors across the cost coefficient and integer
+  multiplier before range validation; a separate `1e200000` raw-factor bound follows
+  directly from the supported nonzero input and output magnitude range.
+- Stage artifacts under exclusive random names, reject source/destination aliases, and
+  publish predictor/policy pairs policy-last with validation, backup, and rollback.
+  Rollback now continues through asynchronous inspection/cleanup failures, preserves
+  unverifiable recovery backups, and distinguishes incomplete cleanup after a verified
+  commit; concurrent writers and bundle-wide power-loss atomicity remain unsupported.
 
 ## [0.1.0] - 2026-07-15
 

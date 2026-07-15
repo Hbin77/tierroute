@@ -5,9 +5,18 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from fractions import Fraction
 
 from tierroute.adapters import EvaluationDataset, PerQueryBudgetLedger
-from tierroute.core import BudgetTier, CallModel, Cost, ModelSpec, RouterState, validate_action
+from tierroute.core import (
+    BudgetTier,
+    CallModel,
+    Cost,
+    ModelSpec,
+    RouterState,
+    sum_costs,
+    validate_action,
+)
 from tierroute.eval import (
     EvaluationReport,
     OfflineSimulator,
@@ -22,17 +31,17 @@ from tierroute.policies import (
     AlwaysCheapestRouter,
     AlwaysPremiumRouter,
     DomainBestRouter,
-    LambdaThresholdRouter,
     LengthHeuristicRouter,
     OracleRouter,
     RandomRouter,
 )
+from tierroute.policies.lambda_threshold import LambdaInput, LambdaThresholdRouter, as_lambda
 from tierroute.predictors import QualityPredictor
 
 _TIER_LAMBDAS = {
-    BudgetTier.FAST: 0.80,
-    BudgetTier.BALANCED: 0.35,
-    BudgetTier.PREMIUM: 0.08,
+    BudgetTier.FAST: Fraction(4, 5),
+    BudgetTier.BALANCED: Fraction(7, 20),
+    BudgetTier.PREMIUM: Fraction(2, 25),
 }
 
 
@@ -75,10 +84,17 @@ class RouteDecision:
     model_id: str
     model_cost: Cost
     predicted_quality: float
-    lambda_cost: float
+    lambda_cost: Fraction
     quality_kind: str
     reason: str
     features: SurfaceFeatures
+    accounting_scope: str
+    remaining_budget: Cost
+    lambda_candidates_exhaustive: bool | None
+    lambda_candidates_retained: int | None
+    lambda_candidates_derived: int | None
+    lambda_candidate_strategy: str | None
+    lambda_observed_breakpoint_count: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,25 +127,41 @@ def route_prompt(
     *,
     predictor: QualityPredictor | None = None,
     quality_kind: str | None = None,
+    lambda_cost: LambdaInput | None = None,
+    accounting_scope: str = "per-query-illustrative",
+    remaining_budget: Cost | None = None,
+    lambda_candidates_exhaustive: bool | None = None,
+    lambda_candidates_retained: int | None = None,
+    lambda_candidates_derived: int | None = None,
+    lambda_candidate_strategy: str | None = None,
+    lambda_observed_breakpoint_count: int | None = None,
 ) -> RouteDecision:
-    """Make one offline lambda-policy decision with a supplied or demo predictor."""
+    """Make one offline lambda-policy decision with a supplied or demo predictor.
+
+    ``lambda_cost`` is injectable so a strictly validated policy artifact can drive
+    this user-facing path without converting its exact rational value through a
+    binary float. When omitted, the bundled values remain illustrative only.
+    """
 
     try:
         tier_spec = next(spec for spec in dataset.tier_specs if spec.tier is tier)
     except StopIteration as error:
         raise ValueError(f"dataset does not configure tier {tier.value!r}") from error
+    available_budget = tier_spec.budget_limit if remaining_budget is None else remaining_budget
+    if available_budget > tier_spec.budget_limit:
+        raise ValueError("remaining_budget cannot exceed the configured tier budget")
     models = model_catalogue(dataset)
     if predictor is None:
         predictor = DemoQualityPredictor.from_catalogue(models)
         quality_kind = "synthetic demo prediction"
     elif quality_kind is None:
         quality_kind = "supplied predictor"
-    lambda_cost = _TIER_LAMBDAS[tier]
-    router = LambdaThresholdRouter(predictor, lambda_cost)
+    normalized_lambda = as_lambda(_TIER_LAMBDAS[tier] if lambda_cost is None else lambda_cost)
+    router = LambdaThresholdRouter(predictor, normalized_lambda)
     state = RouterState(
         prompt=prompt,
         budget_tier=tier,
-        remaining_budget=tier_spec.budget_limit,
+        remaining_budget=available_budget,
         candidate_models=models,
     )
     action = router.route(state)
@@ -146,10 +178,17 @@ def route_prompt(
         model_id=model.model_id,
         model_cost=model.cost,
         predicted_quality=predicted_quality,
-        lambda_cost=lambda_cost,
+        lambda_cost=normalized_lambda,
         quality_kind=quality_kind,
         reason=action.reason,
         features=extract_surface_features(prompt),
+        accounting_scope=accounting_scope,
+        remaining_budget=available_budget,
+        lambda_candidates_exhaustive=lambda_candidates_exhaustive,
+        lambda_candidates_retained=lambda_candidates_retained,
+        lambda_candidates_derived=lambda_candidates_derived,
+        lambda_candidate_strategy=lambda_candidate_strategy,
+        lambda_observed_breakpoint_count=lambda_observed_breakpoint_count,
     )
 
 
@@ -188,10 +227,7 @@ def evaluate_six_baselines(dataset: EvaluationDataset) -> tuple[BaselineResult, 
                 report=report,
                 score=summarize_report(report),
                 gap_recovery=oracle_gap_recovery(report, cheapest_report, oracle_report),
-                total_cost=sum(
-                    (query.cost for tier in report.tiers for query in tier.queries),
-                    start=dataset.tier_specs[0].budget_limit * 0,
-                ),
+                total_cost=sum_costs(query.cost for tier in report.tiers for query in tier.queries),
             )
         )
     return tuple(rows)

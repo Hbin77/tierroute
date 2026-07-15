@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
+from tierroute.core.atomic_io import AtomicTextWrite, replace_text_bundle
 from tierroute.features import EmbeddingProvider, PromptFeatureEncoder, PromptFeatureSchema
 from tierroute.predictors._ridge import CENTERED_RIDGE_SOLVER_ID
 from tierroute.predictors.base import BilinearQualityPredictor
@@ -205,11 +206,9 @@ class BilinearPredictorArtifact:
         """Atomically write a JSON artifact and return its path."""
 
         destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_name(f".{destination.name}.tmp")
-        temporary.write_text(self.to_json(), encoding="utf-8")
-        temporary.replace(destination)
-        return destination
+        return replace_text_bundle(
+            (AtomicTextWrite(destination, self.to_json(), type(self).from_json),)
+        )[0]
 
     @classmethod
     def from_json(cls, document: str) -> BilinearPredictorArtifact:

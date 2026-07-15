@@ -14,6 +14,7 @@ from tierroute.core import (
     RouterState,
     RoutingContractError,
     SelectOutput,
+    add_cost,
     validate_action,
 )
 from tierroute.eval.budgets import BudgetLedger, BudgetLedgerFactory
@@ -124,7 +125,7 @@ class OfflineSimulator:
                     )
                 outcome = outcome_by_model[action.model_id]
                 remaining_before_call = ledger.remaining_budget
-                charged += outcome.cost
+                charged = add_cost(charged, outcome.cost)
                 trace.append(f"call {outcome.model_id}: {action.reason}")
                 if not ledger.charge_realized(outcome.cost):
                     return self._failed_query(

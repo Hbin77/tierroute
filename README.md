@@ -14,9 +14,9 @@ choose m = argmax_m [predicted_quality(prompt, m) - lambda(tier) * cost(m)]
 The project is being developed for the student division of the 2026 Open Source
 Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge.”**
 It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
-metrics, leakage-aware calibrated bilinear training, and an external-data-free demo
-are implemented. The CLI selects a model but does **not** call an LLM or return a
-model completion.
+metrics, leakage-aware calibrated bilinear training, exact tier-lambda tuning, strict
+predictor/policy artifacts, and an external-data-free demo are implemented. The CLI
+selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
 
@@ -38,8 +38,8 @@ tierroute demo
 ```
 
 The equivalent module entry point is `python -m tierroute`. Machine-readable output
-is available for `route` and `evaluate` with `--json`; a compatible versioned replay
-JSON can be supplied to evaluation:
+is available for `route`, `evaluate`, and `train` with `--json`; a compatible versioned
+replay JSON can be supplied to evaluation:
 
 ```bash
 tierroute route "Debug this Python function" --tier balanced --json
@@ -51,7 +51,7 @@ The bundled prompts, costs, outputs, predicted qualities, and scorecard are
 project-authored **synthetic smoke-test values**. They verify wiring and are not a
 benchmark result, an empirical model comparison, or a competition score.
 
-### Offline predictor training
+### Offline predictor and policy training
 
 Training and inference use no third-party numerical package. A project-owned,
 deterministic centered-ridge Cholesky solver fits every model target against one shared
@@ -66,14 +66,65 @@ tierroute route "Prove that sqrt(2) is irrational." \
   --json
 ```
 
+To fit the complete one-shot policy, make the unresolved budget semantics explicit and
+write a separate policy artifact:
+
+```bash
+tierroute train \
+  --output artifacts/synthetic-bilinear.json \
+  --policy-output artifacts/synthetic-policy.json \
+  --budget-scope per-query \
+  --json
+tierroute route "Prove that sqrt(2) is irrational." \
+  --tier balanced \
+  --artifact artifacts/synthetic-bilinear.json \
+  --policy-artifact artifacts/synthetic-policy.json \
+  --json
+```
+
+Policy fitting creates inner-LODO out-of-fold predictions keyed by private example ID,
+streams every non-negative exact rational pairwise quality/cost breakpoint occurrence,
+and replays every retained candidate through the selected budget ledger. By default,
+the CLI keeps a bounded deterministic `bounded-bottom-hash-v2` sample of roots plus the
+minimum and maximum, derives boundaries, midpoints, and a tail from those retained roots, then
+rank-spaces the result to at most 257 candidates. If every unique root and derived
+candidate fits that cap, the result remains complete and reports `exhaustive: true`
+with its exact count. Only actual truncation is approximate; it reports
+`exhaustive: false` and an unknown complete count (`null`), together with the search
+strategy and observed breakpoint-occurrence count. Use `--exhaustive-lambda-search`
+to request materialization and evaluation of the full exact finite set. Before any
+predictor fitting or root materialization, a conservative preflight refuses more than
+10,000,000 pair scans, 100,000 possible candidates, 100,000,000 utility evaluations,
+a 256 MiB estimated peak for exact-rational candidate state, or 8 MiB of estimated
+serialized policy evidence. Only after reviewing all five estimates may a caller add
+`--allow-large-exhaustive-search` to an exhaustive CLI run. The default
+257-candidate run fits the bundled synthetic data, but every cap is checked against the
+actual dataset's retained-work and integer-width estimates and must be reduced if it
+fails.
+At the pinned RouterBench shape (34,778 rows, 11 models, three tiers), the conservative
+bounds are 3,825,582 candidates and about 4.39 trillion utility evaluations, so the
+257-candidate default would require 294,952,218 evaluations and is refused. A cap of 64
+requires a conservative 73,451,136 evaluations and is the documented starting point
+for that full shape; its 1,912,790 pair scans are also below the separate scan limit.
+Every run must still pass the dataset-dependent artifact-size estimate. Its artifact
+labels whether the retained search was complete or truncated. The selected lambda
+itself always remains an exact numerator/denominator
+pair. Version 2 hashes signed, self-delimiting binary integer identities, avoiding
+Python's decimal integer rendering limit; version-1 strategy metadata remains loadable
+because artifacts embed the retained values and strategy version explicitly.
+
+A policy trained with `--budget-scope cumulative` can be routed only when the caller
+also supplies the current exact state with `--remaining-budget`. This command does not
+invent an initial balance or silently reuse a per-query assumption.
+
 Use `--data path/to/replay.json` on both commands for another version-1 replay dataset.
 The bundled-data command proves fit/save/load/route wiring only. It does not produce a
-reportable benchmark result. The CLI fits a deployable artifact on all supplied rows,
-using inner LODO predictions for per-model isotonic calibration. Reportable outer-LODO
-experiments must instead call `fit_calibrated_bilinear_for_fold` on each training fold
-and score only that fold's held-out domain. Artifact routing still uses the CLI's
-illustrative, hard-coded tier lambdas; learned nested-LODO lambda tuning is a separate
-next milestone, so this path is not yet a trained end-to-end budget policy.
+reportable benchmark result. The CLI fits deployment artifacts on all supplied rows;
+both isotonic calibration and lambda selection use out-of-fold predictions. Reportable
+experiments must instead use `nested_lodo_lambda_evaluation`: each outer training side
+gets its own inner-LODO lambda fit and full-training predictor refit, and only the
+untouched outer domain is scored. All outer predictions are then replayed once in the
+original global order so cumulative accounting is not reset between folds.
 
 The built-in solver is an auditable reference backend for the surface schema and
 modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
@@ -85,10 +136,16 @@ before an unaudited workload can enter the cubic reference path.
 
 ## What is implemented
 
-- Exact `Decimal` cost accounting and typed `RouterState`/`RouterAction` contracts.
+- Context-independent exact `Decimal` cost accounting and typed
+  `RouterState`/`RouterAction` contracts; caller precision cannot round away an
+  overspend. Nonzero costs are supported within decimal positions `-100000` through
+  `99999`, with at most 100,000 coefficient digits; inputs or results outside this
+  explicit resource contract fail before silent underflow or unbounded expansion.
 - Swappable per-query and cumulative budget ledgers; the demo uses illustrative
   per-query limits until the official budget scope is confirmed.
-- One-shot lambda routing and six reproducible baselines.
+- One-shot lambda routing with exact rational utility, immutable per-tier schedules,
+  complete exhaustive breakpoint search or explicitly labeled truncated
+  bounded-memory approximate search, and six reproducible baselines.
 - Full-information offline replay: labels stay hidden until a selected logged outcome
   is replayed, so the policy cannot read ground truth through `RouterState`.
 - A fitted surface-feature schema (log-scaled counts, code/math signals, and
@@ -96,6 +153,22 @@ before an unaudited workload can enter the cubic reference path.
   inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
 - Canonical, strictly validated JSON predictor artifacts; pickle is never accepted for
   predictor loading. Batch prediction vectorizes or embeds each prompt batch once.
+- Canonical policy artifacts bind the exact predictor hash, training/metric-relevant
+  replay content and order, tier specs, ledger identity, and retained candidate-search
+  evidence. They record the OOF prediction hash as audit metadata; verifying it
+  requires reproducing the cross-fitted prediction table because routing has no OOF
+  table to recompute it from. Loading is bounded to 8 MiB, 404,096 decimal digits per
+  exact integer (covering candidates derivable from the core cost contract), and
+  100,000 retained candidates per tier before expensive parsing. Ledger-adapter names
+  are limited to 4 KiB; the pre-fit artifact estimate includes actual encoded domains
+  and tier-budget text rather than treating metadata as a fixed-size constant.
+- Predictor and policy files use random exclusive staging, post-write validation, and
+  rollback-safe policy-last bundle replacement; input aliases and unsafe output nodes
+  fail before fitting. Ordinary OS/Python failures roll back every attempted path, but
+  concurrent writers and power-loss atomicity across unrelated pathnames are not
+  supported.
+- True nested LODO orchestration keeps every outer domain out of predictor fitting,
+  calibration, and lambda tuning.
 - Tier-weighted quality, oracle-gap recovery, and deterministic leave-one-domain-out
   (LODO) folds. No random-split helper is provided.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
@@ -130,7 +203,7 @@ prompt ─> fitted feature encoder ─> calibrated predictor ─> policy <─ bu
 core/        stable state, action, model, and validation contracts
 features/    offline surface features, fitted schema, local embedding contract
 predictors/  bilinear trainer, per-model calibration, strict JSON artifacts
-policies/    one-shot lambda policy and required baselines
+policies/    exact one-shot lambda policy, tuning/artifacts, required baselines
 eval/        replay, accounting protocol, metrics, planning, and LODO
 adapters/    budget-scope and external-dataset uncertainty boundaries
 ```
@@ -173,6 +246,18 @@ preserved. The six baselines are:
 | `length-heuristic` | Strong model for long/code/math prompts when affordable |
 | `oracle` | Privileged per-query, budget-feasible quality upper bound |
 | `domain-best-table` | Per-tier mean-quality table fitted on training domains, with cheapest fallback |
+
+Lambda tuning maximizes this same realized metric, not a proxy loss. For each prompt,
+model utilities are affine functions of lambda, so decisions can change only at exact
+pairwise quality/cost intersections. The exhaustive search evaluates every boundary,
+one representative inside every open interval, and one tail value after the final
+boundary. Each candidate is replayed through `OfflineSimulator`; infeasible candidates
+cannot win. Since tiers have independent ledgers and positive weights, optimizing each
+tier independently is exactly equivalent to a Cartesian joint search over the retained
+candidate sets. This is a full exact finite joint optimum whenever the retained set is
+marked exhaustive; a truncated bounded search remains approximate. See
+[docs/lambda-tuning.md](docs/lambda-tuning.md) for the proof, tie-breaks, and leakage
+boundary.
 
 `tierroute evaluate` fits the domain table on the tiny bundled sample only as an
 end-to-end smoke check, and says so in its output. Reportable experiments must fit on
@@ -277,6 +362,10 @@ tierroute evaluate
 tierroute demo
 tierroute train --output artifacts/synthetic-bilinear.json --json
 tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --json
+tierroute train --output artifacts/synthetic-bilinear.json \
+  --policy-output artifacts/synthetic-policy.json --budget-scope per-query --json
+tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
+  --policy-artifact artifacts/synthetic-policy.json --json
 ```
 
 `make reproduce` installs the exact development lock and runs the complete bundled-data

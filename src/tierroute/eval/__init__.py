@@ -13,6 +13,7 @@ from tierroute.eval.planning import (
     build_per_query_oracle_plan,
     fit_per_query_domain_table,
 )
+from tierroute.eval.provenance import evaluation_data_sha256, evaluation_replay_sha256
 from tierroute.eval.schemas import (
     BudgetReport,
     CandidateOutcome,
@@ -40,6 +41,8 @@ __all__ = [
     "TierResult",
     "TierSpec",
     "build_per_query_oracle_plan",
+    "evaluation_data_sha256",
+    "evaluation_replay_sha256",
     "fit_per_query_domain_table",
     "leave_one_domain_out",
     "oracle_gap_recovery",

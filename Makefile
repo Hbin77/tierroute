@@ -14,7 +14,7 @@ help:
 	@echo "  install-dev          install the exact dev lock and editable tierroute"
 	@echo "  verify               run static checks, tests, licenses, and offline smoke"
 	@echo "  reproduce            install and run the complete no-external-data pipeline"
-	@echo "  training-smoke       fit, load, and route with a local predictor artifact"
+	@echo "  training-smoke       fit predictor, tune exact policy, and route offline"
 	@echo "  download-routerbench explicitly download pinned RouterBench data (network)"
 	@echo "  validate-routerbench validate a previously downloaded local artifact"
 

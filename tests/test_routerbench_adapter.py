@@ -8,7 +8,7 @@ import importlib.util
 import io
 import struct
 from collections.abc import Iterator
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from pathlib import Path
 from types import ModuleType
 
@@ -641,6 +641,33 @@ def test_quoted_costs_are_fitted_from_separate_rows_not_current_realized_cost() 
     assert example is not None
     assert example.candidate_models[0].cost == Decimal("0.1")
     assert example.outcomes[0].cost == Decimal("9.9")
+
+
+def test_quoted_cost_estimation_is_independent_of_decimal_context() -> None:
+    rows = tuple(
+        {
+            "sample_id": f"train-{index}",
+            "prompt": "training prompt",
+            "eval_name": "hellaswag",
+            "oracle_model_to_route_to": "model-a",
+            "model-a": 1.0,
+            "model-a|model_response": "answer",
+            "model-a|total_cost": cost,
+        }
+        for index, cost in enumerate((0.1, 0.2, 0.7))
+    )
+
+    with localcontext() as context:
+        context.prec = 2
+        low_precision = routerbench.estimate_routerbench_quoted_costs(rows)
+    with localcontext() as context:
+        context.prec = 60
+        high_precision = routerbench.estimate_routerbench_quoted_costs(rows)
+
+    assert low_precision == high_precision
+    assert low_precision["model-a"] == Decimal(
+        "0.333333333333333333333333333333333333333333333333333"
+    )
 
 
 def test_schema_rejects_incomplete_model_triplet() -> None:

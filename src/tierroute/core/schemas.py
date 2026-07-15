@@ -30,6 +30,7 @@ def _require_non_empty(value: str, field_name: str) -> None:
 
 
 Cost: TypeAlias = Decimal
+MAX_COST_DECIMAL_DIGITS = 100_000
 
 
 def as_cost(value: Decimal | int | str) -> Cost:
@@ -54,6 +55,29 @@ def _require_non_negative_finite_cost(value: Cost, field_name: str) -> None:
         raise TypeError(f"{field_name} must be a Decimal")
     if not value.is_finite() or value < 0:
         raise ValueError(f"{field_name} must be finite and non-negative")
+    _, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):
+        raise ValueError(f"{field_name} must be finite")
+    trailing_zeros = 0
+    for digit in reversed(digits):
+        if digit != 0:
+            break
+        trailing_zeros += 1
+    if trailing_zeros == len(digits):
+        # Every finite Decimal encoding of zero has the same harmless value.
+        return
+    significant_digits = len(digits) - trailing_zeros
+    canonical_exponent = exponent + trailing_zeros
+    highest_exclusive = canonical_exponent + significant_digits
+    if (
+        len(digits) > MAX_COST_DECIMAL_DIGITS
+        or canonical_exponent < -MAX_COST_DECIMAL_DIGITS
+        or highest_exclusive > MAX_COST_DECIMAL_DIGITS
+    ):
+        raise ValueError(
+            f"{field_name} exceeds the supported exact cost range "
+            f"({MAX_COST_DECIMAL_DIGITS:,} decimal digits)"
+        )
 
 
 @dataclass(frozen=True, slots=True)

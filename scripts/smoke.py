@@ -8,11 +8,18 @@ import os
 import shutil
 import subprocess
 import tempfile
+from fractions import Fraction
 from pathlib import Path
 
 from tierroute.adapters import load_evaluation_dataset
 from tierroute.demo import model_catalogue
+from tierroute.eval import evaluation_data_sha256, evaluation_replay_sha256
 from tierroute.features import PromptFeatureSchema
+from tierroute.policies import (
+    LambdaCandidateSet,
+    LambdaPolicyArtifact,
+    predictor_artifact_sha256,
+)
 from tierroute.predictors import BilinearPredictorArtifact, IsotonicCalibrator
 
 REQUIRED_BASELINES = {
@@ -96,7 +103,7 @@ def main() -> int:
             model_id: IsotonicCalibrator((0.0,), (score,))
             for model_id, score in smoke_scores.items()
         },
-        training_data_sha256="0" * 64,
+        training_data_sha256=evaluation_data_sha256(dataset.examples),
         training_example_count=len(dataset.examples),
         training_domains=tuple(sorted({example.domain for example in dataset.examples})),
         ridge=1.0,
@@ -116,10 +123,47 @@ def main() -> int:
                 "--json",
             )
         )
+        lambda_zero = Fraction(0)
+        smoke_policy = LambdaPolicyArtifact(
+            lambda_by_tier={spec.tier: lambda_zero for spec in dataset.tier_specs},
+            predictor_sha256=predictor_artifact_sha256(smoke_artifact),
+            tuning_data_sha256=evaluation_data_sha256(dataset.examples),
+            tuning_replay_sha256=evaluation_replay_sha256(dataset.examples),
+            prediction_sha256="1" * 64,
+            training_example_count=len(dataset.examples),
+            training_domains=tuple(sorted({example.domain for example in dataset.examples})),
+            tier_specs=dataset.tier_specs,
+            ledger_adapter_name="per-query",
+            candidate_sets=tuple(
+                LambdaCandidateSet(spec.tier, (lambda_zero,), 1, True)
+                for spec in dataset.tier_specs
+            ),
+        )
+        policy_path = smoke_policy.save(Path(temporary) / "policy.json")
+        policy_route = json.loads(
+            _run_cli(
+                executable,
+                "route",
+                "Route with a local exact policy artifact.",
+                "--tier",
+                "balanced",
+                "--artifact",
+                str(artifact_path),
+                "--policy-artifact",
+                str(policy_path),
+                "--json",
+            )
+        )
     if artifact_route.get("quality_kind") != "calibrated bilinear artifact":
         raise RuntimeError("core artifact inference smoke did not load the JSON predictor")
     if artifact_route.get("network_used") is not False:
         raise RuntimeError("core artifact inference smoke did not confirm offline routing")
+    if policy_route.get("quality_kind") != (
+        "calibrated bilinear + tuned exact-rational tier lambda"
+    ):
+        raise RuntimeError("core policy inference smoke did not load the exact policy")
+    if policy_route.get("network_used") is not False:
+        raise RuntimeError("core policy inference smoke did not confirm offline routing")
 
     evaluation = json.loads(_run_cli(executable, "evaluate", "--json"))
     baseline_names = {row.get("name") for row in evaluation.get("baselines", [])}
@@ -133,7 +177,7 @@ def main() -> int:
     if any(hf_home.iterdir()):
         raise RuntimeError("the CLI wrote to HF_HOME during an offline smoke test")
 
-    print("CLI smoke passed: core and artifact route, evaluate, and demo ran offline.")
+    print("CLI smoke passed: core, predictor/policy artifacts, evaluate, and demo ran offline.")
     return 0
 
 
