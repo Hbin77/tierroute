@@ -135,8 +135,9 @@ experiment fit this reference solver. A conservative operation-count guard fails
 before an unaudited workload can enter the cubic reference path. Training resolves one
 static, reviewed solver ID and threads the same solver through every inner-LODO fit and
 the final refit. Its preflight runs before dense embeddings are materialized. Predictor
-loading remains dependency-free because inference uses stored coefficients and never
-imports a training backend; unknown solver IDs still fail closed.
+loading remains free of optional numerical dependencies because inference uses stored
+coefficients; loading validates the solver ID but does not resolve or execute a training
+solver, and unknown IDs still fail closed.
 
 ## What is implemented
 

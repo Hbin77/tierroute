@@ -130,8 +130,9 @@ backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-
 않은 큰 작업이 cubic 참조 경로에 들어가기 전에 즉시 실패시킵니다. 학습은 정적으로
 검토한 solver ID 하나를 한 번만 resolve하고 같은 solver를 모든 inner-LODO fit과
 최종 refit에 전달합니다. 밀집 임베딩을 materialize하기 전에 preflight하며,
-추론은 저장된 coefficient만 쓰므로 선택적 학습 backend 없이도 artifact를 읽습니다.
-알 수 없는 solver ID는 계속 fail-closed 처리합니다.
+추론은 저장된 coefficient만 쓰므로 선택적 수치 의존성 없이 artifact를 읽습니다.
+로드 시 solver ID만 검증하고 학습 solver를 resolve하거나 실행하지 않으며, 알 수 없는
+ID는 계속 fail-closed 처리합니다.
 
 ## 현재 구현 범위
 
