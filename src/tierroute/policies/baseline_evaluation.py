@@ -27,12 +27,14 @@ from tierroute.eval import (
     EvaluationExample,
     EvaluationReport,
     OfflineSimulator,
+    QuoteErrorReport,
     ScoreSummary,
     TierSpec,
     build_per_query_oracle_plan,
     fit_per_query_domain_table,
     leave_one_domain_out,
     oracle_gap_recovery,
+    summarize_quote_error,
     summarize_report,
 )
 from tierroute.eval.budgets import BudgetLedger, BudgetLedgerFactory
@@ -65,6 +67,14 @@ class BaselineResult:
     score: ScoreSummary
     gap_recovery: float | None
     total_cost: Cost
+    quote_error: QuoteErrorReport
+
+    def __post_init__(self) -> None:
+        expected_quote_error = summarize_quote_error(self.report)
+        if self.quote_error != expected_quote_error:
+            raise ValueError("baseline quote evidence must be derived from its replay report")
+        if self.total_cost != expected_quote_error.overall.total_realized_cost:
+            raise ValueError("baseline total cost must equal replayed realized call cost")
 
 
 @dataclass(frozen=True, slots=True)
@@ -464,6 +474,7 @@ def evaluate_per_query_lodo_baselines(
             total_cost=sum_costs(
                 query.cost for tier in reports[name].tiers for query in tier.queries
             ),
+            quote_error=summarize_quote_error(reports[name]),
         )
         for name in BASELINE_NAMES
     )

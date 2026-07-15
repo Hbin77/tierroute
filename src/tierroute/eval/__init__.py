@@ -3,8 +3,14 @@
 
 from tierroute.eval.budgets import BudgetLedger, BudgetLedgerFactory
 from tierroute.eval.metrics import (
+    ExactCostDifference,
+    QuoteCostDirection,
+    QuoteErrorReport,
+    QuoteErrorSummary,
     ScoreSummary,
+    TierQuoteErrorSummary,
     oracle_gap_recovery,
+    summarize_quote_error,
     summarize_report,
     weighted_delta,
 )
@@ -20,6 +26,7 @@ from tierroute.eval.schemas import (
     EvaluationExample,
     EvaluationReport,
     QueryResult,
+    ReplayCall,
     TierResult,
     TierSpec,
 )
@@ -35,9 +42,15 @@ __all__ = [
     "DomainTablePlan",
     "EvaluationExample",
     "EvaluationReport",
+    "ExactCostDifference",
     "OfflineSimulator",
     "QueryResult",
+    "QuoteCostDirection",
+    "QuoteErrorReport",
+    "QuoteErrorSummary",
+    "ReplayCall",
     "ScoreSummary",
+    "TierQuoteErrorSummary",
     "TierResult",
     "TierSpec",
     "build_per_query_oracle_plan",
@@ -46,6 +59,7 @@ __all__ = [
     "fit_per_query_domain_table",
     "leave_one_domain_out",
     "oracle_gap_recovery",
+    "summarize_quote_error",
     "summarize_report",
     "weighted_delta",
 ]

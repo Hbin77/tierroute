@@ -244,3 +244,15 @@ def sum_costs(values: Iterable[Cost]) -> Cost:
     for value in values:
         total = add_cost(total, value)
     return total
+
+
+def canonical_cost_text(value: Cost) -> str:
+    """Serialize a validated cost without encoding-dependent zero or trailing zeros."""
+
+    _require_non_negative_finite_cost(value, "cost")
+    if value.is_zero():
+        return "0"
+    document = format(value, "f")
+    if "." in document:
+        document = document.rstrip("0").rstrip(".")
+    return document

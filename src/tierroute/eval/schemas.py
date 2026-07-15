@@ -7,7 +7,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from tierroute.core import BudgetTier, Cost, ModelSpec
+from tierroute.core import BudgetTier, Cost, ModelSpec, sum_costs
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +82,34 @@ class TierSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class ReplayCall:
+    """Structured quote and realized-charge evidence for one executed replay call.
+
+    This record belongs to the evaluation result, never ``RouterState``.  It omits
+    ground-truth quality so recording every executed call does not create a new label
+    channel. ``within_budget`` is the ledger's post-charge result; it does not mean the
+    provider call was avoided, because the realized charge is already recorded.
+    """
+
+    model_id: str
+    quoted_cost: Cost
+    realized_cost: Cost
+    remaining_budget_before: Cost
+    remaining_budget_after: Cost
+    within_budget: bool
+
+    def __post_init__(self) -> None:
+        ModelSpec(self.model_id, self.quoted_cost)
+        ModelSpec("realized-cost", self.realized_cost)
+        ModelSpec("remaining-budget-before", self.remaining_budget_before)
+        ModelSpec("remaining-budget-after", self.remaining_budget_after)
+        if not isinstance(self.within_budget, bool):
+            raise TypeError("within_budget must be a boolean")
+        if self.quoted_cost > self.remaining_budget_before:
+            raise ValueError("an executed replay call must have an affordable quoted cost")
+
+
+@dataclass(frozen=True, slots=True)
 class QueryResult:
     """Outcome of simulating one prompt at one tier."""
 
@@ -95,6 +123,44 @@ class QueryResult:
     predicted_quality: float | None = None
     decision_reason: str = ""
     error: str | None = None
+    calls: tuple[ReplayCall, ...] = ()
+    selected_call_index: int | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "calls", tuple(self.calls))
+        if any(not isinstance(call, ReplayCall) for call in self.calls):
+            raise TypeError("calls must contain ReplayCall values")
+        ModelSpec("query-cost", self.cost)
+        if self.cost != sum_costs(call.realized_cost for call in self.calls):
+            raise ValueError("query cost must equal the exact sum of replayed call charges")
+        if self.feasible:
+            if (
+                self.selected_model_id is None
+                or self.quality is None
+                or self.output is None
+                or self.selected_call_index is None
+            ):
+                raise ValueError("a feasible query must select one replayed call")
+            if any(not call.within_budget for call in self.calls):
+                raise ValueError("a feasible query cannot contain an over-budget call")
+        elif (
+            self.selected_model_id is not None
+            or self.quality is not None
+            or self.output is not None
+            or self.selected_call_index is not None
+        ):
+            raise ValueError("an infeasible query cannot select an output")
+        if self.selected_call_index is not None:
+            if (
+                isinstance(self.selected_call_index, bool)
+                or not isinstance(self.selected_call_index, int)
+                or self.selected_call_index < 0
+            ):
+                raise TypeError("selected_call_index must be a non-negative integer or None")
+            if self.selected_call_index >= len(self.calls):
+                raise ValueError("selected_call_index is unavailable in replayed calls")
+            if self.calls[self.selected_call_index].model_id != self.selected_model_id:
+                raise ValueError("selected call and selected_model_id must agree")
 
 
 @dataclass(frozen=True, slots=True)

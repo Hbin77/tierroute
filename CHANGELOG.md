@@ -39,9 +39,20 @@ the public API is pre-1.0.
 - A leakage-free per-query outer-LODO suite for all six required baselines. It records
   fold train/test evidence, replays one shared original-order population, verifies the
   actual ledger's reset/charge/report behavior, and keeps cumulative oracle claims gated.
+- Structured evidence for every executed logged replay call, including realized
+  overspends, plus exact per-tier and cross-tier quote-versus-realized diagnostics.
+  JSON routing labels its pre-call quote and leaves realized cost unknown; JSON
+  evaluation reconciles realized call totals and over-budget counts with each ledger.
 
 ### Changed
 
+- Canonicalize every CLI JSON cost string, including legacy `cost` and `total_cost`
+  keys, so equivalent decimal encodings have one representation. Numeric meaning and
+  keys remain stable, but textual trailing zeros such as `"0.20"` become `"0.2"`.
+- Make `QueryResult` require executed-call evidence whose realized charges exactly sum
+  to `cost`, plus a selected call for every feasible result. Make `BaselineResult`
+  require quote evidence derived from its own replay report. These are intentional
+  pre-1.0 constructor-contract changes.
 - Make the bundled six-baseline CLI use outer-training-only domain tables and a shared
   original-order outer-LODO replay. Domain-table fitting now reads only observable
   pre-call metadata tags, never validation-only split domains; unseen tags use the

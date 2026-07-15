@@ -15,9 +15,10 @@ Lagrangian 정책입니다.
 이 프로젝트는 2026 오픈소스 개발자대회 학생부문, SK텔레콤 지정과제
 **“Efficient LLM Routing Challenge”** 출품을 위해 개발 중입니다. 현재 pre-alpha로,
 라우팅 계약·replay 시뮬레이터·베이스라인 6종·지표·누수 방지 calibrated
-bilinear 학습·exact tier-lambda 튜닝·엄격한 예측기/정책 artifact·외부 데이터가
-필요 없는 데모가 구현되어 있습니다. CLI는 모델을 **선택**할 뿐 실제 LLM을
-호출하거나 답변을 생성하지 않습니다.
+bilinear 학습·exact tier-lambda 튜닝·엄격한 예측기/정책 artifact·정확한
+견적-실현 비용 오차 지표·외부 데이터가 필요 없는 데모가 구현되어 있습니다.
+CLI는 모델을 **선택**할 뿐 실제 LLM을 호출하거나 답변을 생성하지
+않습니다.
 
 ## 빠른 시작
 
@@ -47,6 +48,11 @@ tierroute route "이 Python 함수를 디버그해 줘" --tier balanced --json
 tierroute evaluate --data src/tierroute/data/synthetic.json --json
 HF_HUB_OFFLINE=1 tierroute demo
 ```
+
+`route --json`은 실행 전 결정입니다. `cost`는 `quoted_cost`의 의미상 alias로
+남고 `realized_cost`는 `null`입니다. `evaluate --json`은 로그된 outcome을
+replay하고 실제로 실행된 replay 호출의 tier별·tier 횡단 `cost_evidence`를
+출력합니다. 두 명령 모두 실제 provider를 호출하지 않습니다.
 
 동봉된 프롬프트·비용·출력·예측 품질·scorecard 수치는 프로젝트가 만든 **합성
 smoke-test 값**입니다. 벤치마크 결과, 실제 모델 비교, 대회 점수가 아닙니다.
@@ -144,8 +150,10 @@ ID는 계속 fail-closed 처리합니다.
 - exact rational utility, 불변 tier별 schedule, 완전 exhaustive breakpoint 탐색 또는
   명시적으로 표시한 truncated bounded-memory 근사 탐색을 쓰는 one-shot lambda 라우팅과
   재현 가능한 베이스라인 6종
-- full-information offline replay: 선택된 로그 출력을 재생하기 전까지 정답 품질과
-  미호출 출력은 `RouterState`에 노출하지 않음
+- full-information offline replay: 정답 품질과 미호출 출력은 `RouterState`에
+  들어가지 않음. 로그된 outcome을 소모한 모든 모의 호출에 견적·실현 청구액·
+  ledger 잔액 snapshot·ledger 판정을 기록. 실현 초과지출 호출도 이미 실행된
+  replay 호출이므로 정확한 지출 근거에 남음
 - log-scaled 길이·코드/수식·프롬프트 유래 domain tag의 fitted schema, 프로젝트가
   작성한 결정론적 centered-ridge, inner-LODO out-of-fold 예측, 모델별 독립
   isotonic calibration
@@ -168,8 +176,8 @@ ID는 계속 fail-closed 처리합니다.
 - domain table을 각 outer 학습 부분에서만 맞추고 fold 근거를 기록한 뒤, 6개 방법을
   같은 원본 순서 행에서 한 번씩 replay하는 쿼리별 outer-LODO 베이스라인 suite. 실제
   replay에 쓰는 ledger가 선언대로 쿼리마다 reset·charge·report하는지도 guard가 검증
-- tier 가중 품질, oracle gap 회수율, 결정론적 leave-one-domain-out(LODO). random
-  split 도우미는 의도적으로 제공하지 않음
+- tier 가중 품질, oracle gap 회수율, 결정론적 leave-one-domain-out(LODO), tier별·
+  tier 횡단 exact 견적-실현 비용 진단. random split 도우미는 의도적으로 제공하지 않음
 - 엄격한 JSON 로더와 opt-in 방식의 고정 RouterBench 경계 어댑터
 
 `--artifact`가 없으면 다운로드 없는 CLI는 설명 가능한 합성 데모 예측기를
@@ -193,6 +201,15 @@ state(prompt, budget_tier, remaining_budget, call_history, candidate_models)
 schedule만 명시적인 평가 전용 경계를 통해 비공개 example key를 받습니다.
 schedule은 outer 학습 행과 호출 전에 관찰 가능한 metadata로 낸 결정만 담으며,
 split label을 정책 상태에 주입하지 않습니다.
+
+`ReplayCall` 근거는 평가 결과에만 속하며 라우터에 새 label channel을 만들지
+않습니다. `QueryResult.cost`는 ledger 판정이 false인 호출까지 포함한 모든
+실행 replay 호출의 실현 청구액 exact 합입니다. outcome을 replay하기 전에
+거부된 호출은 제외합니다. `selected_call_index`는 오늘의 one-shot replay에서도
+반환한 로그 호출(보통 index 0)을 식별합니다. 0이 아닌 이전 호출을 선택하는
+능력은 향후 cascade 스키마 준비일 뿐, history-adaptive cascade 구현 주장이
+아닙니다. 잔액 snapshot과 `within_budget`은 코어가 공식 예산 규칙을 추론하지
+않고 선택한 adapter의 의미를 보존합니다.
 
 ```text
 JSON / RouterBench 경계 ──> typed replay examples ──> OfflineSimulator
@@ -226,6 +243,17 @@ tier 가중 품질 = sum_t(w_t * Q_t) / sum_t(w_t)
 가중치를 다른 tier에 재분배하지 않습니다. 합성 fixture의 Fast/Balanced/Premium
 가중치 `0.5/0.3/0.2`는 저예산 고가중 동작을 확인하기 위한 예시일 뿐 SK텔레콤
 공식 가중치가 아닙니다.
+
+비용 근거는 실행된 로그 replay 호출에서 계산합니다. 호출 하나에서 `underquoted`는
+`realized_cost > quoted_cost`, `overquoted`는 그 반대입니다. 전체 absolute
+quote error는 호출별 음이 아닌 오차 크기를 더하므로 반대 방향 오차가 상쇄되지
+않습니다. 별도 net error는 float나 0으로 나누는 percentage 없이
+`sum(realized) - sum(quoted)`의 exact 방향과 크기를 제공합니다. Tier 행은 호출
+실현 비용을 `BudgetReport.spent`, ledger 초과 횟수와 대조합니다. overall 행은
+tier ledger가 서로 독립이므로 tier 횡단 진단일 뿐 공유 예산이나 예산 준수
+판정이 아닙니다. 기존 최상위 `total_cost`와 명시적 alias인
+`total_realized_cost`도 overall 실현 합계와 같으며 동일하게 tier 횡단 진단일
+뿐입니다.
 
 현재 쿼리별 회계에서 oracle gap 회수율은 always-cheapest에서 각 쿼리마다 독립적으로
 예산 내인 oracle까지의 가중 품질 간격 중 라우터가 회수한 비율입니다.

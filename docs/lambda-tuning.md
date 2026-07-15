@@ -148,7 +148,9 @@ exhaustive/truncated status for every capped run.
 
 Each retained lambda is run through `OfflineSimulator` with the caller-selected ledger.
 The tuner uses realized replay quality and charge, not the predictor's training loss.
-An incomplete or over-budget replay is ineligible. Feasible ties are resolved by:
+Quote-versus-realized error is retained as evaluation evidence, not added to the tuning
+objective. An incomplete or over-budget replay is ineligible. Feasible ties are
+resolved by:
 
 1. greater exact mean realized quality;
 2. lower realized spend;
