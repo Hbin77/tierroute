@@ -262,7 +262,7 @@ def test_realized_overspend_is_recorded_and_exhausts_cumulative_budget() -> None
     assert result.queries[0].calls[0].quoted_cost == Decimal("0.1")
     assert result.queries[0].calls[0].realized_cost == Decimal("9")
     assert not result.queries[0].calls[0].within_budget
-    assert "realized cost 9 exceeded" in (result.queries[0].error or "")
+    assert "reported realized charge 9 out of budget" in (result.queries[0].error or "")
     assert result.queries[1].cost == Decimal(0)
     assert result.queries[1].calls == ()
     assert result.budget.spent == Decimal("9")

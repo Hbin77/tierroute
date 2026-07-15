@@ -156,8 +156,9 @@ class OfflineSimulator:
                         charged,
                         trace,
                         replayed_calls,
-                        "realized cost "
-                        f"{outcome.cost} exceeded remaining budget {remaining_before_call}",
+                        "budget ledger reported realized charge "
+                        f"{outcome.cost} out of budget from remaining snapshot "
+                        f"{remaining_before_call}",
                     )
                 history.append(
                     CallRecord(

@@ -292,7 +292,7 @@ def test_quote_affordability_and_realized_overspend_remain_distinct() -> None:
     assert not length_query.feasible
     assert length_query.selected_model_id is None
     assert length_query.cost == Decimal("3")
-    assert "realized cost 3 exceeded" in (length_query.error or "")
+    assert "reported realized charge 3 out of budget" in (length_query.error or "")
     assert oracle_query.feasible
     assert oracle_query.selected_model_id == "cheap"
     assert oracle_query.cost == Decimal("1")
