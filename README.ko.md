@@ -222,8 +222,8 @@ tier 가중 품질 = sum_t(w_t * Q_t) / sum_t(w_t)
 가중치 `0.5/0.3/0.2`는 저예산 고가중 동작을 확인하기 위한 예시일 뿐 SK텔레콤
 공식 가중치가 아닙니다.
 
-oracle gap 회수율은 always-cheapest에서 예산 내 oracle까지의 가중 품질 간격 중
-라우터가 회수한 비율입니다.
+현재 쿼리별 회계에서 oracle gap 회수율은 always-cheapest에서 각 쿼리마다 독립적으로
+예산 내인 oracle까지의 가중 품질 간격 중 라우터가 회수한 비율입니다.
 
 ```text
 sum_t w_t * (Q_router,t - Q_cheapest,t)
@@ -231,7 +231,9 @@ sum_t w_t * (Q_router,t - Q_cheapest,t)
 sum_t w_t * (Q_oracle,t - Q_cheapest,t)
 ```
 
-oracle과 cheapest가 같으면 정의되지 않으며 음수도 그대로 보존합니다.
+oracle과 cheapest가 같으면 정의되지 않으며 음수도 그대로 보존합니다. 동봉 oracle
+planner는 쿼리별 예산에서만 상한입니다. 누적 스트림의 oracle이 아니며, 누적 결과에는
+아직 구현하지 않은 sequence-level 계획이 필요합니다.
 
 | 베이스라인 | 선택 규칙 |
 | --- | --- |
@@ -366,6 +368,10 @@ tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
 [CONTRIBUTING.md](CONTRIBUTING.md), 의존성 목록은 [SBOM.md](SBOM.md), 실제 wheel
 내용을 기준으로 한 승인·거부 기록은
 [docs/dependency-license-audit.md](docs/dependency-license-audit.md)를 참고하세요.
+
+핵심 연구의 원문 검토, 선행연구 비교, 구현 완료·계획·공식 확인 대기 주장의 정확한
+경계는 [docs/literature-and-novelty.md](docs/literature-and-novelty.md)에 기록합니다.
+보고서나 발표에서 성능·OOD·novelty 문구를 재사용하기 전에 확인하세요.
 
 ## Open questions
 

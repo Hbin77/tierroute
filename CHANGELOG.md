@@ -31,9 +31,17 @@ the public API is pre-1.0.
   before dense embedding allocation, and carries the same reviewed implementation
   through every inner-LODO fit and final refit without changing version-1 artifact
   bytes.
+- A primary-source literature review and novelty matrix covering RouteLLM,
+  RouterBench, FrugalGPT, unified routing/cascading, and the three
+  organizer-recommended inference-time generation materials, plus a targeted
+  2025–2026 routing landscape check, with implemented, planned, and officially gated
+  claims separated.
 
 ### Changed
 
+- Clarify that the bundled oracle and six-baseline CLI are illustrative per-query
+  infrastructure: cumulative oracle-gap reporting needs a sequence-level oracle, and
+  reportable domain-table comparisons must fit only on each outer training fold.
 - Replace setuptools with the dependency-free `flit_core` build backend after a
   wheel-content audit found vendored LGPL code that top-level metadata did not report.
   The license gate now scans bundled license documents and nested vendored metadata in
