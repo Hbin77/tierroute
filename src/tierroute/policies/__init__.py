@@ -1,6 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Routing policies and baselines."""
 
+from tierroute.policies.baseline_evaluation import (
+    BASELINE_NAMES,
+    BaselineResult,
+    DomainTableEntry,
+    LodoSixBaselineEvaluation,
+    OuterFoldBaselineEvidence,
+    evaluate_per_query_lodo_baselines,
+)
 from tierroute.policies.baselines import (
     AlwaysCheapestRouter,
     AlwaysPremiumRouter,
@@ -41,19 +49,24 @@ from tierroute.policies.lambda_tuning import (
 )
 
 __all__ = [
+    "BASELINE_NAMES",
     "LAMBDA_NUMERIC_CONVENTION",
     "LAMBDA_POLICY_ARTIFACT_VERSION",
     "AlwaysCheapestRouter",
     "AlwaysPremiumRouter",
+    "BaselineResult",
     "CrossFittedPredictionTable",
     "DomainBestRouter",
+    "DomainTableEntry",
     "LambdaCandidateSet",
     "LambdaInput",
     "LambdaPolicyArtifact",
     "LambdaThresholdRouter",
     "LengthHeuristicRouter",
+    "LodoSixBaselineEvaluation",
     "NestedLodoLambdaResult",
     "OracleRouter",
+    "OuterFoldBaselineEvidence",
     "OuterFoldLambdaResult",
     "RandomRouter",
     "TierLambdaSelection",
@@ -63,6 +76,7 @@ __all__ = [
     "as_lambda",
     "cross_fitted_prediction_table",
     "derive_lambda_candidate_set",
+    "evaluate_per_query_lodo_baselines",
     "exact_lambda_candidates",
     "fit_tiered_lambda_router_for_fold",
     "nested_lodo_lambda_evaluation",

@@ -343,7 +343,8 @@ def _print_scorecard(dataset_name: str, results: tuple[BaselineResult, ...]) -> 
             f"{_format_score(result.gap_recovery):>7}"
         )
     print("Note: bundled numbers are synthetic smoke checks, not benchmark claims.")
-    print("Domain-table smoke fitting uses this sample; real evaluation must use LODO folds.")
+    print("Validation: all six reports use one original-order outer-LODO population.")
+    print("Domain table: fit on each outer training side; unseen tags use cheapest fallback.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -554,6 +555,8 @@ def main(argv: list[str] | None = None) -> int:
                 "dataset": dataset.name,
                 "provenance": dataset.provenance,
                 "budget_scope": "per-query-illustrative",
+                "validation_scope": "outer-lodo-original-order",
+                "domain_table_fit": "outer-training-observable-tags-only",
                 "baselines": [_baseline_payload(result) for result in results],
             }
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
