@@ -118,6 +118,52 @@ def test_domain_table_falls_back_when_fitted_choice_exceeds_budget() -> None:
     assert action.model_id == "cheap"
 
 
+def test_domain_table_fitter_uses_only_observable_metadata_tags() -> None:
+    hidden = EvaluationExample(
+        "hidden",
+        "prompt",
+        "private-split-domain",
+        (
+            CandidateOutcome("cheap", "c", Decimal("1"), 0.1),
+            CandidateOutcome("premium", "p", Decimal("4"), 1.0),
+        ),
+        (MODELS[0], MODELS[2]),
+    )
+    visible = EvaluationExample(
+        "visible",
+        "prompt",
+        "different-split-domain",
+        (
+            CandidateOutcome("cheap", "c", Decimal("1"), 0.1),
+            CandidateOutcome("premium", "p", Decimal("4"), 1.0),
+        ),
+        (MODELS[0], MODELS[2]),
+        {"domain": "observable-tag"},
+    )
+
+    plan = fit_per_query_domain_table(
+        (hidden, visible),
+        (TierSpec(BudgetTier.FAST, Decimal("4"), 1.0),),
+    )
+
+    assert plan.table == {(BudgetTier.FAST, "observable-tag"): "premium"}
+    assert (BudgetTier.FAST, "private-split-domain") not in plan.table
+    assert (BudgetTier.FAST, "different-split-domain") not in plan.table
+
+
+def test_domain_table_rejects_non_string_observable_metadata() -> None:
+    invalid_state = RouterState(
+        "prompt",
+        BudgetTier.FAST,
+        Decimal("4"),
+        candidate_models=MODELS,
+        metadata={"domain": 42},
+    )
+
+    with pytest.raises(RoutingContractError, match="non-empty string"):
+        DomainBestRouter({}, "cheap").route(invalid_state)
+
+
 def test_lambda_policy_maximizes_quality_minus_cost_and_respects_budget() -> None:
     router = LambdaThresholdRouter(
         StaticQualityPredictor({"cheap": 0.5, "middle": 0.8, "premium": 0.95}),
@@ -339,6 +385,7 @@ def test_domain_table_cost_tie_break_does_not_overflow_through_float() -> None:
             CandidateOutcome("z-cheap", "answer", Decimal("1e10000"), 0.5),
         ),
         models,
+        {"domain": "general"},
     )
 
     plan = fit_per_query_domain_table(
