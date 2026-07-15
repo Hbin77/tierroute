@@ -4,7 +4,7 @@
 from dataclasses import fields
 from decimal import Decimal
 
-from tierroute.core import BudgetTier, CallRecord
+from tierroute.core import BudgetTier, CallRecord, ModelSpec
 from tierroute.eval import CandidateOutcome, EvaluationExample, TierSpec
 
 
@@ -18,9 +18,11 @@ def test_example_exposes_only_model_id_and_cost_to_router() -> None:
         "prompt",
         "reasoning",
         (CandidateOutcome("model", "secret output", Decimal("0.2"), 0.9),),
+        (ModelSpec("model", Decimal("0.1")),),
     )
 
     assert example.candidate_models[0].model_id == "model"
+    assert example.candidate_models[0].cost == Decimal("0.1")
     assert not hasattr(example.candidate_models[0], "quality")
 
 

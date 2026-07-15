@@ -21,6 +21,9 @@ def leave_one_domain_out(examples: tuple[EvaluationExample, ...]) -> tuple[Domai
     """Create deterministic LODO folds sorted by held-out domain."""
 
     examples = tuple(examples)
+    example_ids = [example.example_id for example in examples]
+    if len(example_ids) != len(set(example_ids)):
+        raise ValueError("LODO requires unique example_id values")
     domains = sorted({example.domain for example in examples})
     if len(domains) < 2:
         raise ValueError("LODO requires at least two domains")

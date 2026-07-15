@@ -5,7 +5,15 @@ from decimal import Decimal
 
 import pytest
 
-from tierroute.core import BudgetTier, CallModel, CallRecord, ModelSpec, RouterState, SelectOutput
+from tierroute.core import (
+    BudgetTier,
+    CallModel,
+    CallRecord,
+    ModelSpec,
+    RouterState,
+    RoutingContractError,
+    SelectOutput,
+)
 from tierroute.policies import (
     AlwaysCheapestRouter,
     AlwaysPremiumRouter,
@@ -37,7 +45,7 @@ def state(
         Decimal(budget),
         history,
         candidates,
-        {"example_id": "q1", "domain": "math"},
+        {"domain": "math"},
     )
 
 
@@ -80,7 +88,10 @@ def test_oracle_and_domain_table_use_only_precomputed_model_ids() -> None:
     oracle = OracleRouter({(BudgetTier.FAST, "q1"): "premium"})
     domain = DomainBestRouter({(BudgetTier.FAST, "math"): "middle"}, "cheap")
 
-    assert oracle.route(state()).model_id == "premium"  # type: ignore[union-attr]
+    with pytest.raises(RoutingContractError, match="evaluation-only"):
+        oracle.route(state())
+    oracle_action = oracle.route_with_evaluation_context(state(), example_id="q1")
+    assert isinstance(oracle_action, CallModel) and oracle_action.model_id == "premium"
     assert domain.route(state()).model_id == "middle"  # type: ignore[union-attr]
     unseen = RouterState(
         "prompt",
@@ -90,6 +101,15 @@ def test_oracle_and_domain_table_use_only_precomputed_model_ids() -> None:
         metadata={"domain": "unseen"},
     )
     assert domain.route(unseen).model_id == "cheap"  # type: ignore[union-attr]
+
+
+def test_domain_table_falls_back_when_fitted_choice_exceeds_budget() -> None:
+    router = DomainBestRouter({(BudgetTier.FAST, "math"): "premium"}, "cheap")
+
+    action = router.route(state(budget="1"))
+
+    assert isinstance(action, CallModel)
+    assert action.model_id == "cheap"
 
 
 def test_lambda_policy_maximizes_quality_minus_cost_and_respects_budget() -> None:

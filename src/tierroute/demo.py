@@ -118,7 +118,6 @@ def route_prompt(dataset: EvaluationDataset, prompt: str, tier: BudgetTier) -> R
         budget_tier=tier,
         remaining_budget=tier_spec.budget_limit,
         candidate_models=models,
-        metadata={"example_id": "cli-prompt"},
     )
     action = router.route(state)
     validate_action(state, action)

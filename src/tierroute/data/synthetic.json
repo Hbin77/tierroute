@@ -3,6 +3,7 @@
   "name": "tierroute synthetic smoke dataset",
   "license": "Apache-2.0",
   "provenance": "Project-authored synthetic prompts, outputs, costs, and quality scores; not benchmark evidence.",
+  "domain_labels_are_observable": true,
   "tier_specs": [
     {"tier": "fast", "budget_limit": "0.35", "weight": 0.5},
     {"tier": "balanced", "budget_limit": "0.70", "weight": 0.3},
@@ -91,4 +92,3 @@
     }
   ]
 }
-

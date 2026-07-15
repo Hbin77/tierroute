@@ -4,14 +4,15 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from tierroute.core import BudgetTier, Cost, ModelSpec
 
 
 @dataclass(frozen=True, slots=True)
 class CandidateOutcome:
-    """A logged response hidden from the router until its model is called."""
+    """A logged response and realized charge hidden until its model is called."""
 
     model_id: str
     output: str
@@ -38,6 +39,8 @@ class EvaluationExample:
     prompt: str
     domain: str
     outcomes: tuple[CandidateOutcome, ...]
+    candidate_models: tuple[ModelSpec, ...]
+    router_metadata: Mapping[str, object] = field(default_factory=dict, compare=False)
 
     def __post_init__(self) -> None:
         for field_name in ("example_id", "prompt", "domain"):
@@ -45,17 +48,19 @@ class EvaluationExample:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{field_name} must be a non-empty string")
         object.__setattr__(self, "outcomes", tuple(self.outcomes))
+        object.__setattr__(self, "candidate_models", tuple(self.candidate_models))
         if not self.outcomes:
             raise ValueError("outcomes must not be empty")
-        model_ids = [outcome.model_id for outcome in self.outcomes]
-        if len(model_ids) != len(set(model_ids)):
+        if not self.candidate_models:
+            raise ValueError("candidate_models must not be empty")
+        outcome_ids = [outcome.model_id for outcome in self.outcomes]
+        candidate_ids = [model.model_id for model in self.candidate_models]
+        if len(outcome_ids) != len(set(outcome_ids)):
             raise ValueError("outcomes must have unique model_id values")
-
-    @property
-    def candidate_models(self) -> tuple[ModelSpec, ...]:
-        """Expose only IDs and costs to the router."""
-
-        return tuple(ModelSpec(outcome.model_id, outcome.cost) for outcome in self.outcomes)
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ValueError("candidate_models must have unique model_id values")
+        if set(outcome_ids) != set(candidate_ids):
+            raise ValueError("outcomes and candidate_models must contain the same model IDs")
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,4 +138,10 @@ class EvaluationReport:
     tiers: tuple[TierResult, ...]
 
     def by_tier(self) -> dict[BudgetTier, TierResult]:
-        return {result.tier_spec.tier: result for result in self.tiers}
+        indexed: dict[BudgetTier, TierResult] = {}
+        for result in self.tiers:
+            tier = result.tier_spec.tier
+            if tier in indexed:
+                raise ValueError(f"duplicate tier in report: {tier.value}")
+            indexed[tier] = result
+        return indexed

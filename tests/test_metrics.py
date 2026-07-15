@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for weighted tier quality and oracle-gap recovery."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -14,6 +15,7 @@ from tierroute.eval import (
     TierSpec,
     oracle_gap_recovery,
     summarize_report,
+    weighted_delta,
 )
 
 WEIGHTS = {
@@ -83,3 +85,40 @@ def test_oracle_gap_recovery_detects_invalid_upper_bound() -> None:
         oracle_gap_recovery(cheapest, cheapest, low_oracle)
     with pytest.raises(ValueError, match="exceeds oracle"):
         oracle_gap_recovery(high_router, cheapest, oracle)
+
+
+def test_oracle_gap_recovery_rejects_duplicate_tiers() -> None:
+    cheapest = report("cheap", {BudgetTier.FAST: 0.4})
+    oracle = report("oracle", {BudgetTier.FAST: 0.8})
+    duplicate = EvaluationReport("duplicate", cheapest.tiers * 2)
+
+    with pytest.raises(ValueError, match="duplicate tier"):
+        oracle_gap_recovery(duplicate, cheapest, oracle)
+
+
+def test_oracle_gap_recovery_rejects_population_or_budget_scope_mismatch() -> None:
+    cheapest = report("cheap", {BudgetTier.FAST: 0.4})
+    oracle = report("oracle", {BudgetTier.FAST: 0.8})
+    base_tier = cheapest.tiers[0]
+    changed_query = replace(base_tier.queries[0], example_id="q2")
+    other_population = EvaluationReport(
+        "other-population",
+        (
+            replace(
+                base_tier,
+                queries=(changed_query,),
+                budget=replace(base_tier.budget, query_order=("q2",)),
+            ),
+        ),
+    )
+    other_adapter = EvaluationReport(
+        "other-adapter",
+        (replace(base_tier, budget=replace(base_tier.budget, adapter_name="cumulative")),),
+    )
+
+    with pytest.raises(ValueError, match="evaluation scope mismatch"):
+        oracle_gap_recovery(other_population, cheapest, oracle)
+    with pytest.raises(ValueError, match="evaluation scope mismatch"):
+        oracle_gap_recovery(other_adapter, cheapest, oracle)
+    with pytest.raises(ValueError, match="evaluation scope mismatch"):
+        weighted_delta(other_population, cheapest)

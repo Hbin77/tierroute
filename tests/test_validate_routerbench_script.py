@@ -4,11 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
-from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
-
-from tierroute.eval import CandidateOutcome, EvaluationExample
 
 
 def load_script() -> ModuleType:
@@ -24,18 +21,21 @@ def test_validation_script_replays_without_downloading(
     tmp_path: Path, monkeypatch: object, capsys: object
 ) -> None:
     module = load_script()
-    examples = (
-        EvaluationExample(
-            "q1",
-            "prompt",
-            "math",
-            (
-                CandidateOutcome("cheap", "answer", Decimal("0.1"), 0.5),
-                CandidateOutcome("premium", "better", Decimal("0.3"), 0.9),
-            ),
-        ),
+    rows = (
+        {
+            "sample_id": "q1",
+            "prompt": "prompt",
+            "eval_name": "hellaswag",
+            "oracle_model_to_route_to": "cheap",
+            "cheap": 0.5,
+            "cheap|model_response": "answer",
+            "cheap|total_cost": 0.1,
+            "premium": 0.9,
+            "premium|model_response": "better",
+            "premium|total_cost": 0.3,
+        },
     )
-    monkeypatch.setattr(module, "iter_routerbench_examples", lambda _: iter(examples))  # type: ignore[attr-defined]
+    monkeypatch.setattr(module, "iter_routerbench_rows", lambda _: iter(rows))  # type: ignore[attr-defined]
 
     module.validate_and_replay(tmp_path / "unused.pkl", replay_limit=1)
 

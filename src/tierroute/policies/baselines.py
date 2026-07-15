@@ -16,6 +16,7 @@ from tierroute.core import (
     RoutingContractError,
     SelectOutput,
 )
+from tierroute.eval.protocols import PrivilegedEvaluationRouter
 from tierroute.features import extract_surface_features
 
 
@@ -79,8 +80,7 @@ class RandomRouter:
             affordable = [
                 min(_require_candidates(state), key=lambda item: (item.cost, item.model_id))
             ]
-        example_id = str(state.metadata.get("example_id", state.prompt))
-        material = f"{self.seed}\0{example_id}\0{state.budget_tier.value}".encode()
+        material = f"{self.seed}\0{state.prompt}\0{state.budget_tier.value}".encode()
         index = int.from_bytes(hashlib.sha256(material).digest()[:8], "big") % len(affordable)
         return CallModel(affordable[index].model_id, reason="seeded random baseline")
 
@@ -118,17 +118,25 @@ class LengthHeuristicRouter:
 
 
 @dataclass(frozen=True, slots=True)
-class OracleRouter:
-    """Privileged offline upper-bound router using a precomputed per-tier plan."""
+class OracleRouter(PrivilegedEvaluationRouter):
+    """Privileged offline upper bound; invalid outside the evaluation harness."""
 
     plan: Mapping[tuple[BudgetTier, str], str]
 
     def route(self, state: RouterState) -> RouterAction:
+        """Reject deployment-style use because the oracle needs hidden outcomes."""
+
+        raise RoutingContractError(
+            "oracle is evaluation-only; use OfflineSimulator's privileged context"
+        )
+
+    def route_with_evaluation_context(self, state: RouterState, *, example_id: str) -> RouterAction:
+        """Route with an out-of-band key that ordinary policies never receive."""
+
         if selected := _finish_existing(state, "oracle call completed"):
             return selected
-        example_id = str(state.metadata.get("example_id", ""))
         if not example_id:
-            raise RoutingContractError("oracle requires state.metadata['example_id']")
+            raise RoutingContractError("oracle requires a private evaluation example ID")
         try:
             model_id = self.plan[(state.budget_tier, example_id)]
         except KeyError as error:
@@ -151,5 +159,15 @@ class DomainBestRouter:
             return selected
         domain = str(state.metadata.get("domain", ""))
         model_id = self.table.get((state.budget_tier, domain), self.fallback_model_id)
-        _by_id(state, model_id)
-        return CallModel(model_id, reason=f"domain table ({domain or 'unseen'} domain)")
+        configured = _by_id(state, model_id)
+        if configured.cost > state.remaining_budget:
+            fallback = _by_id(state, self.fallback_model_id)
+            if fallback.cost <= state.remaining_budget:
+                return CallModel(
+                    fallback.model_id,
+                    reason=f"domain table fallback ({domain or 'unseen'} domain)",
+                )
+        return CallModel(
+            configured.model_id,
+            reason=f"domain table ({domain or 'unseen'} domain)",
+        )

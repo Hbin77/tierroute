@@ -4,7 +4,7 @@
 from decimal import Decimal
 
 from tierroute.adapters import CumulativeBudgetLedger, PerQueryBudgetLedger
-from tierroute.core import BudgetTier, CallModel
+from tierroute.core import BudgetTier, CallModel, ModelSpec, SelectOutput
 from tierroute.eval import (
     CandidateOutcome,
     EvaluationExample,
@@ -14,6 +14,7 @@ from tierroute.eval import (
 )
 from tierroute.policies import AlwaysCheapestRouter, AlwaysPremiumRouter, OracleRouter
 
+MODELS = (ModelSpec("cheap", Decimal("1")), ModelSpec("premium", Decimal("2")))
 EXAMPLES = (
     EvaluationExample(
         "q1",
@@ -23,6 +24,7 @@ EXAMPLES = (
             CandidateOutcome("cheap", "cheap one", Decimal("1"), 0.5),
             CandidateOutcome("premium", "premium one", Decimal("2"), 0.9),
         ),
+        MODELS,
     ),
     EvaluationExample(
         "q2",
@@ -32,6 +34,7 @@ EXAMPLES = (
             CandidateOutcome("cheap", "cheap two", Decimal("1"), 0.4),
             CandidateOutcome("premium", "premium two", Decimal("2"), 1.0),
         ),
+        MODELS,
     ),
 )
 TIER = TierSpec(BudgetTier.FAST, Decimal("2"), 1.0)
@@ -78,3 +81,85 @@ def test_per_query_oracle_plan_is_budget_feasible_and_privileged() -> None:
 
     assert report.mean_quality == 0.95
     assert {query.selected_model_id for query in report.queries} == {"premium"}
+
+
+def test_oracle_requires_quote_and_realized_charge_to_fit_budget() -> None:
+    example = EvaluationExample(
+        "q-oracle-cost",
+        "prompt",
+        "general",
+        (
+            CandidateOutcome("cheap", "ok", Decimal("1"), 0.4),
+            CandidateOutcome("premium", "best", Decimal("1"), 1.0),
+        ),
+        (
+            ModelSpec("cheap", Decimal("1")),
+            ModelSpec("premium", Decimal("3")),
+        ),
+    )
+    tier = TierSpec(BudgetTier.FAST, Decimal("1"), 1.0)
+
+    plan = build_per_query_oracle_plan((example,), (tier,))
+
+    assert plan[(BudgetTier.FAST, "q-oracle-cost")] == "cheap"
+
+
+def test_policy_sees_quoted_cost_but_ledger_charges_hidden_realized_cost() -> None:
+    example = EvaluationExample(
+        "q-cost",
+        "prompt",
+        "general",
+        (
+            CandidateOutcome("quoted-cheap", "long output", Decimal("9"), 0.5),
+            CandidateOutcome("quoted-high", "short", Decimal("1"), 0.6),
+        ),
+        (
+            ModelSpec("quoted-cheap", Decimal("0.1")),
+            ModelSpec("quoted-high", Decimal("0.2")),
+        ),
+    )
+
+    result = OfflineSimulator(PerQueryBudgetLedger).run_tier(
+        AlwaysCheapestRouter(),
+        (example,),
+        TierSpec(BudgetTier.FAST, Decimal("9"), 1.0),
+    )
+
+    assert result.queries[0].selected_model_id == "quoted-cheap"
+    assert result.queries[0].cost == Decimal("9")
+
+
+def test_split_domain_is_not_exposed_without_explicit_router_metadata() -> None:
+    class CapturingRouter:
+        def __init__(self) -> None:
+            self.metadata: list[dict[str, object]] = []
+
+        def route(self, state: object) -> CallModel | SelectOutput:
+            self.metadata.append(dict(state.metadata))  # type: ignore[attr-defined]
+            if state.call_history:  # type: ignore[attr-defined]
+                return SelectOutput(0)
+            return CallModel("cheap")
+
+    router = CapturingRouter()
+    OfflineSimulator(PerQueryBudgetLedger).run_tier(router, EXAMPLES[:1], TIER)
+
+    assert router.metadata
+    assert all("domain" not in metadata for metadata in router.metadata)
+    assert all("example_id" not in metadata for metadata in router.metadata)
+
+
+def test_privileged_context_requires_nominal_oracle_marker() -> None:
+    class MethodNameCollisionRouter:
+        def route_with_evaluation_context(self, state: object, *, example_id: str) -> CallModel:
+            raise AssertionError(f"ordinary router received private ID {example_id}")
+
+        def route(self, state: object) -> CallModel | SelectOutput:
+            if state.call_history:  # type: ignore[attr-defined]
+                return SelectOutput(0)
+            return CallModel("cheap")
+
+    result = OfflineSimulator(PerQueryBudgetLedger).run_tier(
+        MethodNameCollisionRouter(), EXAMPLES[:1], TIER
+    )
+
+    assert result.feasible is True

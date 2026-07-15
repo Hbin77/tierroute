@@ -10,12 +10,14 @@ from tierroute.core import (
     CallModel,
     CallRecord,
     Router,
+    RouterAction,
     RouterState,
     RoutingContractError,
     SelectOutput,
     validate_action,
 )
 from tierroute.eval.budgets import BudgetLedger, BudgetLedgerFactory
+from tierroute.eval.protocols import PrivilegedEvaluationRouter
 from tierroute.eval.schemas import (
     EvaluationExample,
     EvaluationReport,
@@ -103,10 +105,10 @@ class OfflineSimulator:
                 remaining_budget=ledger.remaining_budget,
                 call_history=tuple(history),
                 candidate_models=example.candidate_models,
-                metadata={"example_id": example.example_id, "domain": example.domain},
+                metadata=example.router_metadata,
             )
             try:
-                action = router.route(state)
+                action = self._route_action(router, state, example.example_id)
                 validate_action(state, action)
             except RoutingContractError as error:
                 return self._failed_query(example, tier_spec, charged, trace, str(error))
@@ -159,6 +161,14 @@ class OfflineSimulator:
                 )
 
             raise AssertionError("validate_action accepted an unknown action type")
+
+    @staticmethod
+    def _route_action(router: Router, state: RouterState, example_id: str) -> RouterAction:
+        """Keep private evaluation identity outside the deployable router state."""
+
+        if isinstance(router, PrivilegedEvaluationRouter):
+            return router.route_with_evaluation_context(state, example_id=example_id)
+        return router.route(state)
 
     @staticmethod
     def _failed_query(

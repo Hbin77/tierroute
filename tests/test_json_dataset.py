@@ -13,6 +13,7 @@ def test_bundled_dataset_is_complete_and_explicitly_synthetic() -> None:
     assert bundled_synthetic_path().is_file()
     assert dataset.license == "Apache-2.0"
     assert "not benchmark evidence" in dataset.provenance
+    assert dataset.domain_labels_are_observable is True
     assert len(dataset.examples) == 8
     assert {example.domain for example in dataset.examples} == {
         "general",
@@ -21,6 +22,8 @@ def test_bundled_dataset_is_complete_and_explicitly_synthetic() -> None:
         "science",
     }
     assert [spec.tier for spec in dataset.tier_specs] == list(BudgetTier)
+    assert dataset.examples[0].router_metadata["domain"] == dataset.examples[0].domain
+    assert "example_id" not in dataset.examples[0].router_metadata
 
 
 def test_bundled_costs_are_exact_and_model_catalogue_is_stable() -> None:

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
-from tierroute.core import BudgetTier, as_cost
+from tierroute.core import BudgetTier, ModelSpec, as_cost
 from tierroute.eval import CandidateOutcome, EvaluationExample, TierSpec
 
 
@@ -20,6 +20,7 @@ class EvaluationDataset:
     name: str
     license: str
     provenance: str
+    domain_labels_are_observable: bool
     tier_specs: tuple[TierSpec, ...]
     examples: tuple[EvaluationExample, ...]
 
@@ -60,13 +61,21 @@ def load_evaluation_dataset(path: str | Path | None = None) -> EvaluationDataset
     root = _require_mapping(document, "dataset")
     if root.get("schema_version") != 1:
         raise ValueError("dataset.schema_version must equal 1")
+    domain_labels_are_observable = _require_boolean(
+        root.get("domain_labels_are_observable", False),
+        "domain_labels_are_observable",
+    )
 
     tier_specs = tuple(
         _parse_tier(_require_mapping(item, f"tier_specs[{index}]"), index)
         for index, item in enumerate(_require_list(root.get("tier_specs"), "tier_specs"))
     )
     examples = tuple(
-        _parse_example(_require_mapping(item, f"examples[{index}]"), index)
+        _parse_example(
+            _require_mapping(item, f"examples[{index}]"),
+            index,
+            domain_label_is_observable=domain_labels_are_observable,
+        )
         for index, item in enumerate(_require_list(root.get("examples"), "examples"))
     )
     if not tier_specs or not examples:
@@ -79,9 +88,16 @@ def load_evaluation_dataset(path: str | Path | None = None) -> EvaluationDataset
         name=_require_string(root.get("name"), "name"),
         license=_require_string(root.get("license"), "license"),
         provenance=_require_string(root.get("provenance"), "provenance"),
+        domain_labels_are_observable=domain_labels_are_observable,
         tier_specs=tier_specs,
         examples=examples,
     )
+
+
+def _require_boolean(value: object, context: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{context} must be a boolean")
+    return value
 
 
 def _parse_tier(item: Mapping[str, object], index: int) -> TierSpec:
@@ -96,25 +112,37 @@ def _parse_tier(item: Mapping[str, object], index: int) -> TierSpec:
     )
 
 
-def _parse_example(item: Mapping[str, object], index: int) -> EvaluationExample:
-    outcomes = tuple(
+def _parse_example(
+    item: Mapping[str, object], index: int, *, domain_label_is_observable: bool
+) -> EvaluationExample:
+    parsed = tuple(
         _parse_outcome(_require_mapping(value, f"examples[{index}].outcomes[{outcome_index}]"))
         for outcome_index, value in enumerate(
             _require_list(item.get("outcomes"), f"examples[{index}].outcomes")
         )
     )
+    domain = _require_string(item.get("domain"), f"examples[{index}].domain")
     return EvaluationExample(
         example_id=_require_string(item.get("example_id"), f"examples[{index}].example_id"),
         prompt=_require_string(item.get("prompt"), f"examples[{index}].prompt"),
-        domain=_require_string(item.get("domain"), f"examples[{index}].domain"),
-        outcomes=outcomes,
+        domain=domain,
+        outcomes=tuple(outcome for outcome, _ in parsed),
+        candidate_models=tuple(model for _, model in parsed),
+        router_metadata={"domain": domain} if domain_label_is_observable else {},
     )
 
 
-def _parse_outcome(item: Mapping[str, object]) -> CandidateOutcome:
-    return CandidateOutcome(
-        model_id=_require_string(item.get("model_id"), "outcome.model_id"),
-        output=_require_string(item.get("output"), "outcome.output"),
-        cost=as_cost(_require_string(item.get("cost"), "outcome.cost")),
-        quality=float(item.get("quality")),  # type: ignore[arg-type]
+def _parse_outcome(item: Mapping[str, object]) -> tuple[CandidateOutcome, ModelSpec]:
+    model_id = _require_string(item.get("model_id"), "outcome.model_id")
+    charged_cost = as_cost(_require_string(item.get("cost"), "outcome.cost"))
+    quoted_value = item.get("quoted_cost", item.get("cost"))
+    quoted_cost = as_cost(_require_string(quoted_value, "outcome.quoted_cost"))
+    return (
+        CandidateOutcome(
+            model_id=model_id,
+            output=_require_string(item.get("output"), "outcome.output"),
+            cost=charged_cost,
+            quality=float(item.get("quality")),  # type: ignore[arg-type]
+        ),
+        ModelSpec(model_id, quoted_cost),
     )

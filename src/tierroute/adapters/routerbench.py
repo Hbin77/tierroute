@@ -18,12 +18,14 @@ import io
 import math
 import os
 import stat
+from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
+from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from tierroute.core import as_cost
+from tierroute.core import Cost, ModelSpec, as_cost
 from tierroute.eval.schemas import CandidateOutcome, EvaluationExample
 
 ROUTERBENCH_FILENAME = "routerbench_0shot.pkl"
@@ -287,9 +289,10 @@ def routerbench_row_to_example(
     row: Mapping[str, object],
     *,
     row_number: int,
+    quoted_costs: Mapping[str, Cost],
     include_unmapped: bool = False,
 ) -> EvaluationExample | None:
-    """Convert one validated wide row without exposing its oracle label."""
+    """Convert a row using pre-call costs fitted outside this evaluation row."""
 
     model_ids = tuple(
         sorted(
@@ -299,6 +302,8 @@ def routerbench_row_to_example(
         )
     )
     validate_routerbench_row(row, model_ids, row_number=row_number)
+    if set(quoted_costs) != set(model_ids):
+        raise RouterBenchSchemaError("quoted_costs must cover every RouterBench model exactly")
     eval_name = str(row["eval_name"])
     domain = normalize_routerbench_domain(eval_name)
     if domain is None:
@@ -320,11 +325,17 @@ def routerbench_row_to_example(
         prompt=str(row["prompt"]),
         domain=domain,
         outcomes=outcomes,
+        candidate_models=tuple(
+            ModelSpec(model_id, quoted_costs[model_id]) for model_id in model_ids
+        ),
     )
 
 
 def iter_routerbench_examples(
-    path: str | Path, *, include_unmapped: bool = False
+    path: str | Path,
+    *,
+    quoted_costs: Mapping[str, Cost],
+    include_unmapped: bool = False,
 ) -> Iterator[EvaluationExample]:
     """Yield typed replay examples from the authenticated RouterBench artifact."""
 
@@ -332,7 +343,43 @@ def iter_routerbench_examples(
         example = routerbench_row_to_example(
             row,
             row_number=row_number,
+            quoted_costs=quoted_costs,
             include_unmapped=include_unmapped,
         )
         if example is not None:
             yield example
+
+
+def estimate_routerbench_quoted_costs(
+    calibration_rows: Sequence[Mapping[str, object]],
+) -> dict[str, Cost]:
+    """Estimate model-level pre-call costs from a training-only calibration split.
+
+    RouterBench stores realized response costs, which must never be exposed for the row
+    being routed. Callers are responsible for supplying only training rows here.
+    """
+
+    if not calibration_rows:
+        raise ValueError("calibration_rows must not be empty")
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+    counts: dict[str, int] = defaultdict(int)
+    expected_models: tuple[str, ...] | None = None
+    for row_number, row in enumerate(calibration_rows):
+        model_ids = tuple(
+            sorted(
+                column.removesuffix(_RESPONSE_SUFFIX)
+                for column in row
+                if column.endswith(_RESPONSE_SUFFIX)
+            )
+        )
+        validate_routerbench_row(row, model_ids, row_number=row_number)
+        if expected_models is None:
+            expected_models = model_ids
+        elif model_ids != expected_models:
+            raise RouterBenchSchemaError("calibration rows have inconsistent model columns")
+        for model_id in model_ids:
+            totals[model_id] += as_cost(str(row[f"{model_id}{_COST_SUFFIX}"]))
+            counts[model_id] += 1
+    if expected_models is None:
+        raise AssertionError("non-empty calibration_rows produced no model catalogue")
+    return {model_id: totals[model_id] / counts[model_id] for model_id in expected_models}

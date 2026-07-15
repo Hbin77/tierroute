@@ -8,12 +8,15 @@ import importlib.util
 import io
 import sys
 from collections.abc import Iterator
+from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
 from tierroute.adapters import routerbench
+
+QUOTED_COSTS = {"model-a": Decimal("0.05")}
 
 
 def load_download_module() -> ModuleType:
@@ -231,13 +234,24 @@ def test_typed_conversion_filters_unmapped_domains_and_keeps_cost_exact() -> Non
     }
     unmapped = {**mapped, "sample_id": "extra.1", "eval_name": "abstract2title"}
 
-    example = routerbench.routerbench_row_to_example(mapped, row_number=0)
+    example = routerbench.routerbench_row_to_example(
+        mapped, row_number=0, quoted_costs=QUOTED_COSTS
+    )
 
     assert example is not None
     assert example.domain == "gsm8k"
+    assert example.router_metadata == {}
     assert str(example.outcomes[0].cost) == "0.1"
-    assert routerbench.routerbench_row_to_example(unmapped, row_number=1) is None
-    included = routerbench.routerbench_row_to_example(unmapped, row_number=1, include_unmapped=True)
+    assert (
+        routerbench.routerbench_row_to_example(unmapped, row_number=1, quoted_costs=QUOTED_COSTS)
+        is None
+    )
+    included = routerbench.routerbench_row_to_example(
+        unmapped,
+        row_number=1,
+        quoted_costs=QUOTED_COSTS,
+        include_unmapped=True,
+    )
     assert included is not None and included.domain == "unmapped:abstract2title"
 
 
@@ -252,10 +266,30 @@ def test_no_correct_model_oracle_sentinel_is_accepted_but_not_exposed() -> None:
         "model-a|total_cost": 0.1,
     }
 
-    example = routerbench.routerbench_row_to_example(row, row_number=0)
+    example = routerbench.routerbench_row_to_example(row, row_number=0, quoted_costs=QUOTED_COSTS)
 
     assert example is not None
     assert not hasattr(example, "oracle_model_to_route_to")
+
+
+def test_quoted_costs_are_fitted_from_separate_rows_not_current_realized_cost() -> None:
+    calibration = {
+        "sample_id": "train",
+        "prompt": "training prompt",
+        "eval_name": "hellaswag",
+        "oracle_model_to_route_to": "model-a",
+        "model-a": 1.0,
+        "model-a|model_response": "answer",
+        "model-a|total_cost": 0.1,
+    }
+    evaluation = {**calibration, "sample_id": "test", "model-a|total_cost": 9.9}
+
+    quoted = routerbench.estimate_routerbench_quoted_costs((calibration,))
+    example = routerbench.routerbench_row_to_example(evaluation, row_number=0, quoted_costs=quoted)
+
+    assert example is not None
+    assert example.candidate_models[0].cost == Decimal("0.1")
+    assert example.outcomes[0].cost == Decimal("9.9")
 
 
 def test_schema_rejects_incomplete_model_triplet() -> None:
