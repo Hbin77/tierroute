@@ -455,6 +455,12 @@ planned, and gated claims are recorded in
 [docs/literature-and-novelty.md](docs/literature-and-novelty.md). Read it before reusing
 performance, OOD, or novelty language in a report or presentation.
 
+Material development-assistant use, evidence limits, and human review status are
+recorded in [docs/ai-assistance-audit.md](docs/ai-assistance-audit.md). The critical
+invariant walkthrough packet and owner sign-off table are in
+[docs/maintainer-explainability.md](docs/maintainer-explainability.md). CI and AI-agent
+reviews are automated evidence; they are not human owner sign-off.
+
 ## Open questions
 
 These decisions remain adapter- or configuration-local until official answers arrive:
@@ -466,6 +472,9 @@ These decisions remain adapter- or configuration-local until official answers ar
 3. What license and redistribution terms govern SK Telecom data, and what are the
    official Fast/Balanced/Premium weights? No SK Telecom data will be committed before
    written license confirmation.
+4. Should a tierroute-trained ridge/bilinear-plus-isotonic predictor artifact be
+   declared as an Appendix 2 type-3 self-developed model? Obtain the organizer's written
+   interpretation before the final declaration; it is not external-model fine-tuning.
 
 ## License
 

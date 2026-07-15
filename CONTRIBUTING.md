@@ -134,6 +134,33 @@ per-query or cumulative semantics in a policy.
 If licensing is unclear, leave the artifact out and ask for review. A source URL alone
 does not establish redistribution rights.
 
+## AI-assisted contributions
+
+The contributor remains responsible for every submitted line, claim, license, and
+behavior, whether or not an AI coding assistant proposed it. When an assistant makes a
+material contribution, complete the pull request's disclosure with:
+
+- the tool or service name;
+- the exact model/version/snapshot when it is actually available, or the truthful value
+  `not exposed/not retained`;
+- the assisted activities and affected paths or algorithms;
+- the human validation actually performed in that pull request; and
+- the matching entry in [the assistance audit](docs/ai-assistance-audit.md), when the
+  change is material to a contest claim or critical invariant.
+
+Do not invent an AI-authored-line percentage, reconstruct a model identity from memory,
+or commit private prompts and credentials merely to make a disclosure appear precise.
+An AI-agent/subagent review and a successful CI run are automated evidence, not an
+independent human review. Name a human reviewer only when a durable record from that
+person exists.
+
+Changes to a boundary in
+[the maintainer explainability packet](docs/maintainer-explainability.md) must update
+its source/test map when needed and return the affected owner sign-off row to
+**Pending**. Only the human entrant may complete that row after tracing the code and
+performing the required failure/mutation drill. A contribution with no material AI
+assistance should state `None` in the pull request instead of omitting the section.
+
 ## Commits and pull requests
 
 Use focused [Conventional Commits](https://www.conventionalcommits.org/) messages, for
@@ -150,6 +177,8 @@ Before requesting review:
 - Link the issue or explain the user-visible problem.
 - Describe the chosen boundary and any assumptions.
 - Include tests and documentation needed to reproduce the change.
+- Disclose material AI assistance and distinguish automated evidence from a named human
+  walkthrough; link the audit row or record the walkthrough as pending.
 - Complete the pull request checklist truthfully.
 - Avoid unrelated formatting or generated-file churn.
 

@@ -430,6 +430,12 @@ tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
 경계는 [docs/literature-and-novelty.md](docs/literature-and-novelty.md)에 기록합니다.
 보고서나 발표에서 성능·OOD·novelty 문구를 재사용하기 전에 확인하세요.
 
+개발 보조 도구의 실질적 사용 범위, 증거의 한계, 사람 검토 상태는
+[docs/ai-assistance-audit.md](docs/ai-assistance-audit.md)에 기록합니다. 핵심 불변식별
+설명·실패 경로 검토 자료와 참가자 서명 표는
+[docs/maintainer-explainability.md](docs/maintainer-explainability.md)에 있습니다. CI와
+AI 에이전트 리뷰는 자동화 증거이며 참가자의 사람 검토 서명을 대신하지 않습니다.
+
 ## Open questions
 
 공식 답변 전까지 다음 결정은 어댑터 또는 설정에만 둡니다.
@@ -440,6 +446,9 @@ tierroute route "policy smoke" --artifact artifacts/synthetic-bilinear.json \
    cascade를 범위에 넣지 않습니다.
 3. SK텔레콤 데이터의 라이선스·재배포 조건과 공식 Fast/Balanced/Premium 가중치는
    무엇인가? 라이선스를 서면 확인하기 전 SK텔레콤 데이터는 커밋하지 않습니다.
+4. tierroute가 학습한 ridge/bilinear+isotonic 예측기 artifact를 붙임2 유형3 자체 개발
+   모델로 신고해야 하는가? 외부 모델 파인튜닝은 아니며, 최종 명세 전에 사무국의
+   서면 해석을 받습니다.
 
 ## 라이선스
 

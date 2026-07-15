@@ -47,6 +47,10 @@ the public API is pre-1.0.
   call cap, complete replay content, candidate/outcome order, outputs, labels, and
   canonical policy-visible metadata. Evaluation CLI output exposes the algorithm,
   digest, and call cap.
+- A truthful [development-assistance ledger](docs/ai-assistance-audit.md), Korean
+  submission-disclosure draft, and contest-critical
+  [maintainer explainability packet](docs/maintainer-explainability.md), with all human
+  walkthroughs explicitly pending until a named entrant performs and records them.
 
 ### Changed
 
