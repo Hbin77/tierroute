@@ -158,6 +158,34 @@ def main() -> int:
         ):
             raise RuntimeError("nested benchmark fold membership evidence is incomplete")
 
+        comparison = json.loads(
+            _run_cli(
+                executable,
+                "compare-predictors",
+                "--budget-scope",
+                "per-query",
+                "--gbm-estimators",
+                "4",
+                "--json",
+            )
+        )
+        if (
+            comparison.get("schema") != "tierroute-predictor-comparison"
+            or comparison.get("schema_version") != 1
+            or comparison.get("claim_state") != "SYNTHETIC-ONLY"
+            or comparison.get("network_used") is not False
+            or comparison.get("selection_protocol") != "none-paired-estimation"
+            or comparison.get("selected_family") is not None
+            or comparison.get("performance_claim_allowed") is not False
+        ):
+            raise RuntimeError("paired predictor comparison weakened its claim boundary")
+        if tuple(comparison.get("predictor_families", {})) != ("bilinear", "gbm"):
+            raise RuntimeError("paired predictor comparison returned unexpected families")
+        if [row.get("name") for row in comparison.get("baselines", [])] != baseline_names:
+            raise RuntimeError("paired predictor comparison did not share all six baselines")
+        if comparison.get("deltas", {}).get("direction") != "gbm-minus-bilinear":
+            raise RuntimeError("paired predictor comparison returned the wrong delta direction")
+
         showcase = json.loads(_run_cli(executable, "demo", "--json"))
         if (
             showcase.get("schema") != "tierroute-routing-stream-showcase"
@@ -250,8 +278,8 @@ def main() -> int:
         raise RuntimeError("training or artifact routing wrote to HF_HOME")
 
     print(
-        "Training smoke passed: predictor fit, nested benchmark, routing stream, "
-        "exact policy tuning, and both routes ran offline."
+        "Training smoke passed: predictor fit, nested benchmark, paired estimation, "
+        "routing stream, exact policy tuning, and both routes ran offline."
     )
     return 0
 
