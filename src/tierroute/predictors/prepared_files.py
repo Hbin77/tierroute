@@ -768,9 +768,7 @@ def _require_stable_source(
         before, "mtime"
     ) != _nanosecond_time(after, "mtime")
     if compare_change_time:
-        changed = changed or _nanosecond_time(before, "ctime") != _nanosecond_time(
-            after, "ctime"
-        )
+        changed = changed or _nanosecond_time(before, "ctime") != _nanosecond_time(after, "ctime")
     if changed:
         raise PreparedStoreFileError("prepared store source contents changed during authentication")
 

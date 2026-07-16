@@ -862,14 +862,11 @@ def _stable_file(
     *,
     compare_change_time: bool = True,
 ) -> bool:
-    stable = (
-        first.st_size == second.st_size
-        and _nanosecond_time(first, "mtime") == _nanosecond_time(second, "mtime")
-    )
+    stable = first.st_size == second.st_size and _nanosecond_time(
+        first, "mtime"
+    ) == _nanosecond_time(second, "mtime")
     if compare_change_time:
-        stable = stable and _nanosecond_time(first, "ctime") == _nanosecond_time(
-            second, "ctime"
-        )
+        stable = stable and _nanosecond_time(first, "ctime") == _nanosecond_time(second, "ctime")
     return stable
 
 
@@ -1260,7 +1257,11 @@ def _load_result(
         stat.S_ISLNK(path_metadata.st_mode)
         or not stat.S_ISREG(path_metadata.st_mode)
         or not _same_file(path_metadata, opened_metadata)
-        or not _stable_file(path_metadata, opened_metadata)
+        or not _stable_file(
+            path_metadata,
+            opened_metadata,
+            compare_change_time=os.name != "nt",
+        )
     ):
         raise NativePreparedProtocolError("native prepared result path no longer names stdout")
     if os.name != "nt" and stat.S_IMODE(opened_metadata.st_mode) != 0o600:
@@ -1452,7 +1453,11 @@ def _load_result(
         if (
             not _stable_file(opened_metadata, final_opened)
             or not _same_file(opened_metadata, final_path)
-            or not _stable_file(opened_metadata, final_path)
+            or not _stable_file(
+                opened_metadata,
+                final_path,
+                compare_change_time=os.name != "nt",
+            )
         ):
             raise NativePreparedProtocolError("native prepared result changed during validation")
         return NativePreparedSessionResult(
