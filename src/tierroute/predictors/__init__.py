@@ -20,10 +20,13 @@ from tierroute.predictors.calibration import (
 from tierroute.predictors.gbm import GbmModel, GbmQualityPredictor, RegressionStump
 from tierroute.predictors.gbm_training import (
     GBM_ALGORITHM_ID,
+    GbmNestedLodoWorkEstimate,
     GbmTrainingConfig,
+    estimate_nested_lodo_gbm_work,
     fit_calibrated_gbm,
     fit_calibrated_gbm_for_fold,
     preflight_gbm_fit,
+    preflight_nested_lodo_gbm,
 )
 from tierroute.predictors.solvers import (
     KNOWN_RIDGE_SOLVER_IDS,
@@ -48,6 +51,7 @@ __all__ = [
     "BilinearTrainingConfig",
     "CalibratedQualityPredictor",
     "GbmModel",
+    "GbmNestedLodoWorkEstimate",
     "GbmQualityPredictor",
     "GbmTrainingConfig",
     "IsotonicCalibrator",
@@ -56,11 +60,13 @@ __all__ = [
     "RegressionStump",
     "RidgeSolver",
     "StaticQualityPredictor",
+    "estimate_nested_lodo_gbm_work",
     "fit_calibrated_bilinear",
     "fit_calibrated_bilinear_for_fold",
     "fit_calibrated_gbm",
     "fit_calibrated_gbm_for_fold",
     "preflight_gbm_fit",
+    "preflight_nested_lodo_gbm",
     "resolve_ridge_solver",
     "training_data_sha256",
 ]

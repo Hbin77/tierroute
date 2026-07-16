@@ -77,6 +77,61 @@ class GbmTrainingConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class GbmNestedLodoWorkEstimate:
+    """Immutable exact work estimate for one nested-LODO GBM benchmark.
+
+    The three per-base-fit tuples follow execution order and make the aggregate
+    auditable. Feature widths are fitted independently because a training subset
+    can expose a different surface-tag vocabulary. An offline embedding provider,
+    when supplied, contributes its declared width but is never asked to embed.
+    """
+
+    domain_count: int
+    outer_fold_count: int
+    calibrated_fit_count: int
+    base_fit_count: int
+    model_count: int
+    estimator_count: int
+    split_scans: int
+    base_fit_sample_counts: tuple[int, ...]
+    base_fit_feature_counts: tuple[int, ...]
+    base_fit_split_scans: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        scalar_counts = (
+            self.domain_count,
+            self.outer_fold_count,
+            self.calibrated_fit_count,
+            self.base_fit_count,
+            self.model_count,
+            self.estimator_count,
+        )
+        if any(type(value) is not int or value < 1 for value in scalar_counts):
+            raise ValueError("nested-LODO GBM work counts must be positive integers")
+        if type(self.split_scans) is not int or self.split_scans < 0:
+            raise ValueError("nested-LODO GBM split_scans must be a non-negative integer")
+        sample_counts = tuple(self.base_fit_sample_counts)
+        feature_counts = tuple(self.base_fit_feature_counts)
+        split_scans = tuple(self.base_fit_split_scans)
+        if not (
+            len(sample_counts)
+            == len(feature_counts)
+            == len(split_scans)
+            == self.base_fit_count
+        ):
+            raise ValueError("nested-LODO GBM base-fit detail lengths must match base_fit_count")
+        if any(type(value) is not int or value < 1 for value in (*sample_counts, *feature_counts)):
+            raise ValueError("nested-LODO GBM base-fit sizes must be positive integers")
+        if any(type(value) is not int or value < 0 for value in split_scans):
+            raise ValueError("nested-LODO GBM base-fit split scans must be non-negative integers")
+        if sum(split_scans) != self.split_scans:
+            raise ValueError("nested-LODO GBM base-fit split scans must sum to split_scans")
+        object.__setattr__(self, "base_fit_sample_counts", sample_counts)
+        object.__setattr__(self, "base_fit_feature_counts", feature_counts)
+        object.__setattr__(self, "base_fit_split_scans", split_scans)
+
+
+@dataclass(frozen=True, slots=True)
 class _FittedBase:
     encoder: PromptFeatureEncoder
     predictor: GbmQualityPredictor
@@ -165,6 +220,121 @@ def _estimated_split_scans(
     config: GbmTrainingConfig,
 ) -> int:
     return target_count * config.n_estimators * feature_count * max(sample_count - 1, 0)
+
+
+def _normalized_gbm_config(config: GbmTrainingConfig | None) -> GbmTrainingConfig:
+    if config is None:
+        return GbmTrainingConfig()
+    if type(config) is not GbmTrainingConfig:
+        raise TypeError("config must be an exact GbmTrainingConfig or None")
+    return config
+
+
+def estimate_nested_lodo_gbm_work(
+    examples: Sequence[EvaluationExample],
+    *,
+    config: GbmTrainingConfig | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+) -> GbmNestedLodoWorkEstimate:
+    """Enumerate the exact base fits in the benchmark's nested LODO call graph.
+
+    For every outer fold, lambda tuning cross-fits one calibrated predictor per
+    remaining domain and then fits one final calibrated predictor. Every calibrated
+    predictor in turn cross-fits one base GBM per remaining training domain and fits
+    one final base GBM. Schema fitting reads prompts only; no feature transformation
+    or embedding call occurs in this estimator.
+
+    Individual base-fit resource contracts are checked while enumerating. Use
+    :func:`preflight_nested_lodo_gbm` to additionally enforce the aggregate split-scan
+    limit before either predictor family starts fitting.
+    """
+
+    normalized_config = _normalized_gbm_config(config)
+    ordered = _ordered_examples(examples)
+    model_ids = _model_ids(ordered)
+    domains = tuple(sorted({example.domain for example in ordered}))
+    if len(domains) < 4:
+        raise ValueError("nested-LODO GBM evaluation requires at least four domains")
+
+    outer_folds = leave_one_domain_out(ordered)
+    calibrated_fit_count = 0
+    sample_counts: list[int] = []
+    feature_counts: list[int] = []
+    split_scans: list[int] = []
+
+    for outer_fold in outer_folds:
+        outer_training = _ordered_examples(outer_fold.training)
+        lambda_folds = leave_one_domain_out(outer_training)
+        calibrated_training_sets = (
+            *(inner_fold.training for inner_fold in lambda_folds),
+            outer_training,
+        )
+        calibrated_fit_count += len(calibrated_training_sets)
+
+        for calibrated_examples in calibrated_training_sets:
+            calibrated_ordered = _ordered_examples(calibrated_examples)
+            calibration_folds = leave_one_domain_out(calibrated_ordered)
+            base_training_sets = (
+                *(calibration_fold.training for calibration_fold in calibration_folds),
+                calibrated_ordered,
+            )
+            for base_examples in base_training_sets:
+                base_ordered = _ordered_examples(base_examples)
+                encoder = PromptFeatureEncoder.fit(
+                    tuple(example.prompt for example in base_ordered),
+                    embedding_provider=embedding_provider,
+                )
+                sample_count = len(base_ordered)
+                feature_count = encoder.schema.dimension
+                preflight_gbm_fit(
+                    sample_count=sample_count,
+                    feature_count=feature_count,
+                    target_count=len(model_ids),
+                    config=normalized_config,
+                )
+                estimated_scans = _estimated_split_scans(
+                    sample_count=sample_count,
+                    feature_count=feature_count,
+                    target_count=len(model_ids),
+                    config=normalized_config,
+                )
+                sample_counts.append(sample_count)
+                feature_counts.append(feature_count)
+                split_scans.append(estimated_scans)
+
+    return GbmNestedLodoWorkEstimate(
+        domain_count=len(domains),
+        outer_fold_count=len(outer_folds),
+        calibrated_fit_count=calibrated_fit_count,
+        base_fit_count=len(sample_counts),
+        model_count=len(model_ids),
+        estimator_count=normalized_config.n_estimators,
+        split_scans=sum(split_scans),
+        base_fit_sample_counts=tuple(sample_counts),
+        base_fit_feature_counts=tuple(feature_counts),
+        base_fit_split_scans=tuple(split_scans),
+    )
+
+
+def preflight_nested_lodo_gbm(
+    examples: Sequence[EvaluationExample],
+    *,
+    config: GbmTrainingConfig | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+) -> GbmNestedLodoWorkEstimate:
+    """Reject aggregate nested-LODO GBM work before any embedding or model fit."""
+
+    estimate = estimate_nested_lodo_gbm_work(
+        examples,
+        config=config,
+        embedding_provider=embedding_provider,
+    )
+    if estimate.split_scans > MAX_GBM_SPLIT_SCANS:
+        raise ValueError(
+            "nested-LODO dependency-free GBM split scan exceeds the reviewed limit "
+            f"({estimate.split_scans:,} > {MAX_GBM_SPLIT_SCANS:,})"
+        )
+    return estimate
 
 
 def _preflight_calibrated_fit(
