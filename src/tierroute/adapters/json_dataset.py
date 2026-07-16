@@ -33,6 +33,7 @@ from tierroute.adapters.resource_limits import (
     MAX_REPLAY_PROMPT_TEXT_BYTES,
     MAX_REPLAY_TIERS,
     MAX_REPLAY_TOTAL_OUTCOMES,
+    MAX_REPLAY_TRAINING_OUTCOME_SCANS,
 )
 from tierroute.core import BudgetTier, ModelSpec, as_cost
 from tierroute.eval import CandidateOutcome, EvaluationExample, TierSpec
@@ -358,6 +359,7 @@ def load_evaluation_dataset(path: str | Path | None = None) -> EvaluationDataset
     # Validate every raw collection and the LODO expansion before constructing any
     # dataclass graph. This boundary is deliberately independent of SKT's future schema.
     total_outcomes = 0
+    max_outcomes_per_example = 0
     domains: set[str] = set()
     for index, raw_item in enumerate(example_items):
         item = _require_mapping(raw_item, f"examples[{index}]")
@@ -370,6 +372,7 @@ def load_evaluation_dataset(path: str | Path | None = None) -> EvaluationDataset
         if not outcomes:
             raise ValueError(f"examples[{index}].outcomes must not be empty")
         total_outcomes += len(outcomes)
+        max_outcomes_per_example = max(max_outcomes_per_example, len(outcomes))
         if total_outcomes > MAX_REPLAY_TOTAL_OUTCOMES:
             raise ValueError(
                 "dataset outcomes exceed the aggregate collection limit "
@@ -383,6 +386,12 @@ def load_evaluation_dataset(path: str | Path | None = None) -> EvaluationDataset
     if lodo_memberships > MAX_REPLAY_LODO_MEMBERSHIPS:
         raise ValueError(
             f"dataset exceeds the LODO membership limit ({MAX_REPLAY_LODO_MEMBERSHIPS:,})"
+        )
+    training_outcome_scans = lodo_memberships * max_outcomes_per_example**2
+    if training_outcome_scans > MAX_REPLAY_TRAINING_OUTCOME_SCANS:
+        raise ValueError(
+            "dataset exceeds the training outcome-scan limit "
+            f"({MAX_REPLAY_TRAINING_OUTCOME_SCANS:,})"
         )
     nested_lodo_memberships = len(example_items) * max(len(domains) - 1, 0) ** 2
     if nested_lodo_memberships > MAX_REPLAY_NESTED_LODO_MEMBERSHIPS:

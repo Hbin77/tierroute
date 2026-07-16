@@ -269,6 +269,33 @@ def test_reader_detects_same_inode_growth_during_read(
         load_evaluation_dataset(source)
 
 
+def test_reader_detects_same_size_in_place_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "replay.json"
+    source.write_bytes(bundled_synthetic_path().read_bytes())
+    real_read = os.read
+    changed = False
+
+    def mutate_after_read(descriptor: int, size: int) -> bytes:
+        nonlocal changed
+        chunk = real_read(descriptor, size)
+        if not changed:
+            with source.open("r+b") as stream:
+                stream.seek(0)
+                stream.write(b"[")
+                stream.flush()
+                os.fsync(stream.fileno())
+            changed = True
+        return chunk
+
+    monkeypatch.setattr(json_dataset.os, "read", mutate_after_read)
+
+    with pytest.raises(ValueError, match="changed while reading"):
+        load_evaluation_dataset(source)
+
+
 @pytest.mark.parametrize(
     "constant_name, document, exact_count",
     [
@@ -343,8 +370,17 @@ def test_json_number_width_and_count_limits_are_exact(
         json_dataset._parse_strict_json(document)
 
 
+@pytest.mark.parametrize(
+    "document",
+    [
+        "9" * (replay_limits.MAX_REPLAY_JSON_NUMBER_CHARACTERS + 1),
+        "0." + "1" * replay_limits.MAX_REPLAY_JSON_NUMBER_CHARACTERS,
+        "1e" + "9" * replay_limits.MAX_REPLAY_JSON_NUMBER_CHARACTERS,
+    ],
+)
 def test_oversized_json_number_is_rejected_before_json_parser(
     monkeypatch: pytest.MonkeyPatch,
+    document: str,
 ) -> None:
     parsed = False
 
@@ -355,7 +391,6 @@ def test_oversized_json_number_is_rejected_before_json_parser(
         raise AssertionError("oversized number reached json.loads")
 
     monkeypatch.setattr(json_dataset.json, "loads", forbidden_json_loads)
-    document = "9" * (replay_limits.MAX_REPLAY_JSON_NUMBER_CHARACTERS + 1)
 
     with pytest.raises(ValueError, match="lexical limit"):
         json_dataset._parse_strict_json(document)
@@ -539,6 +574,7 @@ def test_optional_quote_fallback_and_explicit_domain_visibility_are_stable(
         ("MAX_REPLAY_TOTAL_OUTCOMES", 24, "aggregate"),
         ("MAX_REPLAY_DOMAINS", 4, "domain"),
         ("MAX_REPLAY_LODO_MEMBERSHIPS", 32, "LODO"),
+        ("MAX_REPLAY_TRAINING_OUTCOME_SCANS", 288, "outcome-scan"),
         ("MAX_REPLAY_NESTED_LODO_MEMBERSHIPS", 72, "nested-LODO"),
     ],
 )
@@ -617,6 +653,7 @@ def test_limits_cover_measured_planned_routerbench_shape() -> None:
     assert replay_limits.MAX_REPLAY_OUTCOMES_PER_EXAMPLE >= 11
     assert replay_limits.MAX_REPLAY_TOTAL_OUTCOMES >= 34_778 * 11
     assert replay_limits.MAX_REPLAY_LODO_MEMBERSHIPS >= 34_778 * 7
+    assert replay_limits.MAX_REPLAY_TRAINING_OUTCOME_SCANS >= 34_778 * 7 * 11**2
     assert replay_limits.MAX_REPLAY_NESTED_LODO_MEMBERSHIPS >= 34_778 * 6**2
     assert replay_limits.MAX_REPLAY_PROMPT_TEXT_BYTES >= 5_052
     assert replay_limits.MAX_REPLAY_OUTPUT_TEXT_BYTES >= 16_101

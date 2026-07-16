@@ -17,6 +17,9 @@ MAX_REPLAY_LODO_MEMBERSHIPS = 1_000_000
 # Policy cross-fitting nests an inner LODO inside every outer-domain fold. The planned
 # 34,778-example, seven-domain RouterBench shape needs 1,252,008 memberships.
 MAX_REPLAY_NESTED_LODO_MEMBERSHIPS = 2_000_000
+# The reference trainer currently extracts M targets with a linear outcome lookup for
+# each of M models across N*D inner-LODO/final-fit example memberships.
+MAX_REPLAY_TRAINING_OUTCOME_SCANS = 100_000_000
 
 MAX_REPLAY_METADATA_TEXT_BYTES = 16 * 1024
 MAX_REPLAY_PROMPT_TEXT_BYTES = 1024 * 1024
