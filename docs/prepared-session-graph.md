@@ -152,13 +152,14 @@ A future scalable prepared execution session still needs all of the following:
   identities;
 - scalable coefficient solving and batched scoring from the prepared subset
   statistics; the bounded Python reference is evidence only for small fixtures;
-- isotonic-calibrator, exact lambda/tie selection, routing-decision, and final-report
-  parity against the existing nested path, including near-tie adversarial cases;
+- promotion of the bounded [prepared policy-pipeline](prepared-reference-pipeline.md)
+  parity into an official-shape scalable session, including broader near-tie gates and
+  all-domain artifact assembly;
 - a separate protocol identity and magic rather than overloading `TRRIDG01` version 1;
 - timeout, malformed-frame, digest, path-race, and three-platform artifact/link audits.
 
 The graph contains no network operation, dependency, model asset, dataset, executable,
-or build tool. Neither it nor the bounded execution reference makes bge-m3,
-RouterBench execution, official SK Telecom data, calibration/lambda/final-report
-parity, cost savings, quality retention, or full-dimensional training an implemented
-claim. Issue #9 remains open.
+or build tool. Its bounded policy successor establishes frozen synthetic
+calibration/lambda/final-report wiring only; none of these references makes bge-m3,
+RouterBench execution, official SK Telecom data, cost savings, quality retention, or
+full-dimensional training an implemented claim. Issue #9 remains open.

@@ -337,6 +337,13 @@ invented cost-aware model routing:
    154-block, `22N` row-membership, and `22NM` scalar-score structure. This is an
    auditable engineering reference, not a claim that moment-based ridge, factor reuse,
    or batched scoring is novel.
+9. A bounded policy bridge derives the exact prepared calibration/destination graph and
+   reuses the existing lambda tuner and simulator. Four- and seven-domain frozen
+   fixtures match the complete rowwise nested result, with intermediate-domain and
+   near-tie regressions as additional boundaries. Cost-width-aware admission counts all
+   current pair traversals and bounds the aggregate lambda candidate/policy-artifact
+   estimate. This is engineering parity evidence, not a claim that isotonic calibration,
+   Lagrangian routing, or nested evaluation is novel.
 
 ## Claims tierroute must not make
 
@@ -363,13 +370,15 @@ invented cost-aware model routing:
   validation graph and is not evidence that a full-dimensional run has completed.
 - The prepared references establish bounded canonical rows, caller-checked content
   identities, domain moments, subset isolation, moment-ridge coefficients, and complete
-  raw-score block wiring on synthetic/frozen fixtures. Numerical agreement with an
-  independently refitted row oracle is tolerance-based, not bitwise or a
-  cross-platform digest promise. They do not authenticate dataset/model provenance,
-  run an embedding provider, provide a persistent/native session, reach calibration,
-  lambda tuning, or final reports, execute the planned full RouterBench shape, or prove
-  throughput, memory efficiency, quality, cost savings, or a speedup. Issue #9 remains
-  open.
+  raw-score plus calibration/lambda/final-report wiring on synthetic/frozen fixtures.
+  Stable four- and seven-domain corpora match the rowwise nested result, while raw
+  numerical agreement remains tolerance-based rather than bitwise or a cross-platform
+  digest promise. They do not authenticate dataset/model provenance, run an embedding
+  provider, provide a scalable persistent/native session or all-domain artifact,
+  execute the planned full RouterBench shape, or prove throughput, memory efficiency,
+  quality, cost savings, or a speedup. Their resource estimates also do not bound the
+  work or side effects of an arbitrary caller-supplied ledger callback. Issue #9
+  remains open.
 - Prepared content digests are deterministic content identities, not authenticity or
   provenance proofs. Supported builders enforce derivation/topology associations;
   direct leaf constructors validate only self-declared canonical record content.
@@ -442,6 +451,7 @@ pool, data split, cost model, and metric.
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
 | Prepared graph and bounded feature/statistics isolation reference | [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py), [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py), [`prepared-feature-store.md`](prepared-feature-store.md), [`test_prepared_store.py`](../tests/test_prepared_store.py) |
 | Bounded prepared moment-ridge and complete raw-score reference | [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py), [`prepared-reference-execution.md`](prepared-reference-execution.md), [`test_prepared_execution.py`](../tests/test_prepared_execution.py) |
+| Bounded prepared calibration/lambda/final-report bridge | [`policies/prepared_reference.py`](../src/tierroute/policies/prepared_reference.py), [`prepared-reference-pipeline.md`](prepared-reference-pipeline.md), [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py) |
 | Optional RouterBench boundary | [`adapters/routerbench.py`](../src/tierroute/adapters/routerbench.py), [`download_routerbench.py`](../scripts/download_routerbench.py) |
 | Reproducibility and license inventory | [`SBOM.md`](../SBOM.md), [`dependency-license-audit.md`](dependency-license-audit.md) |
 
@@ -452,8 +462,9 @@ These are implementation tasks, not questions for the organizer:
 1. Add a sequence-level oracle before computing oracle-gap recovery under cumulative
    accounting. The independent per-query plan is valid only for per-query budgets.
 2. Replace the bounded Python prepared reference with an audited scalable session only
-   after an offline local provider exists, then prove coefficient-to-calibration,
-   lambda, and final-report parity including near ties. The current 100,000,000
+   after an offline local provider exists, then promote frozen coefficient-to-
+   calibration/lambda/final-report parity to the official shape, broader near ties,
+   and all-domain artifact assembly. The current 100,000,000
    work-unit and 512 MiB modeled numeric-storage admission ceilings intentionally reject
    the planned RouterBench shape; they count reviewed numeric operations/storage, not
    Python-object or allocator overhead, caller-owned memory, peak RSS, wall-clock, or
@@ -478,9 +489,9 @@ The following remain official-answer or compliance gates:
 5. The SK Telecom dataset license and redistribution permission.
 6. Whether randomized expected-cost mixtures are legal, which determines whether the
    RouterBench Zero router is a valid additional baseline.
-7. A scalable persistent/native prepared execution session that extends the bounded
-   coefficient/raw-score reference through calibration, lambda selection, and final
-   reports, plus audited GPL-family-free Linux-musl and Windows-MSVC artifacts, before
+7. A scalable persistent/native prepared execution session that promotes the bounded
+   coefficient/raw-score/calibration/lambda/report reference to official-shape execution
+   and an all-domain artifact, plus audited GPL-family-free Linux-musl and Windows-MSVC artifacts, before
    the parity-tested C11 dense solver can support a reportable full-dimensional bge-m3
    experiment.
 
