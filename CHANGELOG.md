@@ -26,7 +26,11 @@ the public API is pre-1.0.
 - A claim-gated five-page contest report outline with a reusable Mermaid architecture
   source, per-number evidence records, measured-result placeholders, attachment
   disclosure slots, and a final render checklist that prohibits synthetic demo values
-  from being presented as performance.
+  from being presented as performance. The outline now separates stable `I-*`
+  implementation records from `M-*` measured records, binds current source/tests/CI
+  and fresh-clone evidence to `main@129a230`, corrects aggregate-only oracle-gap output,
+  and records the local RouterBench diagnostic without turning it into a reportable
+  domain-shift or performance claim.
 - Fitted prompt-feature schemas and deterministic per-model ridge training.
 - Inner-LODO out-of-fold prediction with a separate isotonic calibrator per model.
 - Canonical, fail-closed JSON predictor artifacts and `tierroute train`/
