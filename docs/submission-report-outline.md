@@ -74,6 +74,30 @@ The evaluation identity and why reports fail closed when scopes differ are docum
 in [evaluation-scope.md](evaluation-scope.md). The intended novelty boundaries are in
 [literature-and-novelty.md](literature-and-novelty.md).
 
+Scope and artifact digests detect accidental or deliberate evidence mixing and make a
+replay identity reproducible. They are not, by themselves, proof of origin or
+authenticity. Authentication additionally requires a trusted pinned input checksum and
+the provenance fields in the corresponding evidence record.
+
+## Current implementation evidence baseline
+
+The `I-*` records below prove implemented behavior, not model quality, cost savings, or
+a competition score. They are bound to pre-submission baseline commit
+`129a23022a78300a44de2305368a75707043a8e0` and current-main CI run
+[`29483000949`](https://github.com/Hbin77/tierroute/actions/runs/29483000949).
+Update the commit and rerun the cited checks before using them in the final report.
+
+| Evidence ID | Exact implemented claim | Source | Verification | Boundary |
+| --- | --- | --- | --- | --- |
+| `I-ROUTER-129A230` | Adapter-neutral typed `RouterState -> CallModel \| SelectOutput` contract with exact cost values | [`core/router.py`](../src/tierroute/core/router.py), [`core/schemas.py`](../src/tierroute/core/schemas.py), [`core/costs.py`](../src/tierroute/core/costs.py) | [`test_core.py`](../tests/test_core.py), [`test_integer_text.py`](../tests/test_integer_text.py) | Interface capability does not prove cascade support or official schema compatibility |
+| `I-ACCOUNT-129A230` | Offline replay separates quoted and realized charges and conserves executed-call ledger evidence | [`eval/simulator.py`](../src/tierroute/eval/simulator.py), [`eval/budgets.py`](../src/tierroute/eval/budgets.py), [`eval/schemas.py`](../src/tierroute/eval/schemas.py) | [`test_simulator.py`](../tests/test_simulator.py), [`test_budgets.py`](../tests/test_budgets.py), [`test_eval_schemas.py`](../tests/test_eval_schemas.py) | Per-query and cumulative adapters are distinct; official budget scope remains gated |
+| `I-SCOPE-129A230` | Learned router and six baselines use an identical, versioned, digest-bound evaluation-scope identity and fail closed on mismatch | [`eval/provenance.py`](../src/tierroute/eval/provenance.py), [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_eval_provenance.py`](../tests/test_eval_provenance.py), [`test_baseline_evaluation.py`](../tests/test_baseline_evaluation.py), [`test_benchmark.py`](../tests/test_benchmark.py) | Scope digests detect mismatch; they do not authenticate an untrusted dataset |
+| `I-PREDICTOR-129A230` | Surface-feature bilinear quality fitting uses training-side ridge and per-model isotonic calibration inside nested/outer LODO orchestration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_bilinear_training.py`](../tests/test_bilinear_training.py), [`test_features_predictors.py`](../tests/test_features_predictors.py), [`test_benchmark.py`](../tests/test_benchmark.py) | This proves leakage-control wiring on the cited replay, not predictive gain on official data |
+| `I-POLICY-129A230` | Each fixed-lambda decision uses exact arithmetic; tuning records whether retained candidates are exhaustive or approximate | [`policies/lambda_threshold.py`](../src/tierroute/policies/lambda_threshold.py), [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py), [`policies/lambda_artifacts.py`](../src/tierroute/policies/lambda_artifacts.py) | [`test_policies.py`](../tests/test_policies.py), [`test_lambda_tuning.py`](../tests/test_lambda_tuning.py), [`test_lambda_policy_artifacts.py`](../tests/test_lambda_policy_artifacts.py) | Exact decisions do not make a truncated candidate search exhaustive or globally optimal |
+| `I-OFFLINE-129A230` | The base wheel has no runtime dependency, shipped built-in runtime paths pass with networking denied, and CI audits licenses plus wheel/sdist data exclusion | [`ci.yml`](../.github/workflows/ci.yml), [`SBOM.md`](../SBOM.md), [`check_licenses.py`](../scripts/check_licenses.py) | [`test_offline_runtime.py`](../tests/test_offline_runtime.py), [`test_license_gate.py`](../tests/test_license_gate.py), [`test_package.py`](../tests/test_package.py), CI run `29483000949` | Package installation can require pre-cached or fetched build/dev wheels; the no-network claim begins after installation |
+
+No `I-*` record substitutes for the human walkthrough or for a complete `M-*` record.
+
 ## Page 1 — overview and problem
 
 ### Title slot
@@ -101,11 +125,11 @@ optimization over every policy.
 
 | Contribution | Current state | Final evidence slot |
 | --- | --- | --- |
-| Typed `state -> action` router contract independent of challenge schema | `IMPLEMENTED` | commit, source links, focused tests |
-| Offline replay with exact quote/realized-cost evidence | `IMPLEMENTED` | replay artifact and conservation tests |
-| Six common baselines on one immutable evaluation scope | `IMPLEMENTED` | baseline decision digest and benchmark JSON |
-| Surface-feature bilinear predictor with per-model isotonic calibration | `IMPLEMENTED` | nested-LODO fold and artifact digests |
-| Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | search strategy, exhaustive flag, retained candidates, and policy SHA-256 |
+| Typed `state -> action` router contract independent of challenge schema | `IMPLEMENTED` | `I-ROUTER-129A230` |
+| Offline replay with exact quote/realized-cost evidence | `IMPLEMENTED` | `I-ACCOUNT-129A230` |
+| Six common baselines on one identical, versioned, digest-bound evaluation scope | `IMPLEMENTED` | `I-SCOPE-129A230` |
+| Surface-feature bilinear predictor with per-model isotonic calibration | `IMPLEMENTED` | `I-PREDICTOR-129A230` |
+| Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | `I-POLICY-129A230` |
 | Local bge-m3 provider and controlled feature ablation | `PLANNED` | model manifest, provider tests, ablation record |
 | GBM-versus-bilinear comparison | `PLANNED` | implementation plus matched-scope result |
 | Official SKT adapter and official score | `ORGANIZER-GATED` | written license/schema evidence and result artifact |
@@ -170,9 +194,19 @@ flowchart LR
   embedding provider, or adapter is outside that guarantee until it passes the same
   offline tests.
 - The implemented RouterBench preparation script uses a fixed revision and checksum
-  outside runtime and does not redistribute the dataset. bge-m3 preparation, manifest
-  validation, and inference remain `PLANNED`; any future provider must accept local
-  assets only and pass empty-cache offline tests.
+  outside runtime and does not redistribute the dataset. Its explicit
+  `--nested-lodo --acknowledge-noassertion` diagnostic authenticates the pinned bytes
+  and semantic scope, then runs the surface-only learned router and all six baselines
+  on one shared local evaluation scope. It emits provenance, configuration, and
+  completion evidence only; it publishes no metric, cost value, route, row, prompt,
+  output, prediction, model, or result artifact. RouterBench remains `NOASSERTION`,
+  local-only, non-SKT, non-official, non-reportable, and without `bge-m3`.
+- Predictor fitting, lambda tuning, learned replay, and the domain-table baseline use
+  nested LODO in that diagnostic, but quote/tier calibration uses a separate disjoint
+  pool spanning all seven domains. The complete diagnostic is therefore not an
+  end-to-end domain-shift result or a RouterBench paper reproduction.
+- bge-m3 preparation, manifest validation, and inference remain `PLANNED`; any future
+  provider must accept local assets only and pass empty-cache offline tests.
 - Uncalled outputs and held-out quality labels stay outside `RouterState`.
 - `adapters/` owns unresolved per-query-versus-cumulative budget interpretation.
 - The default policy makes one model choice. The typed action/history contract permits
@@ -180,9 +214,13 @@ flowchart LR
 
 ## Page 3 — measured performance
 
-This page remains empty of performance conclusions until licensed official data or an
-explicitly identified external evaluation set has been processed through true nested
-leave-one-domain-out evaluation.
+This page remains empty of performance conclusions until the evaluation dataset has
+acceptable written license and provenance evidence, every field of a complete `M-*`
+record, and a leakage-resistant end-to-end evaluation scope. Merely identifying an
+external dataset or nesting predictor/policy fitting is insufficient. In particular,
+the PR #35 RouterBench diagnostic is structural local validation, not reportable
+performance evidence, because its fixed quote/tier calibration pool spans all seven
+domains and its dataset license remains `NOASSERTION`.
 
 ### Required experiment identity
 
@@ -232,7 +270,7 @@ true`; a bounded retained search must stay labeled approximate.
 | Budget-feasible queries / total | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | not pooled | `TBD` |
 | Total realized replay cost (state unit and query count) | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | diagnostic only | `TBD` |
 | Total absolute quote error (same cost unit) | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | diagnostic only | `TBD` |
-| Oracle-gap recovery | not separately emitted by v1 JSON | not separately emitted by v1 JSON | not separately emitted by v1 JSON | `TBD-MEASURED` | `TBD` |
+| Oracle-gap recovery | not tier-local in v1 JSON | not tier-local in v1 JSON | not tier-local in v1 JSON | `TBD-MEASURED` aggregate | `TBD` |
 
 ### Required comparisons and figures
 
@@ -262,10 +300,14 @@ Summarize the external-user path and cite the exact fresh-clone audit commit:
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -e .
-HF_HUB_OFFLINE=1 tierroute route "offline smoke" --tier fast
-HF_HUB_OFFLINE=1 tierroute evaluate
-HF_HUB_OFFLINE=1 tierroute benchmark --budget-scope per-query
-HF_HUB_OFFLINE=1 tierroute demo
+hf_home="$(mktemp -d)"
+export HF_HOME="$hf_home"
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+tierroute route "offline smoke" --tier fast
+tierroute evaluate
+tierroute benchmark --budget-scope per-query
+tierroute demo
+test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"
 ```
 
 The final report should state the tested operating systems and Python versions, not the
@@ -273,15 +315,26 @@ full range merely declared in package metadata. Cite CI, exact dependency lock, 
 coverage, the license gate, [SBOM](../SBOM.md), and the current
 [fresh-clone audit](https://github.com/Hbin77/tierroute/issues/19).
 
+Current implementation record `I-REPRO-129A230` binds a fresh Python 3.12.10 clone of
+`129a23022a78300a44de2305368a75707043a8e0` to editable installation, all four commands
+above, `make reproduce-inference`, `make reproduce-training`, an empty `HF_HOME`, a
+socket-denial runtime run, and a clean final worktree. The durable record is the
+[latest issue #19 audit](https://github.com/Hbin77/tierroute/issues/19#issuecomment-4989742300);
+current-main CI run [`29483000949`](https://github.com/Hbin77/tierroute/actions/runs/29483000949)
+adds Ubuntu Python 3.10, Python 3.12, and dependency-free-wheel lanes. The fresh
+environment fetched pinned development packages during installation. This does not
+support a network-free installation claim; it proves that the installed built-in
+runtime requires no network and leaves the empty model cache untouched.
+
 ### Novelty comparison template
 
 | Dimension | Prior-work reference | tierroute measured/implemented distinction | Evidence ID |
 | --- | --- | --- | --- |
-| Decision timing | RouteLLM / RouterBench / FrugalGPT / cascade routing | one pre-call choice is `IMPLEMENTED`; cascade is `ORGANIZER-GATED` | `TBD` |
-| Budget objective | routing and cascade literature | fixed-lambda exact cost-utility comparison is `IMPLEMENTED`; bounded tuning stays approximate; official weights are gated | `TBD` |
-| Distribution shift | random-split and transfer findings | true nested LODO orchestration is `IMPLEMENTED`; official-data result is not | `TBD` |
-| Calibration | predictor reliability literature | per-model isotonic layer is `IMPLEMENTED`; empirical gain is `TBD-MEASURED` | `TBD` |
-| Offline/compliance | deployment constraint | dependency-free core and network-free shipped built-in paths are `IMPLEMENTED`; injected extensions need separate offline proof | `TBD` |
+| Decision timing | RouteLLM / RouterBench / FrugalGPT / cascade routing | one pre-call choice is `IMPLEMENTED`; cascade is `ORGANIZER-GATED` | `I-ROUTER-129A230`, `I-POLICY-129A230` |
+| Budget objective | routing and cascade literature | fixed-lambda exact cost-utility comparison is `IMPLEMENTED`; bounded tuning stays approximate; official weights are gated | `I-ACCOUNT-129A230`, `I-POLICY-129A230` |
+| Distribution shift | random-split and transfer findings | true nested LODO orchestration is `IMPLEMENTED` for the generic bundled synthetic benchmark; no official-data result exists, and the complete PR #35 RouterBench diagnostic is not an end-to-end domain-shift experiment | `I-SCOPE-129A230`, `I-PREDICTOR-129A230` |
+| Calibration | predictor reliability literature | per-model isotonic layer is `IMPLEMENTED`; empirical gain is `TBD-MEASURED` | `I-PREDICTOR-129A230` |
+| Offline/compliance | deployment constraint | dependency-free core and network-free shipped built-in paths are `IMPLEMENTED`; injected extensions need separate offline proof | `I-OFFLINE-129A230`, `I-REPRO-129A230` |
 
 Avoid saying tierroute invented LLM routing, budget-aware selection, cascades, LODO, or
 isotonic calibration. The defensible contribution is the verified combination and its
@@ -295,8 +348,10 @@ protocol.
 - Official SKT data license, schema, budget scope, tier weights, and scoring integration
   are not proven by the generic replay schema.
 - The bundled synthetic data and three-step demo prove wiring only.
-- RouterBench data remain external and must not support a public result until its
-  dataset license and the exact experiment evidence are acceptable.
+- RouterBench data remain external. PR #35 proves only the pinned local diagnostic's
+  structural execution and safe-output boundary; it publishes no performance result.
+  Its `NOASSERTION` license and global all-domain quote/tier calibration prevent using
+  it as a public result, an end-to-end domain-shift claim, or a paper reproduction.
 - A local bge-m3 provider and full-dimensional accelerated training are not shipped at
   the time of this outline.
 - A cumulative-budget comparison needs a sequence-level oracle; summing independent
