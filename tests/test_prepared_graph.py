@@ -307,19 +307,45 @@ def test_primitive_subclasses_and_oversized_values_are_rejected_without_coercion
         )
 
 
-def test_derived_resource_refusal_precedes_graph_enumeration(
+@pytest.mark.parametrize(
+    ("limit_name", "work_field", "message"),
+    [
+        (
+            "MAX_PREPARED_TRAINING_SUBSETS",
+            "unique_training_subset_count",
+            "training-subset count",
+        ),
+        ("MAX_PREPARED_SCORE_BLOCKS", "unique_score_block_count", "score-block count"),
+        (
+            "MAX_PREPARED_SCORE_ROW_MEMBERSHIPS",
+            "score_row_memberships",
+            "score-row memberships",
+        ),
+        ("MAX_PREPARED_RESIDENT_BYTES", "resident_bytes", "resident-byte estimate"),
+        ("MAX_PREPARED_WORK_UNITS", "total_work_units", "work estimate"),
+    ],
+)
+def test_derived_resource_boundaries_and_pre_enumeration_refusal(
     monkeypatch: pytest.MonkeyPatch,
+    limit_name: str,
+    work_field: str,
+    message: str,
 ) -> None:
     def unexpected_enumeration(_: object) -> object:
         raise AssertionError("graph enumeration must not run before resource refusal")
 
-    monkeypatch.setattr(prepared_graph_module, "MAX_PREPARED_SCORE_ROW_MEMBERSHIPS", 1)
+    admitted = _plan(4)
+    exact_value = getattr(admitted.work, work_field)
+    monkeypatch.setattr(prepared_graph_module, limit_name, exact_value)
+    assert _plan(4).work == admitted.work
+
+    monkeypatch.setattr(prepared_graph_module, limit_name, exact_value - 1)
     monkeypatch.setattr(
         prepared_graph_module,
         "_enumerate_training_subsets",
         unexpected_enumeration,
     )
-    with pytest.raises(ValueError, match="score-row memberships"):
+    with pytest.raises(ValueError, match=message):
         _plan(4)
 
 
@@ -336,6 +362,24 @@ def test_domain_limit_refusal_precedes_graph_enumeration(
     )
     with pytest.raises(ValueError, match="domain count"):
         _plan(65)
+
+
+def test_total_example_boundary_is_checked_without_expanding_rows() -> None:
+    admitted = build_prepared_nested_lodo_plan(
+        ("a", "b", "c", "d"),
+        (999_997, 1, 1, 1),
+        feature_count=1,
+        target_count=1,
+    )
+    assert admitted.work.example_count == 1_000_000
+
+    with pytest.raises(ValueError, match="total example count"):
+        build_prepared_nested_lodo_plan(
+            ("a", "b", "c", "d"),
+            (999_998, 1, 1, 1),
+            feature_count=1,
+            target_count=1,
+        )
 
 
 def test_plan_and_nodes_are_immutable_and_tamper_evident() -> None:
