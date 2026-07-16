@@ -29,8 +29,8 @@ cd tierroute
 python -m venv .venv
 ```
 
-POSIX 셸에서는 `source .venv/bin/activate`, Windows PowerShell에서는
-`.venv\Scripts\Activate.ps1`로 가상환경을 활성화한 뒤 설치합니다.
+POSIX 호환 셸에서는 `. .venv/bin/activate`, Windows PowerShell에서는
+`.\.venv\Scripts\Activate.ps1`로 가상환경을 활성화한 뒤 설치합니다.
 
 ```bash
 python -m pip install -e .

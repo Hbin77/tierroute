@@ -28,8 +28,8 @@ cd tierroute
 python -m venv .venv
 ```
 
-Activate it with `source .venv/bin/activate` on a POSIX shell or
-`.venv\Scripts\Activate.ps1` in Windows PowerShell, then install:
+Activate it with `. .venv/bin/activate` in a POSIX-compatible shell or
+`.\.venv\Scripts\Activate.ps1` in Windows PowerShell, then install:
 
 ```bash
 python -m pip install -e .
