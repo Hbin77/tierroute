@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,7 @@ from tierroute.adapters import load_evaluation_dataset
 from tierroute.eval import DomainFold, EvaluationExample, leave_one_domain_out
 from tierroute.features import EmbeddingIdentity
 from tierroute.predictors import (
+    NATIVE_C11_RIDGE_SOLVER_ID,
     BilinearTrainingConfig,
     fit_calibrated_bilinear,
     fit_calibrated_bilinear_for_fold,
@@ -24,6 +26,7 @@ from tierroute.predictors._ridge import (
     RidgeSolution,
     fit_centered_ridge,
 )
+from tierroute.predictors.native_ridge import NativeRidgeAdapter, NativeRidgeIntegrityError
 from tierroute.predictors.solvers import resolve_ridge_solver
 
 
@@ -218,6 +221,94 @@ def test_one_resolved_solver_reaches_every_inner_fold_and_final_fit(
     assert artifact.solver_id == CENTERED_RIDGE_SOLVER_ID
 
 
+def test_one_injected_solver_identity_reaches_main_and_fold_refits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reference = resolve_ridge_solver(CENTERED_RIDGE_SOLVER_ID)
+    call_identities: list[tuple[str, int]] = []
+
+    class SpySolver:
+        solver_id = CENTERED_RIDGE_SOLVER_ID
+
+        def preflight(
+            self,
+            *,
+            sample_count: int,
+            feature_count: int,
+            target_count: int,
+        ) -> None:
+            call_identities.append(("preflight", id(self)))
+            reference.preflight(
+                sample_count=sample_count,
+                feature_count=feature_count,
+                target_count=target_count,
+            )
+
+        def solve(
+            self,
+            feature_rows: Sequence[Sequence[float]],
+            target_columns: Sequence[Sequence[float]],
+            *,
+            ridge: float,
+        ) -> RidgeSolution:
+            call_identities.append(("solve", id(self)))
+            return reference.solve(feature_rows, target_columns, ridge=ridge)
+
+    def forbidden_resolve(solver_id: str) -> object:
+        raise AssertionError(f"injected solver must bypass resolution: {solver_id}")
+
+    monkeypatch.setattr(training_module, "resolve_ridge_solver", forbidden_resolve)
+    examples = load_evaluation_dataset().examples
+    spy = SpySolver()
+
+    all_domain_artifact = fit_calibrated_bilinear(examples, solver=spy)
+    outer_artifact = fit_calibrated_bilinear_for_fold(
+        _science_fold(examples),
+        solver=spy,
+    )
+
+    # Four all-domain inner fits plus its final refit, then three outer-training
+    # inner fits plus that fold's final refit.
+    assert [kind for kind, _ in call_identities].count("preflight") == 9
+    assert [kind for kind, _ in call_identities].count("solve") == 9
+    assert {identity for _, identity in call_identities} == {id(spy)}
+    assert all_domain_artifact.solver_id == CENTERED_RIDGE_SOLVER_ID
+    assert outer_artifact.solver_id == CENTERED_RIDGE_SOLVER_ID
+
+
+def test_injected_solver_id_must_be_reviewed_and_match_config() -> None:
+    examples = load_evaluation_dataset().examples
+
+    class IncompleteSolver:
+        def __init__(self, solver_id: str) -> None:
+            self.solver_id = solver_id
+
+    with pytest.raises(ValueError, match="unknown or unreviewed"):
+        fit_calibrated_bilinear(
+            examples,
+            solver=IncompleteSolver("tierroute.test-unreviewed-v1"),  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="does not match training config"):
+        fit_calibrated_bilinear(
+            examples,
+            solver=IncompleteSolver(NATIVE_C11_RIDGE_SOLVER_ID),  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError, match=r"preflight.*solve"):
+        fit_calibrated_bilinear(
+            examples,
+            config=BilinearTrainingConfig(solver_id=NATIVE_C11_RIDGE_SOLVER_ID),
+            solver=IncompleteSolver(NATIVE_C11_RIDGE_SOLVER_ID),  # type: ignore[arg-type]
+        )
+    with pytest.raises(
+        ValueError,
+        match=r"explicitly injected.*binary_path.*expected_sha256",
+    ):
+        fit_calibrated_bilinear(
+            examples,
+            config=BilinearTrainingConfig(solver_id=NATIVE_C11_RIDGE_SOLVER_ID),
+        )
+
+
 def test_solver_boundary_preserves_reference_artifact_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -254,6 +345,25 @@ def test_reference_preflight_rejects_full_embedding_before_provider_call() -> No
             load_evaluation_dataset().examples,
             embedding_provider=FullDimensionProvider(),
         )
+
+
+def test_native_credential_preflight_rejects_wrong_digest_before_embedding(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "wrong-native-candidate"
+    executable.write_bytes(b"not-the-authenticated-project-candidate")
+    executable.chmod(0o700)
+    provider = RecordingEmbeddingProvider()
+
+    with pytest.raises(NativeRidgeIntegrityError, match="SHA-256"):
+        fit_calibrated_bilinear(
+            load_evaluation_dataset().examples,
+            config=BilinearTrainingConfig(solver_id=NATIVE_C11_RIDGE_SOLVER_ID),
+            embedding_provider=provider,
+            solver=NativeRidgeAdapter(executable, "0" * 64),
+        )
+
+    assert provider.calls == []
 
 
 def test_training_requires_multiple_domains_and_safe_regularization() -> None:

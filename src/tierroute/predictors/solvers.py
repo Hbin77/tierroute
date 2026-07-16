@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Static, dependency-free boundary for reviewed ridge training solvers.
 
-Artifact parsing never imports an optional numerical package.  A solver ID is
-admitted here only after its implementation and binary distributions pass the
-project's license, offline, resource, and numerical-parity gates.
+Artifact parsing never imports an optional numerical package. An admitted ID
+identifies a reviewed algorithm and artifact provenance; it does not approve or
+locate an executable. Credentialed backends must independently authenticate
+their exact binary, and distributed binaries remain subject to the project's
+platform-specific license, link, offline, resource, and numerical-parity gates.
 """
 
 from __future__ import annotations
@@ -20,7 +22,14 @@ from tierroute.predictors._ridge import (
     solve_centered_ridge,
 )
 
-KNOWN_RIDGE_SOLVER_IDS = frozenset({CENTERED_RIDGE_SOLVER_ID})
+NATIVE_C11_RIDGE_SOLVER_ID = "tierroute.centered-ridge-cholesky-c11-v1"
+
+KNOWN_RIDGE_SOLVER_IDS = frozenset(
+    {
+        CENTERED_RIDGE_SOLVER_ID,
+        NATIVE_C11_RIDGE_SOLVER_ID,
+    }
+)
 
 
 class RidgeSolver(Protocol):
@@ -88,11 +97,22 @@ def validate_ridge_solver_id(solver_id: object) -> str:
 
 
 def resolve_ridge_solver(solver_id: str) -> RidgeSolver:
-    """Resolve a reviewed training implementation from its static ID."""
+    """Resolve a credential-free training implementation from its static ID.
+
+    The native C11 solver deliberately cannot be reconstructed from an ID: its
+    absolute executable path and authenticated SHA-256 digest are runtime
+    credentials, not artifact metadata. Callers must construct and inject a
+    :class:`~tierroute.predictors.native_ridge.NativeRidgeAdapter` explicitly.
+    """
 
     validated = validate_ridge_solver_id(solver_id)
     if validated == CENTERED_RIDGE_SOLVER_ID:
         return _REFERENCE_RIDGE_SOLVER
+    if validated == NATIVE_C11_RIDGE_SOLVER_ID:
+        raise ValueError(
+            "native C11 ridge solver requires an explicitly injected "
+            "NativeRidgeAdapter with an absolute binary_path and expected_sha256"
+        )
     raise AssertionError(f"known ridge solver has no resolver: {validated!r}")
 
 

@@ -29,6 +29,30 @@ License List data. Wheel, sdist, src-layout discovery, package data, console ent
 point, wheel install, editable install, and offline smoke were verified. The runtime
 wheel does not depend on or contain flit_core.
 
+## Project-owned C11 accelerator candidate
+
+`native/tierroute_ridge.c` is project-authored Apache-2.0 source, not a third-party
+package. Protocol version 1 source SHA-256
+`65ed92c3e0f6e4a0504110e41258268a68f127b0ed7401b301696d3d18a77261` implements one
+bounded dense centered-ridge solve. It is included in the source distribution only;
+the base wheel contains neither source nor executable, keeps `dependencies = []`, and
+does not invoke a compiler during installation or routing.
+
+The exact local macOS ARM64 candidate built with Apple clang 17.0.0 has SHA-256
+`cb3a4751e47ce4adbfa2487c416d70d58e4c4befa6a5715b8bff33f59d5b4bfa` and `otool -L`
+reports only `/usr/lib/libSystem.B.dylib`. This hash is local audit evidence, not a
+released or committed binary. Strict C11 warnings, static analysis, ASan/UBSan malformed
+input runs, reference parity, and repeated-response checks passed for the recorded
+source. The build helper authenticates a descriptor-stable source snapshot and records
+both source and output hashes; it performs no download or PATH search.
+
+This is a conditional source candidate, not a platform-complete released backend.
+Linux static-musl/compiler-runtime linkage and Windows MSVC `/MT` imports still require
+real artifact audits before any executable may be distributed. The dense one-solve
+protocol also does not remove the repeated feature extraction and 301-fit nested-LODO
+call graph, so it is not yet approved as evidence that the full reportable bge-m3
+experiment is feasible.
+
 ## Reviewed permissive license evidence
 
 Some PSF-family license texts contain GPL compatibility discussion and historical

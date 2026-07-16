@@ -51,6 +51,7 @@ include = [
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
   "Makefile",
+  "native/",
   "README.ko.md",
   "SBOM.md",
   "SECURITY.md",
