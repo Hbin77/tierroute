@@ -147,10 +147,14 @@ learned router and all six canonical baselines once over the identical original-
 population under the same `PerQueryBudgetLedger` and `EvaluationScopeIdentity`. JSON
 output includes counts and a versioned SHA-256 digest binding the held-out domain and
 exact ordered train/test membership instead of disclosing raw example IDs. This is a
-compact reproducibility identity, not authenticated proof. The command runs offline
-and accepts only `--budget-scope per-query`. Cumulative benchmarking and cascade claims
-remain gated until the organizer confirms sequence-level budget and call-history
-semantics and tierroute implements a sequence-level oracle.
+compact reproducibility identity, not authenticated proof. It also records tier budget
+limits and weights, resolved baseline roles/seeds/thresholds/rule identities, and the
+requested lambda-search cap or exhaustive override so the weighted result is
+independently reproducible from the replay. A separate versioned SHA-256 evidence
+digest binds the baseline parameters to the exact ordered call decisions they produced.
+The command runs offline and accepts only `--budget-scope per-query`. Cumulative
+benchmarking and cascade claims remain gated until the organizer confirms sequence-level
+budget and call-history semantics and tierroute implements a sequence-level oracle.
 
 Running this command with the bundled synthetic data proves benchmark wiring only. It
 is not empirical evidence. With `--data`, the caller is responsible for the replay

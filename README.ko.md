@@ -144,9 +144,13 @@ refit하며, 전혀 보지 않은 outer domain만 점수화합니다. 이어서 
 `EvaluationScopeIdentity`에서 각각 한 번씩 replay합니다. JSON은 raw example ID
 대신 held-out domain과 정확한 순서 train/test membership을 묶는 개수와 버전이
 지정된 SHA-256 digest를 기록합니다. 이는 compact 재현성 identity이며 인증된 증명은
-아닙니다. 명령은 offline으로 실행되고 `--budget-scope per-query`만 허용합니다. 누적
-벤치마크와 cascade 주장은 주최 측이 sequence-level 예산·호출 이력 의미를 확정하고
-tierroute가 sequence-level oracle을 구현할 때까지 gate 상태입니다.
+아닙니다. 또한 tier 예산 한도·가중치, 확정된 baseline 역할·seed·threshold·규칙
+identity, 요청한 lambda-search cap 또는 exhaustive override를 기록하므로 replay에서
+가중 결과를 독립적으로 재현할 수 있습니다. 별도의 versioned SHA-256 evidence digest는
+baseline 파라미터를 그것이 만든 정확한 순서의 call 결정과 결합합니다. 명령은
+offline으로 실행되고 `--budget-scope per-query`만 허용합니다. 누적 벤치마크와
+cascade 주장은 주최 측이 sequence-level 예산·호출 이력 의미를 확정하고 tierroute가
+sequence-level oracle을 구현할 때까지 gate 상태입니다.
 
 동봉 합성 데이터로 실행한 결과는 벤치마크 배선만 검증하며 실증 근거가 아닙니다.
 `--data`를 쓰는 경우 replay 데이터 라이선스와 그 출력에서 도출한 벤치마크·대회

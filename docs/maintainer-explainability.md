@@ -137,9 +137,12 @@ It requires the learned report and every baseline to share one
 `EvaluationScopeIdentity` and publishes per-fold train/test counts plus a versioned
 digest binding the held-out domain and exact ordered memberships, not raw example IDs.
 The membership digest is a compact reproducibility identity, not authenticated proof.
-The bundled synthetic replay is wiring-only. A caller supplying `--data` owns the
-license and the validity of any empirical or competition claim. Cumulative and cascade
-reports remain gated on official sequence semantics and a sequence-level oracle.
+The same JSON records tier weights and limits, resolved baseline roles and algorithm
+parameters, their versioned config-to-replay-decision evidence digest, and requested
+lambda-search resource controls. The bundled synthetic replay is wiring-only. A caller
+supplying `--data` owns the license and the validity of any empirical or competition
+claim. Cumulative and cascade reports remain gated on official sequence semantics and a
+sequence-level oracle.
 
 Owner questions:
 

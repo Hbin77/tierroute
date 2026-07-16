@@ -23,9 +23,12 @@ the public API is pre-1.0.
 - A `tierroute benchmark --budget-scope per-query [--data ...] [--json]` runner that
   compares the true nested-LODO learned router with all six canonical baselines under
   one identical per-query evaluation scope, including compact versioned outer-fold
-  membership digests. Bundled synthetic rows are labeled as wiring-only; licenses and
-  claims for user-supplied replay data remain the caller's responsibility. The fitting
-  command runs in `training-smoke`/`reproduce-training`, not the inference lane.
+  membership digests, tier weights, resolved baseline parameters/rule identities, and
+  requested lambda-search resource controls. A versioned digest binds the baseline
+  parameters to their ordered replay decisions. Bundled synthetic rows are labeled as
+  wiring-only; licenses and claims for user-supplied replay data remain the caller's
+  responsibility. The fitting command runs in `training-smoke`/`reproduce-training`,
+  not the inference lane.
 - Canonical policy artifacts bound to predictor, data, replay-order, tier-spec, ledger,
   and candidate-search provenance, with the OOF prediction digest recorded as
   reproducibility audit metadata.
