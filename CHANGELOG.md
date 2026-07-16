@@ -9,6 +9,10 @@ the public API is pre-1.0.
 
 ### Added
 
+- A claim-gated five-page contest report outline with a reusable Mermaid architecture
+  source, per-number evidence records, measured-result placeholders, attachment
+  disclosure slots, and a final render checklist that prohibits synthetic demo values
+  from being presented as performance.
 - Fitted prompt-feature schemas and deterministic per-model ridge training.
 - Inner-LODO out-of-fold prediction with a separate isotonic calibrator per model.
 - Canonical, fail-closed JSON predictor artifacts and `tierroute train`/

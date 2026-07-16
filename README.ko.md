@@ -573,6 +573,11 @@ CI는 lint, 테스트, 의존성 없는 wheel
 경계는 [docs/literature-and-novelty.md](docs/literature-and-novelty.md)에 기록합니다.
 보고서나 발표에서 성능·OOD·novelty 문구를 재사용하기 전에 확인하세요.
 
+주장 상태를 강제하는 5페이지 제출 구조, 아키텍처 도식 원본, 수치별 증거 원장,
+최종 렌더 점검표는
+[docs/submission-report-outline.md](docs/submission-report-outline.md)에 유지합니다.
+그 문서의 자리표시는 대회 결과가 아니며 합성 데모 값으로 채우면 안 됩니다.
+
 개발 보조 도구의 실질적 사용 범위, 증거의 한계, 사람 검토 상태는
 [docs/ai-assistance-audit.md](docs/ai-assistance-audit.md)에 기록합니다. 핵심 불변식별
 설명·실패 경로 검토 자료와 참가자 서명 표는
