@@ -321,15 +321,23 @@ the current nested path still repeats feature work and 301 fits. An experimental
 seven-domain nested-evaluation graph contains 63 unique base-training subsets,
 154 subset/domain score blocks, and `22N` scored-row memberships, and it preflights a
 binary64 modeled-buffer and dominant-numeric-work estimate before enumeration. It does
-not execute or cache any feature, fit, or score, and the estimate is not a peak-memory
-or complete-work bound. Full training with the planned 1,024-dimensional
-bge-m3 embedding (up to 1,036 total features) remains gated on the corresponding
-authenticated feature store, sufficient-statistics and batched-score implementation,
-end-to-end parity, plus audited Linux-musl and Windows-MSVC artifacts. tierroute will
-not silently reduce or discard embedding dimensions. The reference path keeps its
-conservative operation guard, static reviewed solver ID, pre-embedding preflight, and
-unknown-ID rejection; inference remains dependency-free because it uses only stored
-coefficients.
+not execute any fit or score, and the estimate is not a peak-memory or complete-work
+bound. A separate bounded [prepared feature-store reference](docs/prepared-feature-store.md)
+now snapshots canonical little-endian binary64 fit rows from caller-checked source and
+precomputed-embedding digests, builds reusable per-domain Welford moments, and combines
+only included domains with Chan arithmetic to recover training-only tags and population
+scales. Excluded-domain mutation and direct-constructor adversarial tests protect this
+isolation boundary. The reference performs no provider inference or file I/O and does
+not solve, score, calibrate, or replace the default trainer; its arithmetic is not yet
+bitwise parity with the current row path.
+
+Full training with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total
+features) remains gated on an audited offline local provider, a scalable persistent
+prepared session with coefficient and batched-score execution, end-to-end parity, plus
+audited Linux-musl and Windows-MSVC artifacts. tierroute will not silently reduce or
+discard embedding dimensions. The existing row-training path keeps its conservative
+operation guard, static reviewed solver ID, pre-embedding preflight, and unknown-ID rejection;
+inference remains dependency-free because it uses only stored coefficients.
 
 ## What is implemented
 

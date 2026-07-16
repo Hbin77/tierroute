@@ -178,8 +178,11 @@ separate platform hash, link/import audit, license record, SBOM entry, and offli
 This dense protocol alone does not make full nested LODO efficient. The experimental
 [prepared graph contract](prepared-session-graph.md) now fixes the unique subset/score
 target and modeled numeric-resource admission preflight, but it does not execute that
-graph. A later prepared training session must compute prompt-local embeddings once, combine
-training-only domain sufficient statistics, and batch raw prediction scores. That
+graph. A bounded [in-memory reference](prepared-feature-store.md) now accepts
+caller-precomputed prompt embeddings and leakage-tests training-only domain-statistic
+combination, but it does not run a provider, solve, or score the graph. A later scalable
+prepared training session must authenticate offline embedding preparation, consume the
+reference moments, solve coefficients, and batch raw prediction scores. That
 higher-level protocol needs a separate session/training-engine identity, magic, and
-version distinct from the ridge-solver identity, plus leakage tests and resource proof;
-it must not overload this single-problem format.
+version distinct from the ridge-solver identity, plus end-to-end parity and resource
+proof; it must not overload this single-problem format.

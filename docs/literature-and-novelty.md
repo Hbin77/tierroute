@@ -354,6 +354,10 @@ invented cost-aware model routing:
 - The project-owned C11 sidecar implements one bounded dense ridge solve; it does not
   remove repeated feature work, nested-fold factorizations, or scoring from the complete
   validation graph and is not evidence that a full-dimensional run has completed.
+- The prepared feature-store reference establishes bounded canonical rows,
+  caller-checked content identities, domain moments, and subset isolation only. It does
+  not authenticate dataset/model provenance, run an embedding provider, execute the
+  prepared graph, or prove a speedup.
 - The GBM core has no versioned artifact or deployment CLI integration. Its paired
   estimation CLI deliberately cannot select a winner from the same outer evidence and
   supplies no evidence of predictive gain or superiority over the bilinear family.
@@ -418,6 +422,7 @@ pool, data split, cost model, and metric.
 | In-memory deterministic GBM and inner-LODO calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) |
 | Paired bilinear/GBM nested-LODO estimation with no family selection | [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py), [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py) |
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
+| Prepared graph and bounded feature/statistics isolation reference | [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py), [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py), [`prepared-feature-store.md`](prepared-feature-store.md), [`test_prepared_store.py`](../tests/test_prepared_store.py) |
 | Optional RouterBench boundary | [`adapters/routerbench.py`](../src/tierroute/adapters/routerbench.py), [`download_routerbench.py`](../scripts/download_routerbench.py) |
 | Reproducibility and license inventory | [`SBOM.md`](../SBOM.md), [`dependency-license-audit.md`](dependency-license-audit.md) |
 
@@ -446,10 +451,11 @@ The following remain official-answer or compliance gates:
 5. The SK Telecom dataset license and redistribution permission.
 6. Whether randomized expected-cost mixtures are legal, which determines whether the
    RouterBench Zero router is a valid additional baseline.
-7. A leakage-tested prepared training session that reuses domain statistics and
-   factorizations, plus audited GPL-family-free Linux-musl and Windows-MSVC artifacts,
-   before the parity-tested C11 dense solver can support a reportable full-dimensional
-   bge-m3 experiment.
+7. A scalable prepared execution session that extends the bounded leakage-tested
+   domain-statistics reference through coefficients, scores, calibration, and final
+   reports, plus audited GPL-family-free Linux-musl and Windows-MSVC artifacts, before
+   the parity-tested C11 dense solver can support a reportable full-dimensional bge-m3
+   experiment.
 
 Until those gates close, new semantics remain in `adapters/`, cascade remains disabled,
 SK Telecom data remains outside the repository, and synthetic results remain labeled

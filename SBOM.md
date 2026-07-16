@@ -11,8 +11,10 @@ isolated from the offline routing path. Predictor training uses the project-owne
 standard-library centered-ridge solver and adds no distribution dependency. An
 experimental project-owned C11 training sidecar is source-only and optional; no native
 binary or compiler is part of the base wheel or routing runtime. The prepared
-nested-LODO graph and resource preflight use only the Python standard library and add
-no inventory item, protocol implementation, model, dataset, or executable.
+nested-LODO graph, bounded in-memory feature-store/statistics reference, and their
+resource preflights use only the Python standard library and add no inventory item,
+model, dataset, binary, or executable. The reference defines in-memory digest formats,
+not a persistent file or native protocol.
 
 ## Project-owned optional native source
 
