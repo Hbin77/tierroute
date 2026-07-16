@@ -269,7 +269,7 @@ def prepared_fixture(
     statistics = build_prepared_domain_statistics(store)
     coefficients = build_prepared_coefficient_bundle(store, statistics, ridge=1.0)
     scores = build_prepared_raw_score_bundle(store, coefficients)
-    path = tmp_path_factory.mktemp("prepared-store") / "fixture.trpsto"
+    path = tmp_path_factory.mktemp("prepared-store") / "fixture.trpstore"
     receipt = write_prepared_store_file(store, path)
     return store, coefficients, scores, path, receipt
 
@@ -481,7 +481,7 @@ def test_compiled_d5_to_d7_sessions_match_complete_python_reference(
     statistics = build_prepared_domain_statistics(store)
     reference_coefficients = build_prepared_coefficient_bundle(store, statistics, ridge=1.0)
     reference_scores = build_prepared_raw_score_bundle(store, reference_coefficients)
-    store_path = tmp_path / f"d{domain_count}.trpsto"
+    store_path = tmp_path / f"d{domain_count}.trpstore"
     receipt = write_prepared_store_file(store, store_path)
     executable, digest = compiled_native_prepared
 
@@ -1082,7 +1082,7 @@ def test_compiled_native_completes_1024_embedding_plus_surface_without_projectio
         normalize=False,
         asset_manifest_sha256="7" * 64,
     )
-    path = tmp_path / "wide.trpsto"
+    path = tmp_path / "wide.trpstore"
     receipt = write_prepared_store_file_from_sections(
         destination=path,
         plan=plan,

@@ -70,7 +70,14 @@ jobs:
                   or "/artifacts/routerbench/" in normalized
                   or normalized.endswith("/artifacts/routerbench")
                   or normalized.endswith(
-                      (".part", ".pkl", ".trprequest", ".trpresult", ".trpstore")
+                      (
+                          ".part",
+                          ".pkl",
+                          ".trprequest",
+                          ".trpresult",
+                          ".trpsto",
+                          ".trpstore",
+                      )
                   )
                   or normalized.endswith(
                       (
@@ -106,7 +113,7 @@ jobs:
           assert not tracked_offenders, (
               f"forbidden data or compiled-artifact path is tracked: {tracked_offenders}"
           )
-          compiled_magics = (
+          forbidden_payload_magics = (
               b"\x00asm",
               b"\x7fELF",
               b"\xbe\xba\xfe\xca",
@@ -118,30 +125,48 @@ jobs:
               b"\xcf\xfa\xed\xfe",
               b"\xfe\xed\xfa\xce",
               b"\xfe\xed\xfa\xcf",
+              b"TRPRES01",
+              b"TRPSES01",
+              b"TRPSTO01",
           )
-          wheel_magic_binaries = []
+          wheel_magic_payloads = []
           with zipfile.ZipFile(wheel) as archive:
               for member in wheel_members:
                   if member.is_dir():
                       continue
                   with archive.open(member) as stream:
-                      header = stream.read(4)
-                  if header.startswith(compiled_magics):
-                      wheel_magic_binaries.append(member.filename)
-          assert not wheel_magic_binaries, (
-              f"wheel contains compiled-binary magic: {wheel_magic_binaries}"
+                      header = stream.read(8)
+                  if header.startswith(forbidden_payload_magics):
+                      wheel_magic_payloads.append(member.filename)
+          assert not wheel_magic_payloads, (
+              f"wheel contains compiled/protocol payload magic: {wheel_magic_payloads}"
           )
-          tracked_binaries = []
+          sdist_magic_payloads = []
+          with tarfile.open(sdist, "r:gz") as archive:
+              for member in sdist_members:
+                  if not member.isfile():
+                      continue
+                  stream = archive.extractfile(member)
+                  assert stream is not None, member.name
+                  with stream:
+                      header = stream.read(8)
+                  if header.startswith(forbidden_payload_magics):
+                      sdist_magic_payloads.append(member.name)
+          assert not sdist_magic_payloads, (
+              f"sdist contains compiled/protocol payload magic: {sdist_magic_payloads}"
+          )
+          tracked_magic_payloads = []
           for name in tracked_names:
               path = workspace_path / name
               if not path.is_file():
                   continue
               with path.open("rb") as stream:
-                  header = stream.read(4)
-              if header.startswith(compiled_magics):
-                  tracked_binaries.append(name)
-          assert not tracked_binaries, (
-              f"compiled binaries must not be committed: {tracked_binaries}"
+                  header = stream.read(8)
+              if header.startswith(forbidden_payload_magics):
+                  tracked_magic_payloads.append(name)
+          assert not tracked_magic_payloads, (
+              "compiled binaries and prepared protocol payloads must not be committed: "
+              f"{tracked_magic_payloads}"
           )
 
           def normalized_parts(name: str) -> tuple[str, ...]:

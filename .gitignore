@@ -19,6 +19,7 @@ models/
 artifacts/
 *.trprequest
 *.trpresult
+*.trpsto
 *.trpstore
 
 .DS_Store
