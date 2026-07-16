@@ -29,7 +29,7 @@ License List data. Wheel, sdist, src-layout discovery, package data, console ent
 point, wheel install, editable install, and offline smoke were verified. The runtime
 wheel does not depend on or contain flit_core.
 
-## Project-owned C11 accelerator candidate
+## Project-owned C11 accelerator candidates
 
 `native/tierroute_ridge.c` is project-authored Apache-2.0 source, not a third-party
 package. Protocol version 1 source SHA-256
@@ -52,6 +52,25 @@ real artifact audits before any executable may be distributed. The dense one-sol
 protocol also does not remove the repeated feature extraction and 301-fit nested-LODO
 call graph, so it is not yet approved as evidence that the full reportable bge-m3
 experiment is feasible.
+
+`native/tierroute_prepared.c` is likewise project-authored Apache-2.0 source, not a
+third-party package. Its `TRPSTO01`/`TRPSES01`/`TRPRES01` protocol-v1 source SHA-256 is
+`3aafbe9f90e8db1258a87a16aed3c8dd3eaa1e570bc358bea7f1d173a4b569e0`. It consumes the
+project-owned authenticated `TRPSTO01` file format and performs one complete admitted
+prepared moment-solve/raw-score graph per child invocation. It is source-distribution
+only; the base wheel contains neither prepared source nor executable, adds no runtime
+dependency, and never compiles or invokes it during installation, routing, or the
+default trainer path.
+
+Strict local Darwin compilation and the focused store/native suite reported 58 passed,
+including 35 native-session cases, small surface-only compiled D4-D7 reference parity,
+and one unprojected synthetic `D4/N8/d1036/M1` completion. No executable is committed,
+distributed, or approved.
+The official `D7/N34778/d1036/M11` tuple is aggregate-preflight evidence only, and the
+new macOS/Windows CI result remains pending. Toolchain provenance, Linux-musl and
+Windows-MSVC release linkage, bge-m3/provider assets, official/RouterBench data,
+all-domain policy/CLI/six-baseline integration, and performance claims remain outside
+this source-license approval.
 
 ## Reviewed permissive license evidence
 

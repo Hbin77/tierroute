@@ -9,6 +9,30 @@ the public API is pre-1.0.
 
 ### Added
 
+- An experimental authenticated file-backed prepared-session vertical slice. The fixed
+  little-endian `TRPSTO01` store binds the graph, source-fit content, logical prepared
+  store, optional precomputed-embedding snapshot/identity, model catalogue, payload, and
+  whole file to caller-pinned receipts. Descriptor-stable validation and owner-only
+  private copies reject malformed sections, path replacement, symlinks/reparse points,
+  changed metadata, noncanonical row keys, non-finite values, and credential mismatch.
+  Nonzero nonce rejection sampling avoids assigning protocol meaning to a single
+  all-zero random draw, while one reentrant lifetime lock serializes mmap read/view
+  creation with retryable close.
+  One authenticated `TRPSES01` C11 child invocation combines every admitted subset,
+  performs one Cholesky factorization per subset for all targets, emits every raw-score
+  block in `TRPRES01`, and leaves the validated result mmap-backed until its context is
+  closed. Aggregate file, scratch, C-heap, output, scan, and numeric-work accounting is
+  checked before launch. A focused local Darwin store/native run reports 58 passed,
+  including 35 native-session cases, and establishes actual D4-D7 reference
+  coefficient/raw-score parity on small surface-only fixtures plus completion
+  of a `D4/N8/d1036/M1` corpus containing 12 surface plus 1,024 synthetic embedding
+  coordinates with no projection. The pinned
+  `D7/N34778/d1036/M11` shape has exact aggregate preflight only, not a full execution.
+  The project-owned dependency-free C source is sdist-only; wheels and the repository
+  contain no executable. There is no bge-m3 provider, official/RouterBench data result,
+  all-domain policy/artifact integration, prepared six-baseline wrapper, cross-platform
+  release evidence, or quality, cost, speed, memory-efficiency, or throughput claim.
+  Issue #9 remains open.
 - A bounded prepared reference policy pipeline that maps canonical raw-score contexts
   through the existing per-model isotonic calibration, exact/bounded tier-lambda
   search, and `OfflineSimulator`, returning the existing `NestedLodoLambdaResult`.
@@ -26,7 +50,8 @@ the public API is pre-1.0.
   mismatch, per-query, and cumulative-ledger tests preserve the reviewed boundaries.
   Caller-supplied ledger callback work and side effects remain outside the resource
   estimate. This is synthetic bounded wiring evidence, not universal near-
-  tie parity, a cross-platform numeric-digest promise, CLI/native/persistent integration,
+  tie parity, a cross-platform numeric-digest promise, CLI or integration with the
+  separate native/persistent prepared session,
   an all-domain artifact, or a performance/quality/cost claim. Issue #9 remains open.
 - A bounded, standard-library-only prepared moment execution reference that consumes
   the immutable prepared store/statistics, sequentially combines, solves, and discards
@@ -47,8 +72,8 @@ the public API is pre-1.0.
   estimate. Earlier store/statistics and execution caps reject the complete pinned
   RouterBench/bge-m3 shape. The separate bounded policy bridge now supplies frozen-
   fixture calibration/lambda/report integration, but neither reference adds a CLI,
-  native/persistent session, all-domain artifact, or performance, quality, or cost-
-  reduction claim; Issue #9 remains open.
+  integration with the separate native/persistent session, all-domain artifact, or
+  performance, quality, or cost-reduction claim; Issue #9 remains open.
 - A bounded, standard-library-only prepared feature-store reference that canonicalizes
   fit-relevant source rows and caller-precomputed embeddings into immutable
   little-endian binary64 payloads, requires caller-supplied expected source/embedding

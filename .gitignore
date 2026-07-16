@@ -6,7 +6,7 @@ __pycache__/
 .coverage
 .pytest_cache/
 .ruff_cache/
-.venv/
+.venv*/
 build/
 dist/
 htmlcov/
@@ -17,5 +17,9 @@ models/
 
 # Locally fitted artifacts are reviewed before any intentional release commit.
 artifacts/
+*.trprequest
+*.trpresult
+*.trpsto
+*.trpstore
 
 .DS_Store

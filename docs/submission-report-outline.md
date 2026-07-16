@@ -102,6 +102,7 @@ commit and rerun every cited check before using any record in the final report.
 | `I-PREPARED-552B62D` | A bounded standard-library reference canonicalizes caller-precomputed `12 + E` surface/embedding fit rows, binds caller-checked source and embedding content identities, derives per-domain Welford moments, and combines only included training domains with Chan's formula for prepared nested-LODO subsets | [`features/surface.py`](../src/tierroute/features/surface.py) at `1425d11`, [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py) through `552b62d`, and [the trust-boundary specification](prepared-feature-store.md) at `9bc0b8b` | [`test_features_predictors.py`](../tests/test_features_predictors.py), [`test_prepared_store.py`](../tests/test_prepared_store.py), [PR #46](https://github.com/Hbin77/tierroute/pull/46), [implementation/spec-head push CI run `29518686144`](https://github.com/Hbin77/tierroute/actions/runs/29518686144) | Content digests do not authenticate origin or provenance; numerical store/stat digests are not promised across platforms; no provider, persistence, solve, score, performance, bge-m3, or official-data claim |
 | `I-PREPARED-EXEC-608468B` | A bounded in-memory Python reference combines each canonical prepared subset, solves centered ridge from moments with one Cholesky factor shared by all model targets, and emits every graph-ordered raw-score block; the seven-domain regression proves 63 coefficient blocks, 154 score blocks, exactly `22N` row memberships, and `22NM` scalar scores | [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py) at implementation commit `f4b07bc`, hardened through `2ac1b50`, and [the execution contract](prepared-reference-execution.md) | [`test_prepared_execution.py`](../tests/test_prepared_execution.py) at test commit `608468b`, with admission/locality hardening at `2ac1b50`; focused local Darwin arm64/Python 3.12.11: 62 passed; [PR #47](https://github.com/Hbin77/tierroute/pull/47); [implementation/spec-head CI run `29524753168`](https://github.com/Hbin77/tierroute/actions/runs/29524753168) at `8ec9cc1`: Python 3.10 921 passed/1 expected skip, Python 3.12 920 passed/2 expected skips, dependency-free wheel and macOS/Windows native-source jobs passed | Synthetic/frozen-fixture numerical parity is tolerance-based, not bitwise or a cross-platform digest promise. Builders are the supported derivation path; direct leaf constructors provide only self-declared canonical record identities. Digests are not authentication, and substitution detection needs a trusted expected digest. The admission estimate is reviewed numeric work/storage accounting, not peak RSS or wall-clock. No provider, persistence, native execution, calibration, lambda, final-report, performance, bge-m3, RouterBench, or official-data claim; issue #9 remains open |
 | `I-PREPARED-POLICY-63E288E` | A bounded prepared reference maps canonical raw-score contexts through per-model inner-LODO isotonic calibration, per-tier lambda tuning, injected budget-ledger replay, and the existing final `NestedLodoLambdaResult`; the exact graph contains `C(D,2)+D` calibration sets and `D^2` calibrated destinations | [`policies/prepared_reference.py`](../src/tierroute/policies/prepared_reference.py) and cost-width-aware [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py) at implementation commit `63e288e`; [pipeline contract](prepared-reference-pipeline.md) | [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py) and [`test_lambda_tuning.py`](../tests/test_lambda_tuning.py) at `3249a3c`; local Darwin arm64: Python 3.10 954 passed, Python 3.12 953 passed/1 expected skip; formatter, Ruff, and independent AI-agent algorithm/security/test audits passed; [PR #48](https://github.com/Hbin77/tierroute/pull/48), [PR-head CI `29530846709`](https://github.com/Hbin77/tierroute/actions/runs/29530846709), and [merged-main CI `29531008829`](https://github.com/Hbin77/tierroute/actions/runs/29531008829) | Synthetic/frozen D4–D7 parity is not universal near-tie parity or a cross-platform numeric-digest promise. The 8 MiB value is a lambda candidate/policy-artifact estimate, not peak RSS. Arbitrary ledger callback work is excluded. No provider, persistence, native/scalable session, all-domain artifact, full six-baseline prepared wrapper, performance, bge-m3, RouterBench, or official-data claim; issue #9 remains open |
+| `I-PREPARED-NATIVE-TRPSES01` | An authenticated binary64 file store and one-invocation project-owned C11 session execute every canonical prepared coefficient and raw-score block without retaining the `N x d` feature matrix on the C heap | [`predictors/prepared_files.py`](../src/tierroute/predictors/prepared_files.py), [`predictors/native_prepared.py`](../src/tierroute/predictors/native_prepared.py), [`native/tierroute_prepared.c`](../native/tierroute_prepared.c), and the [frozen protocol](native-prepared-session-protocol.md); replace this branch-local record with the merged commit before report use | [`test_prepared_files.py`](../tests/test_prepared_files.py) and [`test_native_prepared.py`](../tests/test_native_prepared.py): 58 branch-local focused cases; strict local C11 build; D4–D7 small-fixture Python parity and D4/N8/d1036/M1 synthetic wide execution. CI/merge URL remains required before report use | Official D7/N34778/d1036/M11 is aggregate preflight only. No local bge-m3 provider, official or RouterBench run, native-result-to-policy artifact, prepared six-baseline wrapper, throughput/peak-RSS/speedup, quality, cost-savings, or cross-platform numeric-digest claim; issue #9 remains open |
 | `I-POLICY-129A230` | Each fixed-lambda decision uses exact arithmetic; tuning records whether retained candidates are exhaustive or approximate | [`policies/lambda_threshold.py`](../src/tierroute/policies/lambda_threshold.py), [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py), [`policies/lambda_artifacts.py`](../src/tierroute/policies/lambda_artifacts.py) | [`test_policies.py`](../tests/test_policies.py), [`test_lambda_tuning.py`](../tests/test_lambda_tuning.py), [`test_lambda_policy_artifacts.py`](../tests/test_lambda_policy_artifacts.py) | Exact decisions do not make a truncated candidate search exhaustive or globally optimal |
 | `I-OFFLINE-129A230` | The base wheel has no runtime dependency, shipped built-in runtime paths pass with networking denied, and CI audits licenses plus wheel/sdist data exclusion | [`ci.yml`](../.github/workflows/ci.yml), [`SBOM.md`](../SBOM.md), [`check_licenses.py`](../scripts/check_licenses.py) | [`test_offline_runtime.py`](../tests/test_offline_runtime.py), [`test_license_gate.py`](../tests/test_license_gate.py), [`test_package.py`](../tests/test_package.py), CI run `29483000949` | Package installation can require pre-cached or fetched build/dev wheels; the no-network claim begins after installation |
 
@@ -144,6 +145,7 @@ optimization over every policy.
 | Bounded prepared feature-store and training-side sufficient-statistics reference | `IMPLEMENTED — EXPERIMENTAL` | `I-PREPARED-552B62D`; no provider, solve, score, or performance claim |
 | Bounded prepared moment-solve and complete raw-score reference | `IMPLEMENTED — SYNTHETIC/FROZEN FIXTURES ONLY` | `I-PREPARED-EXEC-608468B`; no scalable session, calibration, policy, report, or performance claim |
 | Bounded prepared calibration/lambda/final-report bridge | `IMPLEMENTED — SYNTHETIC/FROZEN FIXTURES ONLY` | `I-PREPARED-POLICY-63E288E`; no provider, scalable session, all-domain artifact, six-baseline prepared wrapper, or performance claim |
+| Authenticated file-backed prepared store and one-invocation C11 solve/score session | `IMPLEMENTED — EXPERIMENTAL` | `I-PREPARED-NATIVE-TRPSES01`; no official full-shape run, policy/report artifact, provider, or performance claim |
 | Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | `I-POLICY-129A230` |
 | Local bge-m3 provider and controlled feature ablation | `PLANNED` | model manifest, provider tests, ablation record |
 | Licensed family-selection-aware GBM-versus-bilinear experiment | `PLANNED` | preregistration plus untouched selection/scoring evidence |
@@ -181,6 +183,9 @@ flowchart LR
 
     RAW -. outer-training partition .-> OUTERTRAIN["Outer-training rows and labels"]
     OUTERTRAIN --> INNER["Training-side cross-fitted<br/>calibrated predictions"]
+    OUTERTRAIN -. caller-precomputed rows .-> PSTORE["Authenticated TRPSTO01 store<br/>IMPLEMENTED — EXPERIMENTAL"]
+    PSTORE --> PSESSION["One-invocation C11 prepared solve/score<br/>IMPLEMENTED — EXPERIMENTAL"]
+    PSESSION -. result-to-policy artifact PLANNED .-> INNER
     INNER --> TUNE["Tier lambda tuning"]
     OUTERTRAIN -->|held-in outcomes, quality, realized cost| TUNE
     OUTERTRAIN --> REFIT["Final calibrated family refit<br/>outer-training side only"]
@@ -237,9 +242,12 @@ flowchart LR
   Cholesky factor, and emits raw scores in exact graph order. Its synthetic/frozen
   tests establish tolerance-based numerical and exact `22N` structural parity only.
   A separate bounded policy bridge now establishes calibration, lambda-tuning, and
-  final learned-result parity on synthetic/frozen D4–D7 fixtures. Neither reference
-  establishes native/scalable execution, persistence, throughput, memory efficiency,
-  full prepared six-baseline integration, or real-data quality.
+  final learned-result parity on synthetic/frozen D4–D7 fixtures. An experimental
+  authenticated file-backed store plus one-invocation C11 session separately executes
+  all coefficient and raw-score blocks; small D4–D7 fixtures match the Python reference
+  within tolerance. The native result is not yet converted into the policy/report
+  artifact, and no official full-shape execution, throughput, peak-memory, full prepared
+  six-baseline integration, or real-data quality result exists.
 - Uncalled outputs and held-out quality labels stay outside `RouterState`.
 - `adapters/` owns unresolved per-query-versus-cumulative budget interpretation.
 - The default policy makes one model choice. The typed action/history contract permits
@@ -393,12 +401,15 @@ protocol.
   rows, computes per-domain Welford moments, combines included domains, solves each
   unique prepared subset, and emits every raw-score block. Its parity evidence is
   numerical-with-tolerance on synthetic/frozen fixtures; it is neither bitwise parity
-  nor a cross-platform digest promise. It has no local embedding provider, persistent
-  or native prepared session. A separate bounded bridge now supplies calibration,
-  lambda, and final learned-result integration on synthetic/frozen D4–D7 fixtures. The
-  complete planned RouterBench shape is rejected by the store/statistics/reference
-  admission caps. Neither reference is evidence of a full-dimensional RouterBench run,
-  a speedup, quality, cost savings, or official-data performance; issue #9 remains open.
+  nor a cross-platform digest promise. An experimental authenticated file-backed store
+  and one-invocation C11 prepared session now exist and have small D4–D7 parity plus one
+  D4/N8/d1036/M1 synthetic wide execution. A separate bounded bridge supplies
+  calibration, lambda, and final learned-result integration on synthetic/frozen D4–D7
+  fixtures, but no native-result-to-policy artifact connects the two paths. The bounded
+  in-memory reference still rejects the planned full shape; the file-backed path only
+  admits the official-size tuple in aggregate and has not executed it. None of this is
+  evidence of a full-dimensional RouterBench run, throughput, peak RSS, a speedup,
+  quality, cost savings, or official-data performance; issue #9 remains open.
 - A cumulative-budget comparison needs a sequence-level oracle; summing independent
   per-query oracle choices is invalid.
 - Cascade remains disabled until sequential calls and their accounting are confirmed.

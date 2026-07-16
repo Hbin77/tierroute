@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Audit platform-local native ridge linkage and imported symbols."""
+"""Audit linkage and imported symbols for a project-owned native sidecar."""
 
 from __future__ import annotations
 
@@ -206,7 +206,7 @@ def audit_candidate(
         directory = Path(name)
         _make_private_directory(directory)
         binary_snapshot = directory / ("candidate.exe" if platform == "windows" else "candidate")
-        source_snapshot = directory / "tierroute_ridge.c"
+        source_snapshot = directory / "candidate.c"
         binary_digest = _snapshot_verified_file(
             binary,
             binary_snapshot,
