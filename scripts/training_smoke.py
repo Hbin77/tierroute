@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Exercise offline training, canonical artifact loading, and artifact routing."""
+"""Exercise offline training, nested benchmarking, and artifact routing."""
 
 from __future__ import annotations
 
@@ -87,6 +87,54 @@ def main() -> int:
         if set(training.get("lambda_search", {})) != {"fast", "balanced", "premium"}:
             raise RuntimeError("training smoke did not report every tier's lambda search")
 
+        benchmark = json.loads(
+            _run_cli(
+                executable,
+                "benchmark",
+                "--budget-scope",
+                "per-query",
+                "--json",
+            )
+        )
+        if (
+            benchmark.get("schema") != "tierroute-benchmark"
+            or benchmark.get("schema_version") != 1
+            or benchmark.get("network_used") is not False
+            or benchmark.get("budget_scope") != "per-query"
+            or benchmark.get("validation_scope") != "true-nested-lodo-original-order"
+        ):
+            raise RuntimeError("nested benchmark did not preserve its offline report contract")
+        learned = benchmark.get("learned_router", {})
+        if (
+            learned.get("feasible") is not True
+            or learned.get("weighted_quality") is None
+            or learned.get("oracle_gap_recovery") is None
+            or len(learned.get("prediction_sha256", "")) != 64
+        ):
+            raise RuntimeError("nested benchmark did not return complete learned-router evidence")
+        baseline_names = [row.get("name") for row in benchmark.get("baselines", [])]
+        if baseline_names != [
+            "always-cheapest",
+            "always-premium",
+            "random",
+            "length-heuristic",
+            "oracle",
+            "domain-best-table",
+        ]:
+            raise RuntimeError("nested benchmark did not return all six baselines")
+        if any(
+            row.get("evaluation_scope") != benchmark.get("evaluation_scope")
+            for row in [learned, *benchmark["baselines"]]
+        ):
+            raise RuntimeError("learned and baseline benchmark scopes do not match")
+        folds = learned.get("outer_folds", [])
+        if len(folds) != 4 or any(
+            fold.get("membership", {}).get("algorithm") != "tierroute-fold-membership-sha256-v1"
+            or len(fold.get("membership", {}).get("sha256", "")) != 64
+            for fold in folds
+        ):
+            raise RuntimeError("nested benchmark fold membership evidence is incomplete")
+
         predictor_route = json.loads(
             _run_cli(
                 executable,
@@ -136,7 +184,10 @@ def main() -> int:
     if any(hf_home.iterdir()):
         raise RuntimeError("training or artifact routing wrote to HF_HOME")
 
-    print("Training smoke passed: predictor fit, exact policy tuning, and both routes ran offline.")
+    print(
+        "Training smoke passed: predictor fit, nested benchmark, exact policy tuning, "
+        "and both routes ran offline."
+    )
     return 0
 
 

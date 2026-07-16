@@ -16,7 +16,7 @@ help:
 	@echo "  reproduce            alias for the complete reproduction pipeline"
 	@echo "  reproduce-inference  install and run the fast offline command pipeline"
 	@echo "  reproduce-training   install and run the complete offline training pipeline"
-	@echo "  training-smoke       fit predictor, tune exact policy, and route offline"
+	@echo "  training-smoke       fit, nested-benchmark, tune, and route offline"
 	@echo "  download-routerbench explicitly download pinned RouterBench data (network)"
 	@echo "  validate-routerbench validate a previously downloaded local artifact"
 
