@@ -17,6 +17,14 @@ from tierroute.predictors.calibration import (
     IsotonicCalibrator,
     PerModelCalibratedQualityPredictor,
 )
+from tierroute.predictors.gbm import GbmModel, GbmQualityPredictor, RegressionStump
+from tierroute.predictors.gbm_training import (
+    GBM_ALGORITHM_ID,
+    GbmTrainingConfig,
+    fit_calibrated_gbm,
+    fit_calibrated_gbm_for_fold,
+    preflight_gbm_fit,
+)
 from tierroute.predictors.solvers import (
     KNOWN_RIDGE_SOLVER_IDS,
     RidgeSolver,
@@ -30,6 +38,7 @@ from tierroute.predictors.training import (
 )
 
 __all__ = [
+    "GBM_ALGORITHM_ID",
     "KNOWN_RIDGE_SOLVER_IDS",
     "PREDICTOR_ARTIFACT_VERSION",
     "BatchPromptQualityPredictor",
@@ -38,13 +47,20 @@ __all__ = [
     "BilinearQualityPredictor",
     "BilinearTrainingConfig",
     "CalibratedQualityPredictor",
+    "GbmModel",
+    "GbmQualityPredictor",
+    "GbmTrainingConfig",
     "IsotonicCalibrator",
     "PerModelCalibratedQualityPredictor",
     "QualityPredictor",
+    "RegressionStump",
     "RidgeSolver",
     "StaticQualityPredictor",
     "fit_calibrated_bilinear",
     "fit_calibrated_bilinear_for_fold",
+    "fit_calibrated_gbm",
+    "fit_calibrated_gbm_for_fold",
+    "preflight_gbm_fit",
     "resolve_ridge_solver",
     "training_data_sha256",
 ]

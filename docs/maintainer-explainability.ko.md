@@ -11,8 +11,8 @@
 worktree에서 제시된 변이를 한 번씩 수행한 뒤, 복구와 테스트 성공을 직접
 확인해야 한다.
 
-이 실습의 기준 소스는 `main` 병합 커밋
-`1426f3b4b89cf04254d992f35be7da15ee134202`다. 소스가 바뀌면 현재 검토한 정확한
+이 실습의 기준 소스는 구현 스냅샷 커밋
+`c6491508533655baa76c7b50bfdadacbc1612e60`다. 소스가 바뀌면 현재 검토한 정확한
 커밋으로 절차와 변이를 다시 감사하고, 서명 표에는 그 커밋을 기록한다.
 기준 스냅샷의 성공은 이후 소스 변경을 인증하지 않는다.
 
@@ -69,7 +69,7 @@ venv, 빈 Hugging Face cache, 테스트 임시 디렉터리를 만든다. 현재
 set -euo pipefail
 repo="$(git rev-parse --show-toplevel)"
 test -z "$(git -C "$repo" status --porcelain=v1 --untracked-files=all)"
-review_commit="1426f3b4b89cf04254d992f35be7da15ee134202"
+review_commit="c6491508533655baa76c7b50bfdadacbc1612e60"
 git -C "$repo" cat-file -e "$review_commit^{commit}"
 
 review_root="$(mktemp -d "${TMPDIR:-/tmp}/tierroute-explain.XXXXXX")"
@@ -374,22 +374,31 @@ test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"
 남은 질문:
 ```
 
-### 카드 5 — fitted feature, ridge 품질 예측, calibration
+### 카드 5 — fitted feature, ridge/GBM 품질 예측, calibration
 
-**불변식.** feature schema·scaling·tag vocabulary, ridge, isotonic calibration은 outer
-training에서만 fit한다. 보정은 inner-LODO OOF 예측을 쓰고, 배포용 예측기는 outer
-training 전체로 다시 fit한다. 현재 embedding 경계는 provider 주입을 지원하지만
-`bge-m3` 가중치·추론 provider를 배포한다고 주장하지 않는다.
+**불변식.** feature schema·scaling·tag vocabulary, ridge·GBM stump, isotonic
+calibration은 outer training에서만 fit한다. 보정은 inner-LODO OOF 예측을 쓰고,
+예측기는 outer training 전체로 다시 fit한다. bilinear artifact v1만 엄격한 직렬화
+계약을 가지며 GBM은 인메모리 전용이다. 현재 embedding 경계는 provider 주입을
+지원하지만 `bge-m3` 가중치·추론 provider를 배포한다고 주장하지 않는다.
 
 - 소유 심볼: [`fit_calibrated_bilinear_for_fold`](../src/tierroute/predictors/training.py),
+  [`fit_calibrated_gbm_for_fold`](../src/tierroute/predictors/gbm_training.py),
+  [`RegressionStump`](../src/tierroute/predictors/gbm.py),
   [`PromptFeatureSchema`](../src/tierroute/features/encoding.py),
   [`IsotonicCalibrator`](../src/tierroute/predictors/calibration.py)
 - 임시 변이: outer 학습에 held-out test 행을 합쳐 embedding provider에 노출한다.
+
+변이 전에는 residual 갱신·split gain·feature/split 동률 규칙·양의 gain이 없을 때의
+조기 종료를 직접 유도하고, 모든 inner/final 작업량 검사가 첫 embedding 호출보다
+앞서는 이유를 설명한다. 아래 변이는 ridge와 GBM이 공유해야 하는 outer-fold 격리
+불변식을 점검한다.
 
 ```bash
 file="src/tierroute/predictors/training.py"
 test -z "$(git diff --name-only)"
 python -m pytest -q tests/test_bilinear_training.py::test_outer_fold_training_never_observes_held_out_examples
+python -m pytest -q tests/test_gbm_core.py tests/test_gbm_training.py
 git apply <<'PATCH'
 diff --git a/src/tierroute/predictors/training.py b/src/tierroute/predictors/training.py
 --- a/src/tierroute/predictors/training.py
@@ -758,7 +767,7 @@ Python/platform:
 | 예산 adapter, replay, call 증거 |  |  |  |  |
 | 완전한 evaluation-scope 식별자 |  |  |  |  |
 | 지표, nested LODO 6종 비교, showcase |  |  |  |  |
-| feature, ridge 예측기, calibration |  |  |  |  |
+| feature, ridge/GBM 예측기, calibration |  |  |  |  |
 | 정확 lambda tuning과 policy artifact |  |  |  |  |
 | RouterBench 적대적 데이터·로컬 diagnostic |  |  |  |  |
 | atomic I/O, 오프라인, 빌드, 라이선스 |  |  |  |  |

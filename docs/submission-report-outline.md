@@ -85,10 +85,11 @@ digest claims by itself.
 ## Current implementation evidence baseline
 
 The `I-*` records below prove implemented behavior, not model quality, cost savings, or
-a competition score. They are bound to pre-submission baseline commit
+a competition score. The original records are bound to pre-submission baseline commit
 `129a23022a78300a44de2305368a75707043a8e0` and current-main CI run
 [`29483000949`](https://github.com/Hbin77/tierroute/actions/runs/29483000949).
-Update the commit and rerun the cited checks before using them in the final report.
+Later records carry their own exact implementation commit and CI reference. Update the
+commit and rerun every cited check before using any record in the final report.
 
 | Evidence ID | Exact implemented claim | Source | Verification | Boundary |
 | --- | --- | --- | --- | --- |
@@ -96,6 +97,7 @@ Update the commit and rerun the cited checks before using them in the final repo
 | `I-ACCOUNT-129A230` | Offline replay separates quoted and realized charges and conserves executed-call ledger evidence | [`eval/simulator.py`](../src/tierroute/eval/simulator.py), [`eval/budgets.py`](../src/tierroute/eval/budgets.py), [`eval/schemas.py`](../src/tierroute/eval/schemas.py) | [`test_simulator.py`](../tests/test_simulator.py), [`test_budgets.py`](../tests/test_budgets.py), [`test_eval_schemas.py`](../tests/test_eval_schemas.py) | Per-query and cumulative adapters are distinct; official budget scope remains gated |
 | `I-SCOPE-129A230` | Learned router and six baselines use an identical, versioned, digest-bound evaluation-scope identity and fail closed on mismatch | [`eval/provenance.py`](../src/tierroute/eval/provenance.py), [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_eval_provenance.py`](../tests/test_eval_provenance.py), [`test_baseline_evaluation.py`](../tests/test_baseline_evaluation.py), [`test_benchmark.py`](../tests/test_benchmark.py) | Scope digests detect mismatch; they do not authenticate an untrusted dataset |
 | `I-PREDICTOR-129A230` | Surface-feature bilinear quality fitting uses training-side ridge and per-model isotonic calibration inside nested/outer LODO orchestration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_bilinear_training.py`](../tests/test_bilinear_training.py), [`test_features_predictors.py`](../tests/test_features_predictors.py), [`test_benchmark.py`](../tests/test_benchmark.py) | This proves leakage-control wiring on the cited replay, not predictive gain on official data |
+| `I-GBM-C649150` | Dependency-free per-model squared-error regression-stump boosting uses deterministic split/tie rules, immutable bounded state, pre-embedding work/catalogue guards, inner-LODO OOF predictions, and per-model isotonic calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) at `c649150` | [`test_gbm_core.py`](../tests/test_gbm_core.py), [`test_gbm_training.py`](../tests/test_gbm_training.py), [PR #41 CI run `29490146160`](https://github.com/Hbin77/tierroute/actions/runs/29490146160) | This proves deterministic, leakage-controlled library wiring only; no artifact, CLI, matched comparison, or predictive-gain evidence |
 | `I-POLICY-129A230` | Each fixed-lambda decision uses exact arithmetic; tuning records whether retained candidates are exhaustive or approximate | [`policies/lambda_threshold.py`](../src/tierroute/policies/lambda_threshold.py), [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py), [`policies/lambda_artifacts.py`](../src/tierroute/policies/lambda_artifacts.py) | [`test_policies.py`](../tests/test_policies.py), [`test_lambda_tuning.py`](../tests/test_lambda_tuning.py), [`test_lambda_policy_artifacts.py`](../tests/test_lambda_policy_artifacts.py) | Exact decisions do not make a truncated candidate search exhaustive or globally optimal |
 | `I-OFFLINE-129A230` | The base wheel has no runtime dependency, shipped built-in runtime paths pass with networking denied, and CI audits licenses plus wheel/sdist data exclusion | [`ci.yml`](../.github/workflows/ci.yml), [`SBOM.md`](../SBOM.md), [`check_licenses.py`](../scripts/check_licenses.py) | [`test_offline_runtime.py`](../tests/test_offline_runtime.py), [`test_license_gate.py`](../tests/test_license_gate.py), [`test_package.py`](../tests/test_package.py), CI run `29483000949` | Package installation can require pre-cached or fetched build/dev wheels; the no-network claim begins after installation |
 
@@ -132,6 +134,7 @@ optimization over every policy.
 | Offline replay with exact quote/realized-cost evidence | `IMPLEMENTED` | `I-ACCOUNT-129A230` |
 | Six common baselines on one identical, versioned, digest-bound evaluation scope | `IMPLEMENTED` | `I-SCOPE-129A230` |
 | Surface-feature bilinear predictor with per-model isotonic calibration | `IMPLEMENTED` | `I-PREDICTOR-129A230` |
+| In-memory deterministic stump-GBM core with per-model isotonic calibration | `IMPLEMENTED — LIBRARY ONLY` | `I-GBM-C649150` |
 | Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | `I-POLICY-129A230` |
 | Local bge-m3 provider and controlled feature ablation | `PLANNED` | model manifest, provider tests, ablation record |
 | GBM-versus-bilinear comparison | `PLANNED` | implementation plus matched-scope result |
@@ -159,9 +162,10 @@ flowchart LR
     SURFACE --> ENCODER["Versioned feature schema"]
     BGE -. optional feature block .-> ENCODER
     ENCODER --> BILINEAR["Bilinear quality predictor<br/>IMPLEMENTED"]
-    ENCODER -. matched comparison .-> GBM["GBM predictor<br/>PLANNED"]
+    ENCODER --> GBM["Deterministic stump-GBM<br/>IMPLEMENTED — LIBRARY ONLY"]
     BILINEAR --> CAL["Per-model isotonic calibration"]
-    GBM -. future .-> CAL
+    GBM --> CAL
+    GBM -. future integration .-> GBMCLI["GBM artifact, CLI, matched comparison<br/>PLANNED"]
     CAL --> POLICY["One-shot exact-arithmetic<br/>lambda-threshold decision"]
     POLICY --> ACTION["CallModel or SelectOutput"]
 
@@ -186,7 +190,7 @@ flowchart LR
 
     classDef planned stroke-dasharray: 6 4;
     classDef gated stroke-width: 3px,stroke-dasharray: 2 3;
-    class BGE,PREP,ASSET,GBM planned;
+    class BGE,PREP,ASSET,GBMCLI planned;
     class OFFICIAL,CASCADE gated;
 ```
 
@@ -288,8 +292,8 @@ true`; a bounded retained search must stay labeled approximate.
 4. A LODO fold table or distribution showing domain-shift variance, not only the mean.
 5. A calibration figure or error summary on held-out predictions.
 6. If both feature paths exist, a controlled surface-only versus surface+bge-m3
-   ablation. If GBM exists, compare it on the identical outer folds and evaluation
-   scope.
+   ablation. When GBM is integrated into the benchmark, compare it on identical outer
+   folds and evaluation scope.
 
 Do not write “동일 품질, 비용 X% 절감” unless `X` is computed against a named comparator
 on the identical evaluation scope, with uncertainty/variation and budget feasibility
