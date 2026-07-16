@@ -5,7 +5,7 @@ PYTHON ?= python3
 .DEFAULT_GOAL := help
 
 .PHONY: help install install-dev check-install lint test licenses spdx smoke training-smoke
-.PHONY: verify reproduce
+.PHONY: verify reproduce reproduce-inference reproduce-training
 .PHONY: download-routerbench validate-routerbench
 
 help:
@@ -13,7 +13,9 @@ help:
 	@echo "  install              install tierroute in editable mode"
 	@echo "  install-dev          install the exact dev lock and editable tierroute"
 	@echo "  verify               run static checks, tests, licenses, and offline smoke"
-	@echo "  reproduce            install and run the complete no-external-data pipeline"
+	@echo "  reproduce            alias for the complete reproduction pipeline"
+	@echo "  reproduce-inference  install and run the fast offline inference pipeline"
+	@echo "  reproduce-training   install and run the complete offline training pipeline"
 	@echo "  training-smoke       fit predictor, tune exact policy, and route offline"
 	@echo "  download-routerbench explicitly download pinned RouterBench data (network)"
 	@echo "  validate-routerbench validate a previously downloaded local artifact"
@@ -61,7 +63,19 @@ training-smoke:
 
 verify: lint spdx test licenses check-install smoke training-smoke
 
-reproduce: install-dev
+reproduce: reproduce-training
+
+reproduce-inference: install-dev
+	@set -eu; \
+	hf_home="$$(mktemp -d)"; \
+	python_bin="$$($(PYTHON) -c 'import os, sys; print(os.path.dirname(sys.executable))')"; \
+	trap 'rm -rf "$$hf_home"' EXIT HUP INT TERM; \
+	export PATH="$$python_bin:$$PATH"; \
+	export HF_HOME="$$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1; \
+	$(MAKE) --no-print-directory check-install PYTHON="$(PYTHON)"; \
+	$(PYTHON) scripts/smoke.py
+
+reproduce-training: install-dev
 	@set -eu; \
 	hf_home="$$(mktemp -d)"; \
 	python_bin="$$($(PYTHON) -c 'import os, sys; print(os.path.dirname(sys.executable))')"; \

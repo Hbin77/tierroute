@@ -27,6 +27,9 @@ the public API is pre-1.0.
   reproduction paths; cumulative routes require explicit remaining budget state.
 - A dependency-free wheel CI job plus a fully offline predictor/policy
   fit/save/load/route smoke test.
+- Separate locked `reproduce-inference` and `reproduce-training` paths for fast
+  installed inference review and the complete bundled-data pipeline; `reproduce`
+  remains the complete-path alias.
 - A static ridge-solver boundary that resolves once per calibrated fit, preflights
   before dense embedding allocation, and carries the same reviewed implementation
   through every inner-LODO fit and final refit without changing version-1 artifact
@@ -111,6 +114,10 @@ the public API is pre-1.0.
 
 ### Planned
 
+- Add a sequence-level oracle before reporting oracle-gap recovery under cumulative
+  accounting, after the organizer confirms the official budget semantics.
+- Add a GPL-family-free accelerated ridge backend with numerical parity and resource
+  evidence before the full-dimensional bge-m3 experiment.
 - Train and compare a calibrated GBM against the bilinear predictor on licensed data.
 - Add a local-only inference backend for the pinned MIT-licensed bge-m3 revision.
 - Connect official SK Telecom data and scoring only after its schema, weights, and
