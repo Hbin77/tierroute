@@ -9,6 +9,14 @@ the public API is pre-1.0.
 
 ### Added
 
+- An experimental, standard-library-only prepared nested-LODO graph contract that
+  canonicalizes domain/count pairs, enumerates the exact unique base-training subsets
+  and held-out score blocks, and rejects closed-form count, byte, and work estimates
+  before combination expansion. At the reviewed seven-domain shape it represents the
+  reuse target underlying 301 logical base fits as a 63-subset/154-block graph with
+  `22N` scored-row memberships. The modeled numeric buffers retain binary64 feature
+  semantics. No feature store, sufficient-statistics builder, native session, cache,
+  execution integration, dependency, or performance claim is added.
 - An experimental project-owned Apache-2.0 C11 centered-ridge sidecar, fixed
   little-endian protocol, no-download/PATH-discovery build helper, and authenticated
   Python process adapter. Count/byte/allocation/work preflight and bounded 16-MiB

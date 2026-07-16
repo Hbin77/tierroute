@@ -304,13 +304,18 @@ timeout은 child process가 시작된 뒤에만 적용됩니다. 인증 전 file
 serialization은 byte 상한으로 제한하지만 그 child timeout에는 포함되지 않습니다.
 
 이 dense sidecar 하나만으로는 RouterBench 전체 보고 실험이 가능해지지 않습니다.
-현재 nested 경로는 특징 계산과 301개 fit을 여전히 반복합니다. 계획된 1,024차원
-bge-m3 임베딩과 표면 특징을 합친 최대 1,036차원 전체 학습은 domain sufficient
-statistics와 batch score를 재사용하는 prepared training session, 그리고 감사된
-Linux-musl·Windows-MSVC artifact가 있을 때까지 gate로 남습니다. 임베딩 차원을 조용히
-줄이거나 버리지 않습니다. 참조 경로의 보수적 연산량 guard, 정적 reviewed solver
-ID, pre-embedding preflight, unknown-ID 거부는 그대로며, 추론은 저장된 coefficient만
-사용하므로 의존성이 없습니다.
+현재 nested 경로는 특징 계산과 301개 fit을 여전히 반복합니다. 실험적
+[prepared graph 계약](docs/prepared-session-graph.md)은 7-domain nested 평가에 고유
+base-training subset 63개, subset/domain score block 154개, `22N` scored-row
+membership이 필요함을 machine-checkable 계약으로 고정하고, 열거 전에 binary64
+모델링 숫자 버퍼와 지배적 숫자 연산량을 preflight합니다. 이는 peak memory나 전체
+작업량 상한이 아니며, 아직 feature·fit·score를 실행하거나 cache하지도 않습니다.
+계획된 1,024차원 bge-m3 임베딩과 표면 특징을 합친 최대 1,036차원 전체 학습은 이에
+대응하는 인증된 feature store, sufficient-statistics·batched-score 구현, end-to-end
+parity, 그리고 감사된 Linux-musl·Windows-MSVC artifact가 있을 때까지 gate로
+남습니다. 임베딩 차원을 조용히 줄이거나 버리지 않습니다. 참조 경로의 보수적 연산량
+guard, 정적 reviewed solver ID, pre-embedding preflight, unknown-ID 거부는 그대로며,
+추론은 저장된 coefficient만 사용하므로 의존성이 없습니다.
 
 ## 현재 구현 범위
 
