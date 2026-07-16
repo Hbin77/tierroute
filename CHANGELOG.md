@@ -65,12 +65,13 @@ the public API is pre-1.0.
   [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
   at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
   3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
-  source portability Windows. Recorded [PR #52](https://github.com/Hbin77/tierroute/pull/52)
-  branch commits are `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is
-  branch-push and PR-head CI, not merged-main evidence; the human walkthrough remains
-  **PENDING**, and no distributable release artifact is approved. This slice adds no
-  dependency and establishes no external-data, all-domain artifact, command, trainer,
-  quality, cost-reduction, or performance result. Issue #9 remains open.
+  source portability Windows. The four CI-covered implementation/spec commits through
+  that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
+  `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head CI,
+  not merged-main evidence; the human walkthrough remains **PENDING**, and no
+  distributable release artifact is approved. This slice adds no dependency and
+  establishes no external-data, all-domain artifact, command, trainer, quality,
+  cost-reduction, or performance result. Issue #9 remains open.
 - A bounded prepared reference policy pipeline that maps canonical raw-score contexts
   through the existing per-model isotonic calibration, exact/bounded tier-lambda
   search, and `OfflineSimulator`, returning the existing `NestedLodoLambdaResult`.

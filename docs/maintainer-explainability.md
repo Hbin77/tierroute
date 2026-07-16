@@ -383,11 +383,12 @@ Python 3.10.19 with pip 26.1.2 recorded 1,044 passes with no skip; Python 3.12.1
 and [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
 at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
 3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
-source portability Windows. The recorded [PR #52](https://github.com/Hbin77/tierroute/pull/52)
-branch commits are `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is
-branch-push and PR-head CI, not merged-main evidence; PR #50's earlier platform jobs
-remain separate session-layer evidence. The human walkthrough remains **PENDING**, no
-distributable release artifact is approved, and this evidence does not complete issue #9.
+source portability Windows. The four CI-covered implementation/spec commits through
+that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
+`f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head CI,
+not merged-main evidence; PR #50's earlier platform jobs remain separate session-layer
+evidence. The human walkthrough remains **PENDING**, no distributable release artifact
+is approved, and this evidence does not complete issue #9.
 
 Owner questions:
 

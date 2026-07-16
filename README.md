@@ -424,12 +424,12 @@ expected skip for the locked Python 3.10 `typing_extensions` compatibility depen
 and [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
 at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
 3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
-source portability Windows. The recorded branch commits for
-[PR #52](https://github.com/Hbin77/tierroute/pull/52) are `f159e04`, `85393e2`,
-`a8e0896`, and `9ed400d`. This is branch-push and PR-head evidence, not merged-main
-evidence; the human walkthrough remains **PENDING**, and no distributable release
-artifact is approved. This is bounded software evidence over project-authored fixtures,
-not an external benchmark result.
+source portability Windows. The four CI-covered implementation/spec commits through
+that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
+`f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head
+evidence, not merged-main evidence; the human walkthrough remains **PENDING**, and no
+distributable release artifact is approved. This is bounded software evidence over
+project-authored fixtures, not an external benchmark result.
 
 Only the public builder functions are supported derivation paths. Direct leaf-dataclass
 construction validates a self-declared canonical record; it is not an aggregate loader,

@@ -272,12 +272,12 @@ with pip 26.1.2 recorded 1,043 passes plus one expected skip for the locked Pyth
 and [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
 at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
 3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
-source portability Windows. The recorded [PR #52](https://github.com/Hbin77/tierroute/pull/52)
-branch commits are `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is
-branch-push and PR-head CI, not merged-main evidence; the human walkthrough remains
-**PENDING**, and it is not approval of a distributable release artifact. It does not
-change issue #9's open status or establish external benchmark, provider, performance,
-quality, or cost evidence.
+source portability Windows. The four CI-covered implementation/spec commits through
+that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
+`f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head CI,
+not merged-main evidence; the human walkthrough remains **PENDING**, and it is not
+approval of a distributable release artifact. It does not change issue #9's open status
+or establish external benchmark, provider, performance, quality, or cost evidence.
 
 High-level admission also binds the controls and the simultaneous owned-data model. The
 candidate cap is an exact integer from 2 through 257, `random_seed` is signed 64-bit, and

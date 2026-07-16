@@ -411,11 +411,11 @@ passed와 잠긴 Python 3.10 `typing_extensions` 호환성 의존성 관련 expe
 head `9ed400d580e288bb9648a300a8de12a5c2200fff`에서 각각 Python 3.10, Python
 3.12, dependency-free wheel, Native source portability macOS, Native source
 portability Windows의 5개 job을 모두 통과했습니다.
-[PR #52](https://github.com/Hbin77/tierroute/pull/52)의 기록된 branch commit은
-`f159e04`, `85393e2`, `a8e0896`, `9ed400d`입니다. 이는 branch push와 PR-head
-근거이며 merged-main 근거가 아닙니다. 사람 walkthrough는 **PENDING**이고 배포 가능한
-release artifact를 승인하지 않습니다. 이는 프로젝트 작성 fixture의 bounded 소프트웨어
-근거이며 외부 benchmark 결과가 아닙니다.
+[PR #52](https://github.com/Hbin77/tierroute/pull/52)에서 해당 테스트 head까지 CI가
+검증한 구현·명세 commit 4개는 `f159e04`, `85393e2`, `a8e0896`, `9ed400d`입니다.
+이는 branch push와 PR-head 근거이며 merged-main 근거가 아닙니다. 사람 walkthrough는
+**PENDING**이고 배포 가능한 release artifact를 승인하지 않습니다. 이는 프로젝트 작성
+fixture의 bounded 소프트웨어 근거이며 외부 benchmark 결과가 아닙니다.
 
 지원하는 derivation 경로는 public builder 함수뿐입니다. Leaf dataclass 생성자를
 직접 호출하면 스스로 선언한 canonical record만 검증합니다. 이는 aggregate loader,
