@@ -307,7 +307,7 @@ def _read_verified_payload(path: str | Path) -> bytes:
     except RouterBenchIntegrityError:
         raise
     except OSError as error:
-        raise RouterBenchIntegrityError(f"cannot read RouterBench file: {candidate}") from error
+        raise RouterBenchIntegrityError("cannot read RouterBench file (path omitted)") from error
 
     if len(payload) != ROUTERBENCH_SIZE:
         raise RouterBenchIntegrityError(

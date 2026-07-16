@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import os
 from pathlib import Path
+from typing import BinaryIO
 from urllib.request import Request, urlopen
 
 ROUTERBENCH_FILENAME = "routerbench_0shot.pkl"
@@ -26,10 +27,41 @@ ROUTERBENCH_SIZE = 99_567_659
 ROUTERBENCH_SHA256 = "ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e65d36d"
 DEFAULT_DESTINATION = Path("data/routerbench") / ROUTERBENCH_FILENAME
 DEFAULT_CHUNK_SIZE = 1024 * 1024
+PRIVATE_FILE_MODE = 0o600
 
 
 class DownloadIntegrityError(RuntimeError):
     """The downloaded bytes do not match the pinned RouterBench artifact."""
+
+
+def _ensure_private_file_mode(path: Path) -> None:
+    """Restrict a local artifact to its owner on POSIX systems.
+
+    RouterBench has no declared redistribution license at the pinned revision,
+    so a verified local copy must not inherit a permissive process umask.  A
+    chmod failure is intentionally propagated instead of returning a path that
+    appears ready for use without the promised local-only permissions.
+    """
+
+    if os.name == "posix":
+        path.chmod(PRIVATE_FILE_MODE)
+
+
+def _open_private_part(path: Path) -> BinaryIO:
+    """Create an exclusive binary partial file with owner-only permissions."""
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+
+    descriptor = os.open(path, flags, PRIVATE_FILE_MODE)
+    try:
+        if os.name == "posix":
+            os.fchmod(descriptor, PRIVATE_FILE_MODE)
+        return os.fdopen(descriptor, "wb")
+    except BaseException:
+        os.close(descriptor)
+        raise
 
 
 def sha256_file(path: str | Path, *, chunk_size: int = DEFAULT_CHUNK_SIZE) -> str:
@@ -89,6 +121,7 @@ def download_routerbench(
         expected_sha256=ROUTERBENCH_SHA256,
         chunk_size=chunk_size,
     ):
+        _ensure_private_file_mode(destination)
         return destination
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +135,7 @@ def download_routerbench(
     downloaded_size = 0
 
     try:
-        with urlopen(request, timeout=timeout) as response, part_path.open("xb") as output:
+        with urlopen(request, timeout=timeout) as response, _open_private_part(part_path) as output:
             while chunk := response.read(chunk_size):
                 downloaded_size += len(chunk)
                 if downloaded_size > ROUTERBENCH_SIZE:
@@ -126,6 +159,7 @@ def download_routerbench(
             )
 
         os.replace(part_path, destination)
+        _ensure_private_file_mode(destination)
     except BaseException:
         part_path.unlink(missing_ok=True)
         raise
@@ -147,8 +181,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    destination = download_routerbench(args.output)
-    print(f"Verified RouterBench artifact: {destination}")
+    download_routerbench(args.output)
+    print("Verified RouterBench artifact (local path omitted)")
     print(f"SHA-256: {ROUTERBENCH_SHA256}")
     print("Dataset license: NOASSERTION; review the upstream terms before use or redistribution.")
 

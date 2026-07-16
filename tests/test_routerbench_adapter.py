@@ -6,6 +6,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import os
+import stat
 import struct
 from collections.abc import Iterator
 from decimal import Decimal, localcontext
@@ -284,6 +286,15 @@ def test_checksum_accepts_fixture_and_rejects_changed_bytes(tmp_path: Path) -> N
     )
 
 
+def test_adapter_read_error_omits_local_path(tmp_path: Path) -> None:
+    missing = tmp_path / "private-routerbench-location.pkl"
+
+    with pytest.raises(routerbench.RouterBenchIntegrityError, match="path omitted") as captured:
+        routerbench.load_routerbench_table(missing)
+
+    assert str(missing) not in str(captured.value)
+
+
 def test_download_reuses_existing_verified_file_without_network(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -291,6 +302,8 @@ def test_download_reuses_existing_verified_file_without_network(
     payload = b"already verified"
     destination = tmp_path / "routerbench_0shot.pkl"
     destination.write_bytes(payload)
+    if os.name == "posix":
+        destination.chmod(0o644)
     patch_artifact(downloader, monkeypatch, payload)
 
     def fail_if_called(*args: object, **kwargs: object) -> None:
@@ -300,6 +313,8 @@ def test_download_reuses_existing_verified_file_without_network(
 
     assert downloader.download_routerbench(destination, chunk_size=2) == destination
     assert destination.read_bytes() == payload
+    if os.name == "posix":
+        assert stat.S_IMODE(destination.stat().st_mode) == downloader.PRIVATE_FILE_MODE
 
 
 def test_download_streams_to_part_then_atomically_replaces_invalid_file(
@@ -310,18 +325,50 @@ def test_download_streams_to_part_then_atomically_replaces_invalid_file(
     destination = tmp_path / "routerbench_0shot.pkl"
     destination.write_bytes(b"old invalid bytes")
     patch_artifact(downloader, monkeypatch, payload)
+    part_path = destination.with_name(f"{destination.name}.part")
+
+    class PermissionCheckingResponse(FakeResponse):
+        def read(self, size: int = -1) -> bytes:
+            if os.name == "posix":
+                assert stat.S_IMODE(part_path.stat().st_mode) == downloader.PRIVATE_FILE_MODE
+            return super().read(size)
 
     def fake_urlopen(request: object, *, timeout: float) -> FakeResponse:
         assert request.full_url == downloader.ROUTERBENCH_URL  # type: ignore[attr-defined]
         assert timeout == 5.0
         assert destination.read_bytes() == b"old invalid bytes"
-        return FakeResponse(payload)
+        return PermissionCheckingResponse(payload)
 
     monkeypatch.setattr(downloader, "urlopen", fake_urlopen)
 
     downloader.download_routerbench(destination, timeout=5.0, chunk_size=3)
 
     assert destination.read_bytes() == payload
+    assert not part_path.exists()
+    if os.name == "posix":
+        assert stat.S_IMODE(destination.stat().st_mode) == downloader.PRIVATE_FILE_MODE
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes are required for this check")
+def test_download_removes_part_when_private_mode_cannot_be_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloader = load_download_module()
+    payload = b"verified replacement"
+    destination = tmp_path / "routerbench_0shot.pkl"
+    destination.write_bytes(b"old invalid bytes")
+    patch_artifact(downloader, monkeypatch, payload)
+    monkeypatch.setattr(downloader, "urlopen", lambda *args, **kwargs: FakeResponse(payload))
+    monkeypatch.setattr(
+        downloader.os,
+        "fchmod",
+        lambda *args, **kwargs: (_ for _ in ()).throw(PermissionError("mode denied")),
+    )
+
+    with pytest.raises(PermissionError, match="mode denied"):
+        downloader.download_routerbench(destination, chunk_size=3)
+
+    assert destination.read_bytes() == b"old invalid bytes"
     assert not destination.with_name(f"{destination.name}.part").exists()
 
 
