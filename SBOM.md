@@ -61,8 +61,11 @@ benchmark result.
 RouterBench's GitHub code repository is MIT-licensed, but that declaration does not
 license the separate Hugging Face dataset. tierroute contains no copied RouterBench code.
 The opt-in nested-LODO diagnostic uses only the Python standard library and existing
-project code; it adds no software dependency. Its provenance-only terminal/JSON output
-does not change the `NOASSERTION` status of any RouterBench-derived local material.
+project code; it adds no software dependency. Its provenance, structure, configuration,
+and completion-only terminal/JSON output does not change the `NOASSERTION` status of any
+RouterBench-derived local material. CI inspects both wheel and source-distribution member
+names and fails if RouterBench data paths, derived-artifact paths, `.pkl`, or `.part`
+files appear.
 
 ## CI actions
 

@@ -15,10 +15,14 @@ the public API is pre-1.0.
   8 evaluation rows per pinned domain, derives calibration-only maximum quotes and
   diagnostic min/median/max quote tiers, preflights evaluation costs, and compares a
   surface-only bilinear policy with all six baselines on one shared scope. The bounded
-  32-candidate lambda search is approximate; output suppresses performance, cost, gap,
-  row, and content results and emits only provenance/structure/completion evidence.
+  32-candidate lambda search is approximate. Nested LODO covers quality-predictor and
+  policy evaluation, while global all-domain quote/tier calibration prevents an
+  end-to-end domain-shift claim. Output suppresses performance, cost, gap, row, and
+  content results and emits only provenance/structure/configuration/completion evidence.
   RouterBench remains `NOASSERTION`, non-SKT, non-official, non-reportable, unbundled,
-  and excluded from committed artifacts; its local POSIX download is owner-only `0600`.
+  and excluded from committed artifacts. External sample IDs become local surrogates and
+  CLI failure details are suppressed. Its POSIX download uses an unpredictable owned
+  staging inode, post-install authentication, and owner-only `0600` permissions.
 - A claim-gated five-page contest report outline with a reusable Mermaid architecture
   source, per-number evidence records, measured-result placeholders, attachment
   disclosure slots, and a final render checklist that prohibits synthetic demo values

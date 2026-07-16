@@ -501,6 +501,10 @@ python scripts/download_routerbench.py \
 
 On POSIX systems the downloader creates the partial file and normalizes the verified
 destination to owner-only mode `0600`; inability to enforce that mode fails closed.
+Each invocation owns an unpredictable same-directory staging name, verifies its open
+descriptor identity before replacement, and re-authenticates the installed destination
+before success. Symlink/non-regular destinations are rejected, so concurrent runs do
+not share or delete one predictable staging path.
 
 The upstream file uses the pickle wire format, but tierroute does **not** call
 `pickle.load`, `pickle.Unpickler`, or `pandas.read_pickle`. The adapter first requires
@@ -570,15 +574,20 @@ and every evaluation charge is checked against its fixed quote before fitting be
 
 The three diagnostic tier budgets are mechanically selected from the minimum, median,
 and maximum of the sorted model quotes and use weights `0.5`, `0.3`, and `0.2`. These
-are diagnostic parameters, not official budget tiers. The surface-feature-only
-bilinear policy (no `bge-m3`) uses true nested LODO and an explicitly approximate
-lambda search capped at 32 candidates per tier; it and the six baselines are replayed
-on the same 56 rows.
+are diagnostic parameters, not official budget tiers, and their cost values are not
+emitted. The surface-feature-only bilinear policy (no `bge-m3`) applies nested LODO to
+quality-predictor fitting, lambda tuning, learned replay, and the domain-table baseline,
+with an explicitly approximate lambda search capped at 32 candidates per tier. Quote
+and tier calibration instead uses the disjoint global calibration pool spanning all
+seven domains. Therefore this is not an end-to-end domain-shift claim. The learned
+policy and all six baselines are replayed on the same 56 rows.
 
 Human and `--json` output expose only aggregate provenance, structure, configuration,
 and completion evidence. Prompt/output text, sample IDs, row decisions, and
 performance, realized-cost, or oracle-gap results are suppressed. The validator does
-not write a converted dataset, predictions, learned artifact, or result file. Do not
+not write a converted dataset, predictions, learned artifact, or result file. Before
+benchmark orchestration it replaces external sample IDs with deterministic local
+surrogates; the CLI also suppresses exception details and tracebacks on failure. Do not
 commit redirected output or any RouterBench-derived artifact. Domain imbalance and
 heterogeneous upstream evaluators remain material limitations, so this bounded local
 diagnostic is not a reproduction of the RouterBench paper.
