@@ -11,14 +11,21 @@ from decimal import Decimal
 import pytest
 
 import tierroute.policies.benchmark as benchmark_module
-from tierroute.adapters import bundled_synthetic_path, load_evaluation_dataset
+from tierroute.adapters import (
+    PerQueryBudgetLedger,
+    bundled_synthetic_path,
+    load_evaluation_dataset,
+)
 from tierroute.cli import main
 from tierroute.core import BudgetTier, sum_costs
 from tierroute.eval import summarize_report
 from tierroute.policies import (
     FOLD_MEMBERSHIP_HASH_ALGORITHM,
+    BenchmarkBaselineConfig,
+    BenchmarkLambdaSearchConfig,
     PerQueryNestedLodoBenchmark,
     evaluate_per_query_bilinear_benchmark,
+    evaluate_per_query_lodo_baselines,
 )
 
 
@@ -41,6 +48,17 @@ def test_benchmark_aligns_learned_router_and_six_baselines(
     assert result.example_count == 8
     assert result.domains == ("code", "general", "math", "science")
     assert result.model_ids == ("expert", "steady", "swift")
+    assert result.baseline_config == BenchmarkBaselineConfig(
+        cheap_model_id="swift",
+        premium_model_id="expert",
+        strong_model_id="expert",
+        random_seed=2026,
+        character_threshold=120,
+    )
+    assert result.lambda_search_config == BenchmarkLambdaSearchConfig(
+        max_candidates_per_tier=257,
+        allow_large_exhaustive=False,
+    )
     assert result.data_sha256 == (
         "999d435a40f2db8c76aa205fa3e565b416ab53f6e402979a794a029277b71d60"
     )
@@ -126,6 +144,32 @@ def test_fold_membership_evidence_is_compact_versioned_and_exact(
         replace(synthetic_benchmark, learned_gap_recovery=1)
     with pytest.raises(ValueError, match="init=False"):
         replace(synthetic_benchmark, learned_total_cost=14)
+    with pytest.raises(ValueError, match="always-cheapest calls"):
+        replace(synthetic_benchmark.baselines, cheap_model_id="expert")
+    with pytest.raises(ValueError, match="replay config evidence"):
+        replace(synthetic_benchmark.baselines, random_seed=7)
+
+    dataset = load_evaluation_dataset()
+    alternate_baselines = evaluate_per_query_lodo_baselines(
+        dataset.examples,
+        dataset.tier_specs,
+        PerQueryBudgetLedger,
+        premium_model_id="expert",
+        strong_model_id="expert",
+        random_seed=7,
+        character_threshold=121,
+    )
+    alternate_benchmark = replace(synthetic_benchmark, baselines=alternate_baselines)
+    assert alternate_benchmark.baseline_config.random_seed == 7
+    assert alternate_benchmark.baseline_config.character_threshold == 121
+    with pytest.raises(ValueError, match="recorded search cap"):
+        replace(
+            synthetic_benchmark,
+            lambda_search_config=BenchmarkLambdaSearchConfig(
+                max_candidates_per_tier=2,
+                allow_large_exhaustive=False,
+            ),
+        )
 
 
 def test_benchmark_rejects_misaligned_scope_folds_and_query_order(
@@ -241,6 +285,16 @@ def test_calibrated_bilinear_benchmark_requires_four_domains() -> None:
             dataset.tier_specs,
             config=0,  # type: ignore[arg-type]
         )
+    with pytest.raises(TypeError, match="max_candidates_per_tier"):
+        BenchmarkLambdaSearchConfig(  # type: ignore[arg-type]
+            max_candidates_per_tier=True,
+            allow_large_exhaustive=False,
+        )
+    with pytest.raises(ValueError, match="requires an exhaustive search"):
+        BenchmarkLambdaSearchConfig(
+            max_candidates_per_tier=2,
+            allow_large_exhaustive=True,
+        )
 
 
 def test_benchmark_json_is_deterministic_versioned_and_explicitly_synthetic(
@@ -253,7 +307,7 @@ def test_benchmark_json_is_deterministic_versioned_and_explicitly_synthetic(
     second_document = capsys.readouterr().out
     assert first_document == second_document
     assert hashlib.sha256(first_document.encode("utf-8")).hexdigest() == (
-        "e6fe4edad03530db525f3e8a2c471d3d160ac910616dac090d748df45c614f0d"
+        "8c0da78c9edbd3585e6afaeb33bd93671ff87f2bc94ee8fa3a158bf0875ac60b"
     )
     assert "synthetic-code-001" not in first_document
 
@@ -265,7 +319,40 @@ def test_benchmark_json_is_deterministic_versioned_and_explicitly_synthetic(
     assert payload["validation_scope"] == "true-nested-lodo-original-order"
     assert payload["claim_scope"] == "project-authored-synthetic-wiring-only"
     assert payload["cost_scope"] == ("per-tier ledgers; cross-tier total is diagnostic only")
-    assert payload["learned_router"]["weighted_quality"] == pytest.approx(0.73125)
+    assert payload["tier_specs"] == [
+        {"tier": "fast", "budget_limit": "0.35", "weight": 0.5},
+        {"tier": "balanced", "budget_limit": "0.7", "weight": 0.3},
+        {"tier": "premium", "budget_limit": "1", "weight": 0.2},
+    ]
+    assert payload["lambda_search_config"] == {
+        "requested_mode": "bounded-cap",
+        "max_candidates_per_tier": 257,
+        "allow_large_exhaustive": False,
+    }
+    baseline_config = payload["baseline_config"]
+    assert baseline_config["schema"] == "tierroute-six-baseline-config-v1"
+    assert baseline_config["evidence"]["algorithm"] == (
+        "tierroute-six-baseline-config-evidence-sha256-v1"
+    )
+    assert baseline_config["evidence"]["sha256"] == (
+        "d25ed40d7f39041122c00bc6b76c412f744fca3b4575135720a1d8d05df58d33"
+    )
+    assert baseline_config["always_cheapest"]["model_id"] == "swift"
+    assert baseline_config["always_premium"]["model_id"] == "expert"
+    assert baseline_config["random"]["seed"] == 2026
+    assert baseline_config["length_heuristic"] == {
+        "character_threshold": 120,
+        "cheap_model_id": "swift",
+        "strong_model_id": "expert",
+        "difficulty_rule": "characters-ge-threshold-or-code-or-math-v1",
+    }
+    learned_router = payload["learned_router"]
+    weights = {row["tier"]: row["weight"] for row in payload["tier_specs"]}
+    recomputed_weighted_quality = sum(
+        weights[tier] * quality for tier, quality in learned_router["tier_quality"].items()
+    ) / sum(weights.values())
+    assert recomputed_weighted_quality == pytest.approx(0.73125)
+    assert learned_router["weighted_quality"] == pytest.approx(recomputed_weighted_quality)
     assert payload["learned_router"]["oracle_gap_recovery"] == pytest.approx(1.0)
     assert payload["learned_router"]["total_realized_cost"] == "14.4"
     assert [row["name"] for row in payload["baselines"]] == [

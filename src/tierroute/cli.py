@@ -404,6 +404,8 @@ def _benchmark_payload(
     bundled_synthetic: bool,
 ) -> dict[str, Any]:
     scope = result.learned.report.evaluation_scope
+    baseline_config = result.baseline_config
+    lambda_search_config = result.lambda_search_config
     learned = _evaluation_result_payload(
         name=result.learned.report.router_name,
         report=result.learned.report,
@@ -472,6 +474,14 @@ def _benchmark_payload(
         "example_count": result.example_count,
         "domains": list(result.domains),
         "model_ids": list(result.model_ids),
+        "tier_specs": [
+            {
+                "tier": tier_result.tier_spec.tier.value,
+                "budget_limit": canonical_cost_text(tier_result.tier_spec.budget_limit),
+                "weight": float(tier_result.tier_spec.weight),
+            }
+            for tier_result in result.learned.report.tiers
+        ],
         "evaluation_scope": {
             "algorithm": scope.algorithm,
             "sha256": scope.sha256,
@@ -483,6 +493,43 @@ def _benchmark_payload(
             "ridge": result.training_config.ridge,
             "seed": result.training_config.seed,
             "solver_id": result.training_config.solver_id,
+        },
+        "lambda_search_config": {
+            "requested_mode": lambda_search_config.requested_mode,
+            "max_candidates_per_tier": lambda_search_config.max_candidates_per_tier,
+            "allow_large_exhaustive": lambda_search_config.allow_large_exhaustive,
+        },
+        "baseline_config": {
+            "schema": baseline_config.schema,
+            "evidence": {
+                "algorithm": result.baselines.baseline_config_evidence_algorithm,
+                "sha256": result.baselines.baseline_config_evidence_sha256,
+            },
+            "always_cheapest": {
+                "model_id": baseline_config.cheap_model_id,
+                "selection_rule": baseline_config.cheapest_model_selection_rule,
+            },
+            "always_premium": {
+                "model_id": baseline_config.premium_model_id,
+                "role_selection_rule": baseline_config.premium_model_selection_rule,
+            },
+            "random": {
+                "seed": baseline_config.random_seed,
+                "selection_algorithm": baseline_config.random_selection_algorithm,
+            },
+            "length_heuristic": {
+                "character_threshold": baseline_config.character_threshold,
+                "cheap_model_id": baseline_config.cheap_model_id,
+                "strong_model_id": baseline_config.strong_model_id,
+                "difficulty_rule": baseline_config.length_difficulty_rule,
+            },
+            "oracle": {
+                "selection_rule": baseline_config.oracle_selection_rule,
+            },
+            "domain_best_table": {
+                "fit_rule": baseline_config.domain_table_fit_rule,
+                "unseen_tag_fallback_model_id": baseline_config.cheap_model_id,
+            },
         },
         "learned_router": learned,
         "baselines": [_baseline_payload(row) for row in result.baselines.baselines],

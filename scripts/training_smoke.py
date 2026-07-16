@@ -104,6 +104,29 @@ def main() -> int:
             or benchmark.get("validation_scope") != "true-nested-lodo-original-order"
         ):
             raise RuntimeError("nested benchmark did not preserve its offline report contract")
+        tier_specs = benchmark.get("tier_specs", [])
+        if [row.get("tier") for row in tier_specs] != ["fast", "balanced", "premium"] or [
+            row.get("weight") for row in tier_specs
+        ] != [0.5, 0.3, 0.2]:
+            raise RuntimeError("nested benchmark did not report its weighted tier specification")
+        search_config = benchmark.get("lambda_search_config", {})
+        if search_config != {
+            "allow_large_exhaustive": False,
+            "max_candidates_per_tier": 257,
+            "requested_mode": "bounded-cap",
+        }:
+            raise RuntimeError("nested benchmark did not report its lambda search request")
+        baseline_config = benchmark.get("baseline_config", {})
+        baseline_evidence = baseline_config.get("evidence", {})
+        if (
+            baseline_config.get("schema") != "tierroute-six-baseline-config-v1"
+            or baseline_config.get("random", {}).get("seed") != 2026
+            or baseline_config.get("length_heuristic", {}).get("character_threshold") != 120
+            or baseline_evidence.get("algorithm")
+            != "tierroute-six-baseline-config-evidence-sha256-v1"
+            or len(baseline_evidence.get("sha256", "")) != 64
+        ):
+            raise RuntimeError("nested benchmark did not report its baseline configuration")
         learned = benchmark.get("learned_router", {})
         if (
             learned.get("feasible") is not True

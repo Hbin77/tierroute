@@ -36,6 +36,24 @@ from tierroute.predictors.training import (
 )
 
 FOLD_MEMBERSHIP_HASH_ALGORITHM = "tierroute-fold-membership-sha256-v1"
+BASELINE_CONFIG_SCHEMA = "tierroute-six-baseline-config-v1"
+CHEAPEST_MODEL_SELECTION_RULE = "min-quoted-cost-then-model-id-ascending-v1"
+PREMIUM_MODEL_SELECTION_RULE = "max-quoted-cost-then-model-id-descending-v1"
+RANDOM_SELECTION_ALGORITHM = (
+    "sha256(seed-decimal+nul+prompt+nul+tier)-first-u64be-mod-"
+    "affordable-model-id-ascending-order-v1"
+)
+LENGTH_DIFFICULTY_RULE = "characters-ge-threshold-or-code-or-math-v1"
+ORACLE_SELECTION_RULE = (
+    "max-quality-then-realized-cost-ascending-then-model-id-ascending-among-"
+    "quote-and-realized-affordable-v1"
+)
+DOMAIN_TABLE_FIT_RULE = (
+    "outer-training-observable-tag-affordable-mean-quality-then-mean-realized-cost-"
+    "ascending-then-model-id-ascending-v1"
+)
+BASELINE_RANDOM_SEED = 2026
+BASELINE_CHARACTER_THRESHOLD = 120
 
 
 class _DigestWriter(Protocol):
@@ -116,6 +134,71 @@ class OuterFoldMembershipDigest:
         _require_sha256(self.sha256, "fold membership sha256")
 
 
+@dataclass(frozen=True, slots=True)
+class BenchmarkBaselineConfig:
+    """Resolved roles and stable algorithm identities for the six baselines."""
+
+    cheap_model_id: str
+    premium_model_id: str
+    strong_model_id: str
+    random_seed: int
+    character_threshold: int
+    schema: str = field(default=BASELINE_CONFIG_SCHEMA, init=False)
+    cheapest_model_selection_rule: str = field(
+        default=CHEAPEST_MODEL_SELECTION_RULE,
+        init=False,
+    )
+    premium_model_selection_rule: str = field(
+        default=PREMIUM_MODEL_SELECTION_RULE,
+        init=False,
+    )
+    random_selection_algorithm: str = field(
+        default=RANDOM_SELECTION_ALGORITHM,
+        init=False,
+    )
+    length_difficulty_rule: str = field(default=LENGTH_DIFFICULTY_RULE, init=False)
+    oracle_selection_rule: str = field(default=ORACLE_SELECTION_RULE, init=False)
+    domain_table_fit_rule: str = field(default=DOMAIN_TABLE_FIT_RULE, init=False)
+
+    def __post_init__(self) -> None:
+        for name in ("cheap_model_id", "premium_model_id", "strong_model_id"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if type(self.random_seed) is not int:
+            raise TypeError("random_seed must be an integer")
+        if type(self.character_threshold) is not int:
+            raise TypeError("character_threshold must be an integer")
+        if self.character_threshold < 1:
+            raise ValueError("character_threshold must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkLambdaSearchConfig:
+    """Normalized CLI/API resource controls that produced every fold search."""
+
+    max_candidates_per_tier: int | None
+    allow_large_exhaustive: bool
+
+    def __post_init__(self) -> None:
+        cap = self.max_candidates_per_tier
+        if cap is not None:
+            if type(cap) is not int:
+                raise TypeError("max_candidates_per_tier must be an integer or None")
+            if cap < 2:
+                raise ValueError("max_candidates_per_tier must be at least 2")
+        if type(self.allow_large_exhaustive) is not bool:
+            raise TypeError("allow_large_exhaustive must be a boolean")
+        if cap is not None and self.allow_large_exhaustive:
+            raise ValueError("allow_large_exhaustive requires an exhaustive search")
+
+    @property
+    def requested_mode(self) -> str:
+        """Return the requested search mode, distinct from each fold's actual result."""
+
+        return "exhaustive" if self.max_candidates_per_tier is None else "bounded-cap"
+
+
 def _fold_membership_digests(
     learned: NestedLodoLambdaResult,
 ) -> tuple[OuterFoldMembershipDigest, ...]:
@@ -143,6 +226,8 @@ class PerQueryNestedLodoBenchmark:
     data_sha256: str
     replay_sha256: str
     training_config: BilinearTrainingConfig
+    lambda_search_config: BenchmarkLambdaSearchConfig
+    baseline_config: BenchmarkBaselineConfig = field(init=False)
     learned_gap_recovery: float | None = field(init=False)
     learned_total_cost: Cost = field(init=False)
     learned_quote_error: QuoteErrorReport = field(init=False)
@@ -160,6 +245,15 @@ class PerQueryNestedLodoBenchmark:
             raise TypeError("baselines must be a LodoSixBaselineEvaluation")
         if not isinstance(self.training_config, BilinearTrainingConfig):
             raise TypeError("training_config must be a BilinearTrainingConfig")
+        if not isinstance(self.lambda_search_config, BenchmarkLambdaSearchConfig):
+            raise TypeError("lambda_search_config must be a BenchmarkLambdaSearchConfig")
+        baseline_config = BenchmarkBaselineConfig(
+            cheap_model_id=self.baselines.cheap_model_id,
+            premium_model_id=self.baselines.premium_model_id,
+            strong_model_id=self.baselines.strong_model_id,
+            random_seed=self.baselines.random_seed,
+            character_threshold=self.baselines.character_threshold,
+        )
         if self.learned.report.router_name != "nested-lodo-tier-lambda":
             raise ValueError("learned report must use the nested LODO router identity")
         if tuple(row.name for row in self.baselines.baselines) != BASELINE_NAMES:
@@ -208,6 +302,13 @@ class PerQueryNestedLodoBenchmark:
                 raise ValueError("fold tuning domains must exclude only its outer holdout")
             if tuple(selection.tier for selection in fold.tuning.selections) != expected_tiers:
                 raise ValueError("fold tuning tiers must match the learned replay tiers")
+            for selection in fold.tuning.selections:
+                candidates = selection.candidates
+                cap = self.lambda_search_config.max_candidates_per_tier
+                if cap is None and not candidates.exhaustive:
+                    raise ValueError("exhaustive benchmark search must retain every candidate")
+                if cap is not None and len(candidates.values) > cap:
+                    raise ValueError("fold lambda candidates exceed the recorded search cap")
         for tier_result in self.learned.report.tiers:
             query_ids = tuple(query.example_id for query in tier_result.queries)
             if query_ids != expected_ids or tier_result.budget.query_order != expected_ids:
@@ -221,6 +322,32 @@ class PerQueryNestedLodoBenchmark:
                 raise ValueError("learned tier spend must equal replayed query costs")
 
         by_name = {row.name: row for row in self.baselines.baselines}
+        cheap_model_id = baseline_config.cheap_model_id
+        premium_model_id = baseline_config.premium_model_id
+        strong_model_id = baseline_config.strong_model_id
+        if any(
+            call.model_id != cheap_model_id
+            for tier in by_name["always-cheapest"].report.tiers
+            for query in tier.queries
+            for call in query.calls
+        ):
+            raise ValueError("always-cheapest evidence conflicts with its recorded model role")
+        if any(
+            call.model_id != premium_model_id
+            for tier in by_name["always-premium"].report.tiers
+            for query in tier.queries
+            for call in query.calls
+        ):
+            raise ValueError("always-premium evidence conflicts with its recorded model role")
+        if any(
+            call.model_id not in {cheap_model_id, strong_model_id}
+            for tier in by_name["length-heuristic"].report.tiers
+            for query in tier.queries
+            for call in query.calls
+        ):
+            raise ValueError("length-heuristic evidence conflicts with its recorded model roles")
+        if any(fold.fallback_model_id != cheap_model_id for fold in self.baselines.folds):
+            raise ValueError("domain-table fallback conflicts with the recorded cheapest model")
         expected_gap = oracle_gap_recovery(
             self.learned.report,
             by_name["always-cheapest"].report,
@@ -264,6 +391,13 @@ class PerQueryNestedLodoBenchmark:
         if not domains or domains != tuple(sorted(set(domains))):
             raise ValueError("nested LODO held-out domains must be sorted and unique")
         model_ids = self.baselines.candidate_model_ids
+        configured_roles = (
+            baseline_config.cheap_model_id,
+            baseline_config.premium_model_id,
+            baseline_config.strong_model_id,
+        )
+        if any(model_id not in model_ids for model_id in configured_roles):
+            raise ValueError("baseline model roles must exist in the candidate catalogue")
         fold_memberships = _fold_membership_digests(self.learned)
         object.__setattr__(self, "learned_gap_recovery", expected_gap)
         object.__setattr__(self, "learned_total_cost", expected_cost)
@@ -272,6 +406,7 @@ class PerQueryNestedLodoBenchmark:
         object.__setattr__(self, "domains", domains)
         object.__setattr__(self, "model_ids", model_ids)
         object.__setattr__(self, "fold_memberships", fold_memberships)
+        object.__setattr__(self, "baseline_config", baseline_config)
 
     @property
     def baseline_by_name(self) -> Mapping[str, BaselineResult]:
@@ -301,6 +436,10 @@ def evaluate_per_query_bilinear_benchmark(
     if len(domains) < 4:
         raise ValueError("calibrated bilinear nested LODO benchmark requires at least four domains")
     catalogue = _stable_catalogue(ordered)
+    search_config = BenchmarkLambdaSearchConfig(
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
     if config is None:
         config = BilinearTrainingConfig()
     elif not isinstance(config, BilinearTrainingConfig):
@@ -317,15 +456,23 @@ def evaluate_per_query_bilinear_benchmark(
         max_candidates_per_tier=max_candidates_per_tier,
         allow_large_exhaustive=allow_large_exhaustive,
     )
+    cheap = min(catalogue, key=lambda model: (model.cost, model.model_id)).model_id
     premium = max(catalogue, key=lambda model: (model.cost, model.model_id)).model_id
+    baseline_config = BenchmarkBaselineConfig(
+        cheap_model_id=cheap,
+        premium_model_id=premium,
+        strong_model_id=premium,
+        random_seed=BASELINE_RANDOM_SEED,
+        character_threshold=BASELINE_CHARACTER_THRESHOLD,
+    )
     baselines = evaluate_per_query_lodo_baselines(
         ordered,
         specs,
         PerQueryBudgetLedger,
-        premium_model_id=premium,
-        strong_model_id=premium,
-        random_seed=2026,
-        character_threshold=120,
+        premium_model_id=baseline_config.premium_model_id,
+        strong_model_id=baseline_config.strong_model_id,
+        random_seed=baseline_config.random_seed,
+        character_threshold=baseline_config.character_threshold,
     )
     return PerQueryNestedLodoBenchmark(
         learned=learned,
@@ -333,4 +480,5 @@ def evaluate_per_query_bilinear_benchmark(
         data_sha256=evaluation_data_sha256(ordered),
         replay_sha256=evaluation_replay_sha256(ordered),
         training_config=config,
+        lambda_search_config=search_config,
     )

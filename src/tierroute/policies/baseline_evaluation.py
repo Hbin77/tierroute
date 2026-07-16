@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -58,6 +59,67 @@ BASELINE_NAMES = (
     "oracle",
     "domain-best-table",
 )
+BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM = "tierroute-six-baseline-config-evidence-sha256-v1"
+
+
+def _append_evidence_bytes(document: bytearray, payload: bytes) -> None:
+    document.extend(len(payload).to_bytes(8, "big"))
+    document.extend(payload)
+
+
+def _append_evidence_text(document: bytearray, value: str) -> None:
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ValueError("baseline config evidence text must be valid Unicode") from error
+    _append_evidence_bytes(document, encoded)
+
+
+def _append_evidence_integer(document: bytearray, value: int) -> None:
+    magnitude = abs(value)
+    encoded = magnitude.to_bytes(max(1, (magnitude.bit_length() + 7) // 8), "big")
+    _append_evidence_bytes(document, (b"\x01" if value < 0 else b"\x00") + encoded)
+
+
+def _baseline_config_evidence_sha256(
+    baselines: tuple[BaselineResult, ...],
+    *,
+    cheap_model_id: str,
+    premium_model_id: str,
+    strong_model_id: str,
+    random_seed: int,
+    character_threshold: int,
+) -> str:
+    """Bind exact baseline parameters to the ordered replay decisions they produced."""
+
+    document = bytearray()
+    _append_evidence_text(document, BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM)
+    for model_id in (cheap_model_id, premium_model_id, strong_model_id):
+        _append_evidence_text(document, model_id)
+    _append_evidence_integer(document, random_seed)
+    _append_evidence_integer(document, character_threshold)
+    scope = baselines[0].report.evaluation_scope
+    _append_evidence_text(document, scope.algorithm)
+    _append_evidence_text(document, scope.sha256)
+    _append_evidence_integer(document, scope.max_calls_per_query)
+    _append_evidence_integer(document, len(baselines))
+    for baseline in baselines:
+        _append_evidence_text(document, baseline.name)
+        _append_evidence_integer(document, len(baseline.report.tiers))
+        for tier_result in baseline.report.tiers:
+            _append_evidence_text(document, tier_result.tier_spec.tier.value)
+            _append_evidence_integer(document, len(tier_result.queries))
+            for query in tier_result.queries:
+                _append_evidence_text(document, query.example_id)
+                if query.selected_model_id is None:
+                    _append_evidence_bytes(document, b"\x00")
+                else:
+                    _append_evidence_bytes(document, b"\x01")
+                    _append_evidence_text(document, query.selected_model_id)
+                _append_evidence_integer(document, len(query.calls))
+                for call in query.calls:
+                    _append_evidence_text(document, call.model_id)
+    return hashlib.sha256(document).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +216,17 @@ class LodoSixBaselineEvaluation:
     baselines: tuple[BaselineResult, ...]
     example_ids: tuple[str, ...]
     candidate_model_ids: tuple[str, ...]
+    cheap_model_id: str
+    premium_model_id: str
+    strong_model_id: str
+    random_seed: int
+    character_threshold: int
+    baseline_config_evidence_sha256: str
     accounting_scope: str = field(default="per-query", init=False)
+    baseline_config_evidence_algorithm: str = field(
+        default=BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM,
+        init=False,
+    )
 
     def __post_init__(self) -> None:
         folds = tuple(self.folds)
@@ -184,6 +256,27 @@ class LodoSixBaselineEvaluation:
             )
         ):
             raise ValueError("candidate_model_ids must be non-empty, sorted, and unique")
+        for role in ("cheap_model_id", "premium_model_id", "strong_model_id"):
+            model_id = getattr(self, role)
+            if not isinstance(model_id, str) or not model_id.strip():
+                raise ValueError(f"{role} must be a non-empty string")
+            if model_id not in candidate_model_ids:
+                raise ValueError(f"{role} must exist in candidate_model_ids")
+        if type(self.random_seed) is not int:
+            raise TypeError("random_seed must be an integer")
+        if type(self.character_threshold) is not int:
+            raise TypeError("character_threshold must be an integer")
+        if self.character_threshold < 1:
+            raise ValueError("character_threshold must be positive")
+        if (
+            type(self.baseline_config_evidence_sha256) is not str
+            or len(self.baseline_config_evidence_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.baseline_config_evidence_sha256
+            )
+        ):
+            raise ValueError("baseline_config_evidence_sha256 must be lowercase SHA-256 hex")
 
         scopes = {result.report.evaluation_scope for result in baselines}
         if len(scopes) != 1:
@@ -252,6 +345,29 @@ class LodoSixBaselineEvaluation:
             raise ValueError("outer-fold tests must cover every baseline example exactly once")
 
         by_name = {result.name: result for result in baselines}
+        if any(
+            call.model_id != self.cheap_model_id
+            for tier in by_name["always-cheapest"].report.tiers
+            for query in tier.queries
+            for call in query.calls
+        ):
+            raise ValueError("always-cheapest calls must match cheap_model_id")
+        if any(
+            call.model_id != self.premium_model_id
+            for tier in by_name["always-premium"].report.tiers
+            for query in tier.queries
+            for call in query.calls
+        ):
+            raise ValueError("always-premium calls must match premium_model_id")
+        if any(
+            call.model_id not in {self.cheap_model_id, self.strong_model_id}
+            for tier in by_name["length-heuristic"].report.tiers
+            for query in tier.queries
+            for call in query.calls
+        ):
+            raise ValueError("length-heuristic calls must match its recorded model roles")
+        if any(fold.fallback_model_id != self.cheap_model_id for fold in folds):
+            raise ValueError("outer-fold fallback must match cheap_model_id")
         _validate_oracle_upper_bound({name: result.report for name, result in by_name.items()})
         cheapest = by_name["always-cheapest"].report
         oracle = by_name["oracle"].report
@@ -259,6 +375,16 @@ class LodoSixBaselineEvaluation:
             expected_gap = oracle_gap_recovery(baseline.report, cheapest, oracle)
             if baseline.gap_recovery != expected_gap:
                 raise ValueError("baseline gap_recovery must be derived from this six-report suite")
+        expected_config_evidence = _baseline_config_evidence_sha256(
+            baselines,
+            cheap_model_id=self.cheap_model_id,
+            premium_model_id=self.premium_model_id,
+            strong_model_id=self.strong_model_id,
+            random_seed=self.random_seed,
+            character_threshold=self.character_threshold,
+        )
+        if self.baseline_config_evidence_sha256 != expected_config_evidence:
+            raise ValueError("baseline parameters must match their replay config evidence")
 
         object.__setattr__(self, "folds", folds)
         object.__setattr__(self, "baselines", baselines)
@@ -570,6 +696,13 @@ def evaluate_per_query_lodo_baselines(
     strict LODO therefore makes this baseline equal always-cheapest on held-out rows.
     """
 
+    if type(random_seed) is not int:
+        raise TypeError("random_seed must be an integer")
+    if type(character_threshold) is not int:
+        raise TypeError("character_threshold must be an integer")
+    if character_threshold < 1:
+        raise ValueError("character_threshold must be positive")
+
     guarded_ledger_factory = _GuardedPerQueryLedgerFactory(ledger_factory)
     simulator = OfflineSimulator(guarded_ledger_factory)
     prepared = simulator._prepare_evaluation(tuple(examples), tuple(tier_specs))
@@ -634,9 +767,23 @@ def evaluate_per_query_lodo_baselines(
         )
         for name in BASELINE_NAMES
     )
-    return LodoSixBaselineEvaluation(
-        fold_evidence,
+    config_evidence_sha256 = _baseline_config_evidence_sha256(
         rows,
-        example_ids,
-        tuple(model.model_id for model in catalogue),
+        cheap_model_id=cheap.model_id,
+        premium_model_id=premium_model_id,
+        strong_model_id=strong_model_id,
+        random_seed=random_seed,
+        character_threshold=character_threshold,
+    )
+    return LodoSixBaselineEvaluation(
+        folds=fold_evidence,
+        baselines=rows,
+        example_ids=example_ids,
+        candidate_model_ids=tuple(model.model_id for model in catalogue),
+        cheap_model_id=cheap.model_id,
+        premium_model_id=premium_model_id,
+        strong_model_id=strong_model_id,
+        random_seed=random_seed,
+        character_threshold=character_threshold,
+        baseline_config_evidence_sha256=config_evidence_sha256,
     )

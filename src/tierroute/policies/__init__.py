@@ -2,6 +2,7 @@
 """Routing policies and baselines."""
 
 from tierroute.policies.baseline_evaluation import (
+    BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM,
     BASELINE_NAMES,
     BaselineResult,
     DomainTableEntry,
@@ -19,6 +20,8 @@ from tierroute.policies.baselines import (
 )
 from tierroute.policies.benchmark import (
     FOLD_MEMBERSHIP_HASH_ALGORITHM,
+    BenchmarkBaselineConfig,
+    BenchmarkLambdaSearchConfig,
     OuterFoldMembershipDigest,
     PerQueryNestedLodoBenchmark,
     evaluate_per_query_bilinear_benchmark,
@@ -55,6 +58,7 @@ from tierroute.policies.lambda_tuning import (
 )
 
 __all__ = [
+    "BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM",
     "BASELINE_NAMES",
     "FOLD_MEMBERSHIP_HASH_ALGORITHM",
     "LAMBDA_NUMERIC_CONVENTION",
@@ -62,6 +66,8 @@ __all__ = [
     "AlwaysCheapestRouter",
     "AlwaysPremiumRouter",
     "BaselineResult",
+    "BenchmarkBaselineConfig",
+    "BenchmarkLambdaSearchConfig",
     "CrossFittedPredictionTable",
     "DomainBestRouter",
     "DomainTableEntry",
