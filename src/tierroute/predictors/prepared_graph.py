@@ -15,15 +15,15 @@ from itertools import combinations
 PREPARED_GRAPH_ALGORITHM_ID = "tierroute.prepared-nested-lodo-graph-v1"
 
 MIN_PREPARED_DOMAINS = 4
-MAX_PREPARED_DOMAINS = 64
+MAX_PREPARED_DOMAINS = 7
 MAX_PREPARED_EXAMPLES = 1_000_000
 MAX_PREPARED_FEATURES = 4_096
 MAX_PREPARED_TARGETS = 256
-MAX_PREPARED_TRAINING_SUBSETS = 65_536
-MAX_PREPARED_SCORE_BLOCKS = 131_072
+MAX_PREPARED_TRAINING_SUBSETS = 63
+MAX_PREPARED_SCORE_BLOCKS = 154
 MAX_PREPARED_SCORE_ROW_MEMBERSHIPS = 16_000_000
-MAX_PREPARED_RESIDENT_BYTES = 2 * 1024 * 1024 * 1024
-MAX_PREPARED_WORK_UNITS = 200_000_000_000
+MAX_PREPARED_MODELED_BUFFER_BYTES = 2 * 1024 * 1024 * 1024
+MAX_PREPARED_NUMERIC_WORK_UNITS = 200_000_000_000
 MAX_PREPARED_DOMAIN_UTF8_BYTES = 4 * 1024
 MAX_PREPARED_CATALOGUE_UTF8_BYTES = 256 * 1024
 
@@ -57,13 +57,20 @@ class PreparedTrainingSubset:
             raise TypeError("domain_indices must be an exact tuple")
         if not self.domain_indices:
             raise ValueError("domain_indices must not be empty")
-        if any(type(index) is not int or index < 0 for index in self.domain_indices):
-            raise ValueError("domain_indices must contain non-negative exact integers")
+        if any(
+            type(index) is not int or not 0 <= index < MAX_PREPARED_DOMAINS
+            for index in self.domain_indices
+        ):
+            raise ValueError("domain_indices must contain bounded non-negative exact integers")
+        if len(self.domain_indices) > MAX_PREPARED_DOMAINS:
+            raise ValueError("domain_indices exceed the reviewed domain limit")
         if tuple(sorted(self.domain_indices)) != self.domain_indices or len(
             set(self.domain_indices)
         ) != len(self.domain_indices):
             raise ValueError("domain_indices must be strictly increasing")
         _exact_positive_int(self.row_count, "row_count")
+        if self.row_count > MAX_PREPARED_EXAMPLES:
+            raise ValueError("row_count exceeds the reviewed example limit")
 
     @property
     def domain_mask(self) -> int:
@@ -82,13 +89,19 @@ class PreparedScoreBlock:
 
     def __post_init__(self) -> None:
         _exact_nonnegative_int(self.training_subset_index, "training_subset_index")
+        if self.training_subset_index >= MAX_PREPARED_TRAINING_SUBSETS:
+            raise ValueError("training_subset_index exceeds the reviewed graph limit")
         _exact_nonnegative_int(self.scored_domain_index, "scored_domain_index")
+        if self.scored_domain_index >= MAX_PREPARED_DOMAINS:
+            raise ValueError("scored_domain_index exceeds the reviewed domain limit")
         _exact_positive_int(self.row_count, "row_count")
+        if self.row_count > MAX_PREPARED_EXAMPLES:
+            raise ValueError("row_count exceeds the reviewed example limit")
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedNestedLodoWorkEstimate:
-    """Closed-form counts, conservative bytes, and deterministic work units."""
+    """Closed-form counts plus modeled numeric-buffer and numeric-work admission units."""
 
     domain_count: int
     example_count: int
@@ -110,15 +123,23 @@ class PreparedNestedLodoWorkEstimate:
     coefficient_cache_bytes: int
     raw_score_cache_bytes: int
     solve_workspace_bytes: int
-    resident_bytes: int
+    modeled_buffer_bytes: int
     statistics_work_units: int
     solve_work_units: int
     score_work_units: int
-    total_work_units: int
+    total_numeric_work_units: int
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
             _exact_positive_int(getattr(self, name), name)
+        if not MIN_PREPARED_DOMAINS <= self.domain_count <= MAX_PREPARED_DOMAINS:
+            raise ValueError("domain_count is outside the reviewed prepared-graph range")
+        if self.example_count > MAX_PREPARED_EXAMPLES:
+            raise ValueError("example_count exceeds the reviewed prepared-graph limit")
+        if self.feature_count > MAX_PREPARED_FEATURES:
+            raise ValueError("feature_count exceeds the reviewed prepared-graph limit")
+        if self.target_count > MAX_PREPARED_TARGETS:
+            raise ValueError("target_count exceeds the reviewed prepared-graph limit")
         expected = _estimate_values(
             self.domain_count,
             self.example_count,
@@ -128,6 +149,7 @@ class PreparedNestedLodoWorkEstimate:
         for name, value in expected.items():
             if getattr(self, name) != value:
                 raise ValueError(f"{name} does not match the prepared graph formula")
+        _validate_estimate_limits(expected)
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,23 +174,27 @@ class PreparedNestedLodoPlan:
         )
         if self.domains != canonical_domains or self.domain_example_counts != canonical_counts:
             raise ValueError("prepared plan domain catalogue must be canonical")
-        if type(self.training_subsets) is not tuple or not all(
-            type(node) is PreparedTrainingSubset for node in self.training_subsets
-        ):
-            raise TypeError("training_subsets must be an exact tuple of prepared subsets")
-        if type(self.score_blocks) is not tuple or not all(
-            type(node) is PreparedScoreBlock for node in self.score_blocks
-        ):
-            raise TypeError("score_blocks must be an exact tuple of prepared score blocks")
-        if type(self.work) is not PreparedNestedLodoWorkEstimate:
-            raise TypeError("work must be a PreparedNestedLodoWorkEstimate")
         expected_work = _preflight_counts(
             canonical_counts,
             feature_count=self.feature_count,
             target_count=self.target_count,
         )
+        if type(self.work) is not PreparedNestedLodoWorkEstimate:
+            raise TypeError("work must be a PreparedNestedLodoWorkEstimate")
         if self.work != expected_work:
             raise ValueError("work does not match the canonical prepared graph")
+        if type(self.training_subsets) is not tuple:
+            raise TypeError("training_subsets must be an exact tuple")
+        if len(self.training_subsets) != expected_work.unique_training_subset_count:
+            raise ValueError("training_subsets have the wrong bounded length")
+        if not all(type(node) is PreparedTrainingSubset for node in self.training_subsets):
+            raise TypeError("training_subsets must contain exact prepared subsets")
+        if type(self.score_blocks) is not tuple:
+            raise TypeError("score_blocks must be an exact tuple")
+        if len(self.score_blocks) != expected_work.unique_score_block_count:
+            raise ValueError("score_blocks have the wrong bounded length")
+        if not all(type(node) is PreparedScoreBlock for node in self.score_blocks):
+            raise TypeError("score_blocks must contain exact prepared score blocks")
         expected_subsets = _enumerate_training_subsets(canonical_counts)
         if self.training_subsets != expected_subsets:
             raise ValueError("training_subsets do not match the canonical prepared graph")
@@ -198,6 +224,8 @@ def _snapshot_inputs(
     for domain in domains:
         if type(domain) is not str:
             raise TypeError("every domain must be an exact string")
+        if len(domain) > MAX_PREPARED_DOMAIN_UTF8_BYTES:
+            raise ValueError("a domain exceeds the reviewed UTF-8 byte limit")
         if not domain.strip():
             raise ValueError("every domain must contain non-whitespace text")
         try:
@@ -255,7 +283,7 @@ def _estimate_values(
     coefficient_cache_bytes = _F64_BYTES * subset_count * m * (d + 1)
     raw_score_cache_bytes = _F64_BYTES * memberships * m
     solve_workspace_bytes = _F64_BYTES * (2 * d * d + 2 * m * d + 2 * d + 3 * m)
-    resident_bytes = (
+    modeled_buffer_bytes = (
         feature_cache_bytes
         + target_cache_bytes
         + domain_statistics_bytes
@@ -287,11 +315,11 @@ def _estimate_values(
         "coefficient_cache_bytes": coefficient_cache_bytes,
         "raw_score_cache_bytes": raw_score_cache_bytes,
         "solve_workspace_bytes": solve_workspace_bytes,
-        "resident_bytes": resident_bytes,
+        "modeled_buffer_bytes": modeled_buffer_bytes,
         "statistics_work_units": statistics_work_units,
         "solve_work_units": solve_work_units,
         "score_work_units": score_work_units,
-        "total_work_units": statistics_work_units + solve_work_units + score_work_units,
+        "total_numeric_work_units": statistics_work_units + solve_work_units + score_work_units,
     }
 
 
@@ -307,17 +335,21 @@ def _preflight_counts(
         feature_count,
         target_count,
     )
+    _validate_estimate_limits(values)
+    return PreparedNestedLodoWorkEstimate(**values)
+
+
+def _validate_estimate_limits(values: dict[str, int]) -> None:
     if values["unique_training_subset_count"] > MAX_PREPARED_TRAINING_SUBSETS:
         raise ValueError("prepared training-subset count exceeds the reviewed limit")
     if values["unique_score_block_count"] > MAX_PREPARED_SCORE_BLOCKS:
         raise ValueError("prepared score-block count exceeds the reviewed limit")
     if values["score_row_memberships"] > MAX_PREPARED_SCORE_ROW_MEMBERSHIPS:
         raise ValueError("prepared score-row memberships exceed the reviewed limit")
-    if values["resident_bytes"] > MAX_PREPARED_RESIDENT_BYTES:
-        raise ValueError("prepared resident-byte estimate exceeds the reviewed limit")
-    if values["total_work_units"] > MAX_PREPARED_WORK_UNITS:
-        raise ValueError("prepared work estimate exceeds the reviewed limit")
-    return PreparedNestedLodoWorkEstimate(**values)
+    if values["modeled_buffer_bytes"] > MAX_PREPARED_MODELED_BUFFER_BYTES:
+        raise ValueError("prepared modeled-buffer estimate exceeds the reviewed limit")
+    if values["total_numeric_work_units"] > MAX_PREPARED_NUMERIC_WORK_UNITS:
+        raise ValueError("prepared numeric-work estimate exceeds the reviewed limit")
 
 
 def _enumerate_training_subsets(
@@ -346,8 +378,9 @@ def _enumerate_score_blocks(
 ) -> tuple[PreparedScoreBlock, ...]:
     nodes: list[PreparedScoreBlock] = []
     for subset_index, subset in enumerate(training_subsets):
+        training_mask = subset.domain_mask
         for domain_index, row_count in enumerate(domain_example_counts):
-            if not subset.domain_mask & (1 << domain_index):
+            if not training_mask & (1 << domain_index):
                 nodes.append(
                     PreparedScoreBlock(
                         training_subset_index=subset_index,

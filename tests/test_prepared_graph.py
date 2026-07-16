@@ -76,7 +76,7 @@ def _plan(domain_count: int) -> PreparedNestedLodoPlan:
     )
 
 
-@pytest.mark.parametrize("domain_count", range(4, 11))
+@pytest.mark.parametrize("domain_count", range(4, 8))
 def test_graph_matches_combinatorial_and_logical_call_oracles(domain_count: int) -> None:
     plan = _plan(domain_count)
     masks = tuple(subset.domain_mask for subset in plan.training_subsets)
@@ -161,11 +161,11 @@ def test_routerbench_shape_has_exact_reviewed_seven_domain_estimate() -> None:
     assert work.coefficient_cache_bytes == 5_749_128
     assert work.raw_score_cache_bytes == 67_330_208
     assert work.solve_workspace_bytes == 17_371_912
-    assert work.resident_bytes == 412_529_936
+    assert work.modeled_buffer_bytes == 412_529_936
     assert work.statistics_work_units == 19_187_126_934
     assert work.solve_work_units == 71_540_189_532
     assert work.score_work_units == 8_719_261_936
-    assert work.total_work_units == 99_446_578_402
+    assert work.total_numeric_work_units == 99_446_578_402
 
 
 def test_canonicalization_keeps_uneven_domain_counts_paired() -> None:
@@ -201,6 +201,48 @@ def test_canonicalization_keeps_uneven_domain_counts_paired() -> None:
         block.row_count == plan.domain_example_counts[block.scored_domain_index]
         for block in plan.score_blocks
     )
+    assert all(
+        subset.row_count
+        == sum(plan.domain_example_counts[index] for index in subset.domain_indices)
+        for subset in plan.training_subsets
+    )
+
+
+def test_asymmetric_shape_resource_formulas_have_an_independent_oracle() -> None:
+    plan = build_prepared_nested_lodo_plan(
+        ("delta", "alpha", "charlie", "bravo", "echo"),
+        (2, 3, 5, 7, 11),
+        feature_count=4,
+        target_count=3,
+    )
+    d_count, n, d, m = 5, 28, 4, 3
+    subsets = comb(d_count, 3) + comb(d_count, 2) + d_count
+    memberships = n * (comb(d_count, 2) + 1)
+    components = (
+        8 * n * d,
+        8 * n * m,
+        8 * d_count * (1 + d + d * (d + 1) // 2 + m + d * m),
+        8 * subsets * m * (d + 1),
+        8 * memberships * m,
+        8 * (2 * d * d + 2 * m * d + 2 * d + 3 * m),
+    )
+    statistics_work = 3 * n * (d + m) + n * d * (d + 1) // 2 + n * d * m
+    solve_work = subsets * (d**3 + 2 * m * d * d + m * d)
+    score_work = memberships * m * d
+
+    assert (
+        plan.work.feature_cache_bytes,
+        plan.work.target_cache_bytes,
+        plan.work.domain_statistics_bytes,
+        plan.work.coefficient_cache_bytes,
+        plan.work.raw_score_cache_bytes,
+        plan.work.solve_workspace_bytes,
+    ) == components
+    assert plan.work.modeled_buffer_bytes == sum(components)
+    assert plan.work.statistics_work_units == statistics_work
+    assert plan.work.solve_work_units == solve_work
+    assert plan.work.score_work_units == score_work
+    assert plan.work.total_numeric_work_units == statistics_work + solve_work + score_work
 
 
 @pytest.mark.parametrize(
@@ -214,6 +256,7 @@ def test_canonicalization_keeps_uneven_domain_counts_paired() -> None:
         (("a", "b", "c", " "), (1, 1, 1, 1), ValueError),
         (("a", "b", "c", "\ud800"), (1, 1, 1, 1), ValueError),
         (("a", "b", "c", object()), (1, 1, 1, 1), TypeError),
+        (("a", "b", "c", []), (1, 1, 1, 1), TypeError),
         (("a", "b", "c", "d"), (1, 1, 1, True), TypeError),
         (("a", "b", "c", "d"), (1, 1, 1, 0), ValueError),
         (("a", "b", "c", "d"), (1, 1, 1, -1), ValueError),
@@ -321,8 +364,16 @@ def test_primitive_subclasses_and_oversized_values_are_rejected_without_coercion
             "score_row_memberships",
             "score-row memberships",
         ),
-        ("MAX_PREPARED_RESIDENT_BYTES", "resident_bytes", "resident-byte estimate"),
-        ("MAX_PREPARED_WORK_UNITS", "total_work_units", "work estimate"),
+        (
+            "MAX_PREPARED_MODELED_BUFFER_BYTES",
+            "modeled_buffer_bytes",
+            "modeled-buffer estimate",
+        ),
+        (
+            "MAX_PREPARED_NUMERIC_WORK_UNITS",
+            "total_numeric_work_units",
+            "numeric-work estimate",
+        ),
     ],
 )
 def test_derived_resource_boundaries_and_pre_enumeration_refusal(
@@ -361,7 +412,7 @@ def test_domain_limit_refusal_precedes_graph_enumeration(
         unexpected_enumeration,
     )
     with pytest.raises(ValueError, match="domain count"):
-        _plan(65)
+        _plan(8)
 
 
 def test_total_example_boundary_is_checked_without_expanding_rows() -> None:
@@ -416,3 +467,42 @@ def test_node_constructors_reject_noncanonical_fields() -> None:
         PreparedScoreBlock(True, 0, 1)
     with pytest.raises(ValueError, match="positive"):
         PreparedScoreBlock(0, 1, 0)
+    with pytest.raises(ValueError, match="bounded"):
+        PreparedTrainingSubset((10**10_000,), 1)
+    with pytest.raises(ValueError, match="example limit"):
+        PreparedTrainingSubset((0,), 1_000_001)
+    with pytest.raises(ValueError, match="graph limit"):
+        PreparedScoreBlock(63, 0, 1)
+    with pytest.raises(ValueError, match="domain limit"):
+        PreparedScoreBlock(0, 7, 1)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value", "message"),
+    [
+        ("domain_count", 3, "domain_count"),
+        ("domain_count", 65, "domain_count"),
+        ("example_count", 1_000_001, "example_count"),
+        ("feature_count", 4_097, "feature_count"),
+        ("target_count", 257, "target_count"),
+    ],
+)
+def test_work_estimate_direct_construction_cannot_bypass_primitive_limits(
+    field_name: str,
+    invalid_value: int,
+    message: str,
+) -> None:
+    work = _plan(4).work
+    with pytest.raises(ValueError, match=message):
+        replace(work, **{field_name: invalid_value})
+
+
+def test_work_estimate_direct_construction_cannot_bypass_derived_limits() -> None:
+    values = prepared_graph_module._estimate_values(
+        7,
+        1_000_000,
+        1,
+        1,
+    )
+    with pytest.raises(ValueError, match="score-row memberships"):
+        PreparedNestedLodoWorkEstimate(**values)
