@@ -468,7 +468,16 @@ def _snapshot_verified_file(
     try:
         final_path_metadata = source.lstat()
         _require_same_file(opened_metadata, final_path_metadata, label=label)
-        _require_stable_file(opened_metadata, final_path_metadata, label=label)
+        _require_stable_file(
+            opened_metadata,
+            final_path_metadata,
+            label=label,
+            # Python 3.12 deprecated st_ctime_ns on Windows, where it is the
+            # creation time and path-based stat can disagree with descriptor
+            # stat for an unchanged file. Keep the same-interface fstat check
+            # above strict, and omit only this non-portable cross-interface field.
+            compare_change_time=os.name != "nt",
+        )
     except (OSError, RuntimeError):
         try:
             destination.unlink()
@@ -525,8 +534,11 @@ def _require_stable_file(
     second: os.stat_result,
     *,
     label: str,
+    compare_change_time: bool = True,
 ) -> None:
-    fields = ("st_size", "st_mtime_ns", "st_ctime_ns")
+    fields = ("st_size", "st_mtime_ns")
+    if compare_change_time:
+        fields += ("st_ctime_ns",)
     for field in fields:
         first_value = getattr(first, field, None)
         second_value = getattr(second, field, None)

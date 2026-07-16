@@ -10,7 +10,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -256,6 +256,44 @@ def test_snapshot_is_owner_only_and_bound_to_build_manifest(tmp_path: Path) -> N
     assert destination.read_bytes() == payload
     if os.name != "nt":
         assert stat.S_IMODE(destination.stat().st_mode) == stat.S_IRUSR | stat.S_IWUSR
+
+
+def test_cross_interface_stability_can_omit_only_nonportable_change_time() -> None:
+    first = SimpleNamespace(st_size=23, st_mtime_ns=101, st_ctime_ns=202)
+    changed_creation_time = SimpleNamespace(
+        st_size=23,
+        st_mtime_ns=101,
+        st_ctime_ns=303,
+    )
+
+    AUDIT._require_stable_file(
+        first,
+        changed_creation_time,
+        label="native binary",
+        compare_change_time=False,
+    )
+    with pytest.raises(RuntimeError, match="metadata changed"):
+        AUDIT._require_stable_file(
+            first,
+            changed_creation_time,
+            label="native binary",
+        )
+
+
+@pytest.mark.parametrize("changed_field", ("st_size", "st_mtime_ns"))
+def test_cross_interface_stability_keeps_content_metadata_guards(
+    changed_field: str,
+) -> None:
+    first_values = {"st_size": 23, "st_mtime_ns": 101, "st_ctime_ns": 202}
+    second_values = first_values | {changed_field: first_values[changed_field] + 1}
+
+    with pytest.raises(RuntimeError, match="metadata changed"):
+        AUDIT._require_stable_file(
+            SimpleNamespace(**first_values),
+            SimpleNamespace(**second_values),
+            label="native binary",
+            compare_change_time=False,
+        )
 
 
 def test_audit_and_adapter_share_binary_size_contract() -> None:
