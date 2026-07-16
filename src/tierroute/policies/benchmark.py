@@ -14,7 +14,11 @@ from tierroute.adapters.budgets import PerQueryBudgetLedger
 from tierroute.core.costs import scale_cost, sum_costs
 from tierroute.core.schemas import Cost, ModelSpec
 from tierroute.eval.metrics import QuoteErrorReport, oracle_gap_recovery, summarize_quote_error
-from tierroute.eval.provenance import evaluation_data_sha256, evaluation_replay_sha256
+from tierroute.eval.provenance import (
+    _snapshot_evaluation_scope,
+    evaluation_data_sha256,
+    evaluation_replay_sha256,
+)
 from tierroute.eval.schemas import (
     EvaluationExample,
     TierSpec,
@@ -64,6 +68,23 @@ BILINEAR_PREDICTOR_KIND = "calibrated-bilinear-surface-v1"
 GBM_PREDICTOR_KIND = "calibrated-gbm-regression-stumps-surface-v1"
 
 TrainingConfig = BilinearTrainingConfig | GbmTrainingConfig
+
+
+def _normalized_bilinear_config(
+    config: BilinearTrainingConfig | None,
+) -> BilinearTrainingConfig:
+    """Snapshot a compatible subclass once into the exact reviewed config type."""
+
+    if config is None:
+        return BilinearTrainingConfig()
+    if not isinstance(config, BilinearTrainingConfig):
+        raise TypeError("config must be a BilinearTrainingConfig or None")
+    if type(config) is BilinearTrainingConfig:
+        return config
+    ridge = config.ridge
+    seed = config.seed
+    solver_id = config.solver_id
+    return BilinearTrainingConfig(ridge=ridge, seed=seed, solver_id=solver_id)
 
 
 class _DigestWriter(Protocol):
@@ -253,15 +274,15 @@ class PerQueryNestedLodoBenchmark:
             raise TypeError("learned must be a NestedLodoLambdaResult")
         if not isinstance(self.baselines, LodoSixBaselineEvaluation):
             raise TypeError("baselines must be a LodoSixBaselineEvaluation")
-        config_type = type(self.training_config)
-        if config_type is BilinearTrainingConfig:
+        if isinstance(self.training_config, BilinearTrainingConfig):
+            training_config: TrainingConfig = _normalized_bilinear_config(self.training_config)
             predictor_kind = BILINEAR_PREDICTOR_KIND
-        elif config_type is GbmTrainingConfig:
+        elif type(self.training_config) is GbmTrainingConfig:
+            training_config = self.training_config
             predictor_kind = GBM_PREDICTOR_KIND
         else:
             raise TypeError(
-                "training_config must be an exact BilinearTrainingConfig or "
-                "GbmTrainingConfig"
+                "training_config must be an exact BilinearTrainingConfig or GbmTrainingConfig"
             )
         if not isinstance(self.lambda_search_config, BenchmarkLambdaSearchConfig):
             raise TypeError("lambda_search_config must be a BenchmarkLambdaSearchConfig")
@@ -425,6 +446,7 @@ class PerQueryNestedLodoBenchmark:
         object.__setattr__(self, "model_ids", model_ids)
         object.__setattr__(self, "fold_memberships", fold_memberships)
         object.__setattr__(self, "baseline_config", baseline_config)
+        object.__setattr__(self, "training_config", training_config)
         object.__setattr__(self, "predictor_kind", predictor_kind)
 
     @property
@@ -498,6 +520,24 @@ def _require_four_domains(
 ) -> tuple[tuple[EvaluationExample, ...], tuple[TierSpec, ...]]:
     ordered = tuple(examples)
     specs = tuple(tier_specs)
+    if not ordered:
+        raise ValueError("benchmark examples must not be empty")
+    if any(type(example) is not EvaluationExample for example in ordered):
+        raise TypeError("benchmark examples must contain exact EvaluationExample values")
+    example_ids = tuple(example.example_id for example in ordered)
+    if len(example_ids) != len(set(example_ids)):
+        raise ValueError("benchmark examples must have unique example IDs")
+    if not specs:
+        raise ValueError("benchmark tier_specs must not be empty")
+    if any(type(spec) is not TierSpec for spec in specs):
+        raise TypeError("benchmark tier_specs must contain exact TierSpec values")
+    tiers = tuple(spec.tier for spec in specs)
+    if len(tiers) != len(set(tiers)):
+        raise ValueError("benchmark tier_specs must contain unique tiers")
+    # Normalize the full nested schema at the same exact-type, bounded snapshot
+    # boundary used by OfflineSimulator, before any predictor preflight or fitting.
+    ordered, specs = _snapshot_evaluation_scope(ordered, specs)
+    _stable_catalogue(ordered)
     domains = tuple(sorted({example.domain for example in ordered}))
     if len(domains) < 4:
         raise ValueError(
@@ -526,10 +566,7 @@ def evaluate_per_query_bilinear_benchmark(
         tier_specs,
         family_name="bilinear",
     )
-    if config is None:
-        config = BilinearTrainingConfig()
-    elif type(config) is not BilinearTrainingConfig:
-        raise TypeError("config must be an exact BilinearTrainingConfig or None")
+    config = _normalized_bilinear_config(config)
 
     def train_predictor(training: tuple[EvaluationExample, ...]) -> QualityPredictor:
         return fit_calibrated_bilinear(training, config=config).build_predictor()
@@ -541,6 +578,31 @@ def evaluate_per_query_bilinear_benchmark(
         train_predictor=train_predictor,
         max_candidates_per_tier=max_candidates_per_tier,
         allow_large_exhaustive=allow_large_exhaustive,
+    )
+
+
+def _evaluate_per_query_gbm_benchmark_preflighted(
+    ordered: tuple[EvaluationExample, ...],
+    specs: tuple[TierSpec, ...],
+    *,
+    config: GbmTrainingConfig,
+    max_candidates_per_tier: int | None,
+    allow_large_exhaustive: bool,
+    _baselines: LodoSixBaselineEvaluation | None = None,
+) -> PerQueryNestedLodoBenchmark:
+    """Evaluate GBM after the caller has passed the aggregate work guard."""
+
+    def train_predictor(training: tuple[EvaluationExample, ...]) -> QualityPredictor:
+        return fit_calibrated_gbm(training, config=config)
+
+    return _evaluate_per_query_benchmark(
+        ordered,
+        specs,
+        config=config,
+        train_predictor=train_predictor,
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+        baselines=_baselines,
     )
 
 
@@ -564,17 +626,16 @@ def evaluate_per_query_gbm_benchmark(
         config = GbmTrainingConfig()
     elif type(config) is not GbmTrainingConfig:
         raise TypeError("config must be an exact GbmTrainingConfig or None")
+    BenchmarkLambdaSearchConfig(
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
     preflight_nested_lodo_gbm(ordered, config=config)
-
-    def train_predictor(training: tuple[EvaluationExample, ...]) -> QualityPredictor:
-        return fit_calibrated_gbm(training, config=config)
-
-    return _evaluate_per_query_benchmark(
+    return _evaluate_per_query_gbm_benchmark_preflighted(
         ordered,
         specs,
         config=config,
-        train_predictor=train_predictor,
         max_candidates_per_tier=max_candidates_per_tier,
         allow_large_exhaustive=allow_large_exhaustive,
-        baselines=_baselines,
+        _baselines=_baselines,
     )

@@ -13,9 +13,11 @@ from tierroute.eval.schemas import EvaluationExample, EvaluationReport, TierSpec
 from tierroute.policies.benchmark import (
     BILINEAR_PREDICTOR_KIND,
     GBM_PREDICTOR_KIND,
+    BenchmarkLambdaSearchConfig,
     PerQueryNestedLodoBenchmark,
+    _evaluate_per_query_gbm_benchmark_preflighted,
+    _require_four_domains,
     evaluate_per_query_bilinear_benchmark,
-    evaluate_per_query_gbm_benchmark,
 )
 from tierroute.predictors.gbm_training import (
     GbmTrainingConfig,
@@ -80,9 +82,7 @@ def _query_quality_by_tier(
     expected = set(example_ids)
     result: dict[BudgetTier, float | None] = {}
     for tier_result in report.tiers:
-        selected = tuple(
-            query for query in tier_result.queries if query.example_id in expected
-        )
+        selected = tuple(query for query in tier_result.queries if query.example_id in expected)
         if (
             len(selected) != len(example_ids)
             or {query.example_id for query in selected} != expected
@@ -91,9 +91,7 @@ def _query_quality_by_tier(
         if any(not query.feasible or query.quality is None for query in selected):
             result[tier_result.tier_spec.tier] = None
             continue
-        mean = sum(query.quality for query in selected if query.quality is not None) / len(
-            selected
-        )
+        mean = sum(query.quality for query in selected if query.quality is not None) / len(selected)
         if not math.isfinite(mean):
             raise ValueError("held-out domain mean quality must be finite")
         result[tier_result.tier_spec.tier] = mean
@@ -160,20 +158,19 @@ def _same_pair_scope(
     bilinear: PerQueryNestedLodoBenchmark,
     gbm: PerQueryNestedLodoBenchmark,
 ) -> None:
-    if bilinear.predictor_kind != BILINEAR_PREDICTOR_KIND or type(
-        bilinear.training_config
-    ) is not BilinearTrainingConfig:
+    if (
+        bilinear.predictor_kind != BILINEAR_PREDICTOR_KIND
+        or type(bilinear.training_config) is not BilinearTrainingConfig
+    ):
         raise ValueError("bilinear side must use the fixed calibrated bilinear family")
-    if gbm.predictor_kind != GBM_PREDICTOR_KIND or type(
-        gbm.training_config
-    ) is not GbmTrainingConfig:
+    if (
+        gbm.predictor_kind != GBM_PREDICTOR_KIND
+        or type(gbm.training_config) is not GbmTrainingConfig
+    ):
         raise ValueError("GBM side must use the fixed calibrated regression-stump family")
     if bilinear.baselines is not gbm.baselines:
         raise ValueError("paired predictors must share the exact same baseline object")
-    if (
-        bilinear.data_sha256 != gbm.data_sha256
-        or bilinear.replay_sha256 != gbm.replay_sha256
-    ):
+    if bilinear.data_sha256 != gbm.data_sha256 or bilinear.replay_sha256 != gbm.replay_sha256:
         raise ValueError("paired predictors must share data and replay digests")
     if bilinear.accounting_scope != gbm.accounting_scope:
         raise ValueError("paired predictors must share accounting scope")
@@ -206,8 +203,7 @@ def _same_pair_scope(
     if bilinear_specs != gbm_specs:
         raise ValueError("paired predictors must share ordered tier specifications")
     bilinear_query_orders = tuple(
-        tuple(query.example_id for query in result.queries)
-        for result in bilinear_report.tiers
+        tuple(query.example_id for query in result.queries) for result in bilinear_report.tiers
     )
     gbm_query_orders = tuple(
         tuple(query.example_id for query in result.queries) for result in gbm_report.tiers
@@ -224,6 +220,17 @@ def _same_pair_scope(
     )
     if bilinear_folds != gbm_folds:
         raise ValueError("paired predictors must share ordered outer folds")
+    for bilinear_fold, gbm_fold in zip(
+        bilinear.learned.folds,
+        gbm.learned.folds,
+        strict=True,
+    ):
+        if bilinear_fold.tuning.data_sha256 != gbm_fold.tuning.data_sha256:
+            raise ValueError("paired predictors must share inner tuning data digests")
+        if bilinear_fold.tuning.replay_sha256 != gbm_fold.tuning.replay_sha256:
+            raise ValueError("paired predictors must share inner tuning replay digests")
+        if bilinear_fold.tuning.report.evaluation_scope != gbm_fold.tuning.report.evaluation_scope:
+            raise ValueError("paired predictors must share inner tuning evaluation scopes")
 
 
 def _held_out_delta(
@@ -339,8 +346,11 @@ def evaluate_per_query_paired_predictor_comparison(
     Baselines are evaluated once and the exact object is shared by both results.
     """
 
-    ordered = tuple(examples)
-    specs = tuple(tier_specs)
+    ordered, specs = _require_four_domains(
+        examples,
+        tier_specs,
+        family_name="paired predictor",
+    )
     if bilinear_config is None:
         bilinear_config = BilinearTrainingConfig()
     elif type(bilinear_config) is not BilinearTrainingConfig:
@@ -350,6 +360,11 @@ def evaluate_per_query_paired_predictor_comparison(
     elif type(gbm_config) is not GbmTrainingConfig:
         raise TypeError("gbm_config must be an exact GbmTrainingConfig or None")
 
+    BenchmarkLambdaSearchConfig(
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
+    # Bound the domain-amplified GBM graph before materializing outer-fold tuples.
     preflight_nested_lodo_gbm(ordered, config=gbm_config)
     bilinear = evaluate_per_query_bilinear_benchmark(
         ordered,
@@ -358,7 +373,7 @@ def evaluate_per_query_paired_predictor_comparison(
         max_candidates_per_tier=max_candidates_per_tier,
         allow_large_exhaustive=allow_large_exhaustive,
     )
-    gbm = evaluate_per_query_gbm_benchmark(
+    gbm = _evaluate_per_query_gbm_benchmark_preflighted(
         ordered,
         specs,
         config=gbm_config,

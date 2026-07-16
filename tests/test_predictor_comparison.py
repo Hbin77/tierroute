@@ -10,8 +10,8 @@ import pytest
 import tierroute.policies.benchmark as benchmark_module
 import tierroute.policies.predictor_comparison as comparison_module
 from tierroute.adapters import load_evaluation_dataset
-from tierroute.core import BudgetTier
-from tierroute.eval import summarize_report
+from tierroute.core import BudgetTier, ModelSpec
+from tierroute.eval import CandidateOutcome, EvaluationExample, TierSpec, summarize_report
 from tierroute.policies import (
     COMPARISON_DIRECTION,
     PAIRED_SELECTION_PROTOCOL,
@@ -60,6 +60,19 @@ def _replace_first_fast_query(
     return replace(benchmark, learned=changed_learned)
 
 
+def _replace_first_inner_tuning(
+    benchmark: benchmark_module.PerQueryNestedLodoBenchmark,
+    **changes: object,
+) -> benchmark_module.PerQueryNestedLodoBenchmark:
+    first_fold, *remaining_folds = benchmark.learned.folds
+    changed_fold = replace(first_fold, tuning=replace(first_fold.tuning, **changes))
+    changed_learned = replace(
+        benchmark.learned,
+        folds=(changed_fold, *remaining_folds),
+    )
+    return replace(benchmark, learned=changed_learned)
+
+
 def test_paired_comparison_is_descriptive_and_shares_exact_baselines(
     paired: PairedPredictorComparison,
 ) -> None:
@@ -70,9 +83,7 @@ def test_paired_comparison_is_descriptive_and_shares_exact_baselines(
     assert not hasattr(paired, "winner")
     assert paired.bilinear.baselines is paired.gbm.baselines
     assert paired.bilinear.predictor_kind == "calibrated-bilinear-surface-v1"
-    assert paired.gbm.predictor_kind == (
-        "calibrated-gbm-regression-stumps-surface-v1"
-    )
+    assert paired.gbm.predictor_kind == ("calibrated-gbm-regression-stumps-surface-v1")
     assert [row.held_out_domain for row in paired.held_out_domain_deltas] == [
         "code",
         "general",
@@ -96,8 +107,7 @@ def test_paired_delta_is_raw_gbm_minus_bilinear_without_rounding(
         - paired.bilinear.learned.score.tier_quality[BudgetTier.FAST]  # type: ignore[operator]
     )
     expected_weighted_delta = (
-        changed_gbm.learned.score.weighted_quality
-        - paired.bilinear.learned.score.weighted_quality  # type: ignore[operator]
+        changed_gbm.learned.score.weighted_quality - paired.bilinear.learned.score.weighted_quality  # type: ignore[operator]
     )
     expected_gap_delta = (
         changed_gbm.learned_gap_recovery - paired.bilinear.learned_gap_recovery  # type: ignore[operator]
@@ -176,19 +186,47 @@ def test_pair_rejects_distinct_baseline_object_and_scope_drift(
         PairedPredictorComparison(paired.bilinear, changed_membership)
 
 
+def test_pair_rejects_inner_tuning_provenance_drift(
+    paired: PairedPredictorComparison,
+) -> None:
+    changed_data = _replace_first_inner_tuning(paired.gbm, data_sha256="0" * 64)
+    with pytest.raises(ValueError, match="inner tuning data digests"):
+        PairedPredictorComparison(paired.bilinear, changed_data)
+
+    changed_replay = _replace_first_inner_tuning(paired.gbm, replay_sha256="0" * 64)
+    with pytest.raises(ValueError, match="inner tuning replay digests"):
+        PairedPredictorComparison(paired.bilinear, changed_replay)
+
+    first_tuning = paired.gbm.learned.folds[0].tuning
+    changed_scope = replace(first_tuning.report.evaluation_scope, sha256="0" * 64)
+    changed_report = replace(first_tuning.report, evaluation_scope=changed_scope)
+    changed_evaluation = _replace_first_inner_tuning(
+        paired.gbm,
+        report=changed_report,
+    )
+    with pytest.raises(ValueError, match="inner tuning evaluation scopes"):
+        PairedPredictorComparison(paired.bilinear, changed_evaluation)
+
+
 def test_entry_preflights_before_fitting_and_computes_baselines_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dataset = load_evaluation_dataset()
     events: list[str] = []
+    aggregate_preflight_calls = 0
     baseline_calls = 0
     original_pair_preflight = comparison_module.preflight_nested_lodo_gbm
     original_fit = benchmark_module.fit_calibrated_bilinear
     original_baselines = benchmark_module.evaluate_per_query_lodo_baselines
 
     def recording_pair_preflight(*args: object, **kwargs: object) -> object:
+        nonlocal aggregate_preflight_calls
+        aggregate_preflight_calls += 1
         events.append("aggregate-preflight")
         return original_pair_preflight(*args, **kwargs)  # type: ignore[arg-type]
+
+    def unexpected_duplicate_preflight(*args: object, **kwargs: object) -> object:
+        raise AssertionError(f"paired evaluation repeated aggregate preflight: {args!r} {kwargs!r}")
 
     def recording_fit(*args: object, **kwargs: object) -> object:
         events.append("bilinear-fit")
@@ -204,6 +242,11 @@ def test_entry_preflights_before_fitting_and_computes_baselines_once(
         "preflight_nested_lodo_gbm",
         recording_pair_preflight,
     )
+    monkeypatch.setattr(
+        benchmark_module,
+        "preflight_nested_lodo_gbm",
+        unexpected_duplicate_preflight,
+    )
     monkeypatch.setattr(benchmark_module, "fit_calibrated_bilinear", recording_fit)
     monkeypatch.setattr(
         benchmark_module,
@@ -218,9 +261,145 @@ def test_entry_preflights_before_fitting_and_computes_baselines_once(
     )
 
     assert events[0] == "aggregate-preflight"
+    assert aggregate_preflight_calls == 1
     assert "bilinear-fit" in events
     assert baseline_calls == 1
     assert result.bilinear.baselines is result.gbm.baselines
+
+
+@pytest.mark.parametrize(
+    ("tier_specs", "max_candidates", "message"),
+    [
+        ((), 17, "tier_specs must not be empty"),
+        (None, 1, "max_candidates_per_tier must be at least 2"),
+    ],
+)
+def test_pair_rejects_invalid_search_scope_before_gbm_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+    tier_specs: tuple[object, ...] | None,
+    max_candidates: int,
+    message: str,
+) -> None:
+    dataset = load_evaluation_dataset()
+
+    def unexpected_gbm_work(*args: object, **kwargs: object) -> object:
+        raise AssertionError(f"GBM work ran before input rejection: {args!r} {kwargs!r}")
+
+    monkeypatch.setattr(
+        comparison_module,
+        "preflight_nested_lodo_gbm",
+        unexpected_gbm_work,
+    )
+    selected_specs = dataset.tier_specs if tier_specs is None else tier_specs
+    with pytest.raises((TypeError, ValueError), match=message):
+        evaluate_per_query_paired_predictor_comparison(
+            dataset.examples,
+            selected_specs,  # type: ignore[arg-type]
+            gbm_config=_gbm_config(),
+            max_candidates_per_tier=max_candidates,
+        )
+
+
+def test_pair_rejects_schema_subclasses_before_gbm_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EvaluationExampleSubclass(EvaluationExample):
+        pass
+
+    class TierSpecSubclass(TierSpec):
+        pass
+
+    class CandidateOutcomeSubclass(CandidateOutcome):
+        pass
+
+    class ModelSpecSubclass(ModelSpec):
+        pass
+
+    dataset = load_evaluation_dataset()
+    first = dataset.examples[0]
+    subclass_example = EvaluationExampleSubclass(
+        example_id=first.example_id,
+        prompt=first.prompt,
+        domain=first.domain,
+        outcomes=first.outcomes,
+        candidate_models=first.candidate_models,
+        router_metadata=first.router_metadata,
+    )
+    first_spec = dataset.tier_specs[0]
+    subclass_spec = TierSpecSubclass(
+        first_spec.tier,
+        first_spec.budget_limit,
+        first_spec.weight,
+    )
+
+    def unexpected_gbm_work(*args: object, **kwargs: object) -> object:
+        raise AssertionError(f"GBM work ran before exact-type rejection: {args!r} {kwargs!r}")
+
+    monkeypatch.setattr(
+        comparison_module,
+        "preflight_nested_lodo_gbm",
+        unexpected_gbm_work,
+    )
+    with pytest.raises(TypeError, match="exact EvaluationExample"):
+        evaluate_per_query_paired_predictor_comparison(
+            (subclass_example, *dataset.examples[1:]),
+            dataset.tier_specs,
+            gbm_config=_gbm_config(),
+            max_candidates_per_tier=17,
+        )
+    with pytest.raises(TypeError, match="exact TierSpec"):
+        evaluate_per_query_paired_predictor_comparison(
+            dataset.examples,
+            (subclass_spec, *dataset.tier_specs[1:]),
+            gbm_config=_gbm_config(),
+            max_candidates_per_tier=17,
+        )
+
+    first_outcome = first.outcomes[0]
+    subclass_outcome = CandidateOutcomeSubclass(
+        first_outcome.model_id,
+        first_outcome.output,
+        first_outcome.cost,
+        first_outcome.quality,
+    )
+    nested_outcome_example = EvaluationExample(
+        example_id=first.example_id,
+        prompt=first.prompt,
+        domain=first.domain,
+        outcomes=(subclass_outcome, *first.outcomes[1:]),
+        candidate_models=first.candidate_models,
+        router_metadata=first.router_metadata,
+    )
+    with pytest.raises(TypeError, match="must be a CandidateOutcome"):
+        evaluate_per_query_paired_predictor_comparison(
+            (nested_outcome_example, *dataset.examples[1:]),
+            dataset.tier_specs,
+            gbm_config=_gbm_config(),
+            max_candidates_per_tier=17,
+        )
+
+    first_model = first.candidate_models[0]
+    subclass_model = ModelSpecSubclass(
+        first_model.model_id,
+        first_model.cost,
+        first_model.display_name,
+        first_model.metadata,
+    )
+    nested_model_example = EvaluationExample(
+        example_id=first.example_id,
+        prompt=first.prompt,
+        domain=first.domain,
+        outcomes=first.outcomes,
+        candidate_models=(subclass_model, *first.candidate_models[1:]),
+        router_metadata=first.router_metadata,
+    )
+    with pytest.raises(TypeError, match="must be a ModelSpec"):
+        evaluate_per_query_paired_predictor_comparison(
+            (nested_model_example, *dataset.examples[1:]),
+            dataset.tier_specs,
+            gbm_config=_gbm_config(),
+            max_candidates_per_tier=17,
+        )
 
 
 def test_public_gbm_benchmark_preflights_before_its_first_fit(

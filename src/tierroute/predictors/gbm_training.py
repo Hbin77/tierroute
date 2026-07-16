@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from tierroute.eval import DomainFold, EvaluationExample, leave_one_domain_out
-from tierroute.features import EmbeddingProvider, PromptFeatureEncoder
+from tierroute.features import (
+    EmbeddingProvider,
+    PromptFeatureEncoder,
+    extract_surface_features,
+)
+from tierroute.predictors._targets import targets_by_model
 from tierroute.predictors.calibration import (
     IsotonicCalibrator,
     PerModelCalibratedQualityPredictor,
@@ -32,6 +37,11 @@ MAX_GBM_ESTIMATORS = MAX_GBM_STUMPS_PER_MODEL
 MAX_GBM_TRAINING_CELLS = 2_000_000
 MAX_GBM_SPLIT_SCANS = 100_000_000
 MAX_GBM_TOTAL_STUMPS = 65_536
+MAX_GBM_NESTED_BASE_FITS = 4_096
+MAX_GBM_NESTED_PROMPT_BYTE_VISITS = 64 * 1024 * 1024
+# Every non-empty prompt receives at least the fallback ``general`` domain tag,
+# so the fitted surface schema always contains 3 continuous + 2 binary + 1 tag.
+_MIN_GBM_SURFACE_FEATURE_COUNT = 6
 
 
 def _config_float(value: object, name: str) -> float:
@@ -78,12 +88,13 @@ class GbmTrainingConfig:
 
 @dataclass(frozen=True, slots=True)
 class GbmNestedLodoWorkEstimate:
-    """Immutable exact work estimate for one nested-LODO GBM benchmark.
+    """Immutable deterministic work estimate for one nested-LODO GBM benchmark.
 
-    The three per-base-fit tuples follow execution order and make the aggregate
-    auditable. Feature widths are fitted independently because a training subset
-    can expose a different surface-tag vocabulary. An offline embedding provider,
-    when supplied, contributes its declared width but is never asked to embed.
+    Base-fit counts, row visits, and fitted feature widths are exact for the call
+    graph. ``split_scans`` conservatively charges every requested boosting round even
+    when fitting may stop early; ``minimum_split_scans`` is its analytic lower bound.
+    The per-fit tuples follow execution order and make the aggregate auditable. An
+    offline embedding provider contributes its declared width but is never invoked.
     """
 
     domain_count: int
@@ -92,6 +103,9 @@ class GbmNestedLodoWorkEstimate:
     base_fit_count: int
     model_count: int
     estimator_count: int
+    training_row_visits: int
+    prompt_byte_visits: int
+    minimum_split_scans: int
     split_scans: int
     base_fit_sample_counts: tuple[int, ...]
     base_fit_feature_counts: tuple[int, ...]
@@ -105,19 +119,25 @@ class GbmNestedLodoWorkEstimate:
             self.base_fit_count,
             self.model_count,
             self.estimator_count,
+            self.training_row_visits,
         )
         if any(type(value) is not int or value < 1 for value in scalar_counts):
             raise ValueError("nested-LODO GBM work counts must be positive integers")
         if type(self.split_scans) is not int or self.split_scans < 0:
             raise ValueError("nested-LODO GBM split_scans must be a non-negative integer")
+        for name in ("prompt_byte_visits", "minimum_split_scans"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise ValueError(f"nested-LODO GBM {name} must be a non-negative integer")
+        if self.base_fit_count > self.training_row_visits:
+            raise ValueError("base fits cannot exceed nested training-row visits")
+        if self.minimum_split_scans > self.split_scans:
+            raise ValueError("minimum split scans cannot exceed aggregate split scans")
         sample_counts = tuple(self.base_fit_sample_counts)
         feature_counts = tuple(self.base_fit_feature_counts)
         split_scans = tuple(self.base_fit_split_scans)
         if not (
-            len(sample_counts)
-            == len(feature_counts)
-            == len(split_scans)
-            == self.base_fit_count
+            len(sample_counts) == len(feature_counts) == len(split_scans) == self.base_fit_count
         ):
             raise ValueError("nested-LODO GBM base-fit detail lengths must match base_fit_count")
         if any(type(value) is not int or value < 1 for value in (*sample_counts, *feature_counts)):
@@ -180,8 +200,8 @@ def preflight_gbm_fit(
     ):
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             raise ValueError(f"{name} must be a positive integer")
-    if not isinstance(config, GbmTrainingConfig):
-        raise TypeError("config must be a GbmTrainingConfig")
+    if type(config) is not GbmTrainingConfig:
+        raise TypeError("config must be an exact GbmTrainingConfig")
     if target_count > MAX_PREDICTOR_MODELS:
         raise ValueError(
             "GBM target catalogue exceeds the predictor limit "
@@ -230,6 +250,63 @@ def _normalized_gbm_config(config: GbmTrainingConfig | None) -> GbmTrainingConfi
     return config
 
 
+def _embedding_dimension(provider: EmbeddingProvider | None) -> int:
+    if provider is None:
+        return 0
+    dimension = provider.dimension
+    if type(dimension) is not int or dimension < 1:
+        raise ValueError("embedding provider dimension must be a positive integer")
+    return dimension
+
+
+def _nested_lodo_analytic_work(
+    ordered: tuple[EvaluationExample, ...],
+    *,
+    domain_count: int,
+    model_count: int,
+    config: GbmTrainingConfig,
+    embedding_dimension: int,
+) -> tuple[int, int, int, int]:
+    """Compute cheap exact memberships and a safe scan lower bound.
+
+    Every row participates in the same number of base-training subsets even when
+    domains are imbalanced. These checks run before fold construction, preventing
+    the safety check itself from expanding into attacker-controlled ``O(D^3)`` work.
+    """
+
+    base_fit_count = domain_count * ((domain_count - 1) ** 2 + domain_count)
+    if base_fit_count > MAX_GBM_NESTED_BASE_FITS:
+        raise ValueError(
+            "nested-LODO dependency-free GBM base-fit graph exceeds the reviewed limit "
+            f"({base_fit_count:,} > {MAX_GBM_NESTED_BASE_FITS:,})"
+        )
+    membership_multiplier = (domain_count - 1) * (domain_count**2 - 3 * domain_count + 3)
+    training_row_visits = len(ordered) * membership_multiplier
+    split_positions = training_row_visits - base_fit_count
+    minimum_feature_count = _MIN_GBM_SURFACE_FEATURE_COUNT + embedding_dimension
+    minimum_split_scans = (
+        model_count * config.n_estimators * minimum_feature_count * split_positions
+    )
+    if minimum_split_scans > MAX_GBM_SPLIT_SCANS:
+        raise ValueError(
+            "nested-LODO dependency-free GBM minimum split scan exceeds the reviewed limit "
+            f"({minimum_split_scans:,} > {MAX_GBM_SPLIT_SCANS:,})"
+        )
+    prompt_bytes = 0
+    for example in ordered:
+        try:
+            prompt_bytes += len(example.prompt.encode("utf-8"))
+        except UnicodeEncodeError as error:
+            raise ValueError("GBM prompts must contain valid Unicode") from error
+    prompt_byte_visits = prompt_bytes * membership_multiplier
+    if prompt_byte_visits > MAX_GBM_NESTED_PROMPT_BYTE_VISITS:
+        raise ValueError(
+            "nested-LODO dependency-free GBM prompt scan exceeds the reviewed limit "
+            f"({prompt_byte_visits:,} > {MAX_GBM_NESTED_PROMPT_BYTE_VISITS:,} bytes)"
+        )
+    return base_fit_count, training_row_visits, prompt_byte_visits, minimum_split_scans
+
+
 def estimate_nested_lodo_gbm_work(
     examples: Sequence[EvaluationExample],
     *,
@@ -241,12 +318,12 @@ def estimate_nested_lodo_gbm_work(
     For every outer fold, lambda tuning cross-fits one calibrated predictor per
     remaining domain and then fits one final calibrated predictor. Every calibrated
     predictor in turn cross-fits one base GBM per remaining training domain and fits
-    one final base GBM. Schema fitting reads prompts only; no feature transformation
-    or embedding call occurs in this estimator.
+    one final base GBM. Surface tags are extracted once per prompt, and no feature
+    transformation or embedding call occurs in this estimator.
 
-    Individual base-fit resource contracts are checked while enumerating. Use
-    :func:`preflight_nested_lodo_gbm` to additionally enforce the aggregate split-scan
-    limit before either predictor family starts fitting.
+    Closed-form graph, minimum-scan, and repeated-prompt-byte guards run before folds
+    or tags are materialized. Individual and running aggregate resource contracts are
+    then checked while enumerating.
     """
 
     normalized_config = _normalized_gbm_config(config)
@@ -255,12 +332,30 @@ def estimate_nested_lodo_gbm_work(
     domains = tuple(sorted({example.domain for example in ordered}))
     if len(domains) < 4:
         raise ValueError("nested-LODO GBM evaluation requires at least four domains")
+    embedding_dimension = _embedding_dimension(embedding_provider)
+    (
+        expected_base_fit_count,
+        training_row_visits,
+        prompt_byte_visits,
+        minimum_split_scans,
+    ) = _nested_lodo_analytic_work(
+        ordered,
+        domain_count=len(domains),
+        model_count=len(model_ids),
+        config=normalized_config,
+        embedding_dimension=embedding_dimension,
+    )
+    tags_by_example_id = {
+        example.example_id: frozenset(extract_surface_features(example.prompt).domain_tags)
+        for example in ordered
+    }
 
     outer_folds = leave_one_domain_out(ordered)
     calibrated_fit_count = 0
     sample_counts: list[int] = []
     feature_counts: list[int] = []
     split_scans: list[int] = []
+    running_split_scans = 0
 
     for outer_fold in outer_folds:
         outer_training = _ordered_examples(outer_fold.training)
@@ -280,12 +375,11 @@ def estimate_nested_lodo_gbm_work(
             )
             for base_examples in base_training_sets:
                 base_ordered = _ordered_examples(base_examples)
-                encoder = PromptFeatureEncoder.fit(
-                    tuple(example.prompt for example in base_ordered),
-                    embedding_provider=embedding_provider,
-                )
                 sample_count = len(base_ordered)
-                feature_count = encoder.schema.dimension
+                domain_tags = set().union(
+                    *(tags_by_example_id[example.example_id] for example in base_ordered)
+                )
+                feature_count = 5 + len(domain_tags) + embedding_dimension
                 preflight_gbm_fit(
                     sample_count=sample_count,
                     feature_count=feature_count,
@@ -301,6 +395,17 @@ def estimate_nested_lodo_gbm_work(
                 sample_counts.append(sample_count)
                 feature_counts.append(feature_count)
                 split_scans.append(estimated_scans)
+                running_split_scans += estimated_scans
+                if running_split_scans > MAX_GBM_SPLIT_SCANS:
+                    raise ValueError(
+                        "nested-LODO dependency-free GBM split scan exceeds the reviewed limit "
+                        f"({running_split_scans:,} > {MAX_GBM_SPLIT_SCANS:,})"
+                    )
+
+    if len(sample_counts) != expected_base_fit_count:
+        raise AssertionError("nested-LODO GBM call graph differs from its analytic count")
+    if sum(sample_counts) != training_row_visits:
+        raise AssertionError("nested-LODO GBM row visits differ from their analytic count")
 
     return GbmNestedLodoWorkEstimate(
         domain_count=len(domains),
@@ -309,7 +414,10 @@ def estimate_nested_lodo_gbm_work(
         base_fit_count=len(sample_counts),
         model_count=len(model_ids),
         estimator_count=normalized_config.n_estimators,
-        split_scans=sum(split_scans),
+        training_row_visits=training_row_visits,
+        prompt_byte_visits=prompt_byte_visits,
+        minimum_split_scans=minimum_split_scans,
+        split_scans=running_split_scans,
         base_fit_sample_counts=tuple(sample_counts),
         base_fit_feature_counts=tuple(feature_counts),
         base_fit_split_scans=tuple(split_scans),
@@ -392,16 +500,10 @@ def _fit_base(
         len(row) != encoder.schema.dimension for row in feature_rows
     ):
         raise ValueError("encoded feature matrix has an unexpected shape")
-    targets_by_model = {
-        model_id: tuple(
-            next(outcome.quality for outcome in example.outcomes if outcome.model_id == model_id)
-            for example in ordered
-        )
-        for model_id in model_ids
-    }
+    target_columns = targets_by_model(ordered, model_ids)
     models = _fit_gradient_boosted_stumps(
         feature_rows,
-        targets_by_model,
+        target_columns,
         example_ids=tuple(example.example_id for example in ordered),
         n_estimators=config.n_estimators,
         learning_rate=config.learning_rate,
@@ -430,10 +532,7 @@ def fit_calibrated_gbm(
     serialization or route-CLI loading contract.
     """
 
-    if config is None:
-        config = GbmTrainingConfig()
-    elif not isinstance(config, GbmTrainingConfig):
-        raise TypeError("config must be a GbmTrainingConfig or None")
+    config = _normalized_gbm_config(config)
     ordered = _ordered_examples(training_examples)
     model_ids = _model_ids(ordered)
     folds = leave_one_domain_out(ordered)

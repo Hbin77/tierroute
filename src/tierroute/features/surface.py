@@ -7,10 +7,11 @@ import re
 from dataclasses import dataclass
 
 _CODE_PATTERN = re.compile(
-    r"```|(?:^|\n)\s*(?:def|class|function|import|from|SELECT|public static)\b|"
-    r"(?:console\.log|System\.out|#include|</?[a-z][^>]*>)",
+    r"```|(?:^|[\r\n])[^\S\r\n]*(?:def|class|function|import|from|SELECT|public static)\b|"
+    r"(?:console\.log|System\.out|#include)",
     re.IGNORECASE,
 )
+_HTML_TAG_START_PATTERN = re.compile(r"[a-z]", re.IGNORECASE)
 _MATH_PATTERN = re.compile(
     r"\$[^$]+\$|\\(?:frac|sum|int|sqrt|begin)\b|[∑∫√≈≠≤≥]|\b(?:equation|proof|theorem)\b|"
     r"(?:방정식|증명|정리|미분|적분)",
@@ -90,13 +91,35 @@ class SurfaceFeatures:
         )
 
 
+def _contains_html_like_tag(prompt: str) -> bool:
+    """Match the former ``</?[a-z][^>]*>`` alternative in linear time.
+
+    Searching ``[^>]*`` again from every ``<a`` prefix is quadratic when a long
+    prompt contains no closing ``>``. Once a syntactically valid start is found,
+    one forward search is sufficient: without a later ``>``, no subsequent start
+    can match either.
+    """
+
+    offset = 0
+    while True:
+        start = prompt.find("<", offset)
+        if start < 0:
+            return False
+        cursor = start + 1
+        if cursor < len(prompt) and prompt[cursor] == "/":
+            cursor += 1
+        if cursor < len(prompt) and _HTML_TAG_START_PATTERN.fullmatch(prompt[cursor]):
+            return prompt.find(">", cursor + 1) >= 0
+        offset = start + 1
+
+
 def extract_surface_features(prompt: str) -> SurfaceFeatures:
     """Extract deterministic features; character count uses Unicode code points."""
 
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt must be a non-empty string")
 
-    has_code = bool(_CODE_PATTERN.search(prompt))
+    has_code = bool(_CODE_PATTERN.search(prompt)) or _contains_html_like_tag(prompt)
     has_math = bool(_MATH_PATTERN.search(prompt))
     tags = [name for name, pattern in _DOMAIN_PATTERNS if pattern.search(prompt)]
     if has_code and "code" not in tags:

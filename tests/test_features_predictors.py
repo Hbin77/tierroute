@@ -23,6 +23,24 @@ def test_surface_features_detect_korean_math_and_code() -> None:
     assert set(features.domain_tags) >= {"code", "math"}
 
 
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("render <a>link</a>", True),
+        ("render </A data-value='x\ny'>", True),
+        ("plain\rdef example(): pass", True),
+        ("compare <1 and >2", False),
+        ("<a" * 100_000, False),
+        ("\n " * 100_000 + "x", False),
+    ],
+)
+def test_surface_html_code_signal_is_linear_and_compatible(
+    prompt: str,
+    expected: bool,
+) -> None:
+    assert extract_surface_features(prompt).has_code is expected
+
+
 def test_local_embedding_model_never_falls_back_to_network(tmp_path: object) -> None:
     model = LocalEmbeddingModel(tmp_path / "missing")  # type: ignore[operator]
 
