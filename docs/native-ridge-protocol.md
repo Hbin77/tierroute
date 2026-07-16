@@ -178,11 +178,26 @@ separate platform hash, link/import audit, license record, SBOM entry, and offli
 This dense protocol alone does not make full nested LODO efficient. The experimental
 [prepared graph contract](prepared-session-graph.md) now fixes the unique subset/score
 target and modeled numeric-resource admission preflight, but it does not execute that
-graph. A bounded [in-memory reference](prepared-feature-store.md) now accepts
+graph by itself. A bounded [in-memory store](prepared-feature-store.md) accepts
 caller-precomputed prompt embeddings and leakage-tests training-only domain-statistic
-combination, but it does not run a provider, solve, or score the graph. A later scalable
-prepared training session must authenticate offline embedding preparation, consume the
-reference moments, solve coefficients, and batch raw prediction scores. That
-higher-level protocol needs a separate session/training-engine identity, magic, and
-version distinct from the ridge-solver identity, plus end-to-end parity and resource
-proof; it must not overload this single-problem format.
+combination. A separate standard-library-only
+[prepared reference execution](prepared-reference-execution.md) now consumes those
+moments, solves every unique subset, and emits every prescribed raw-score block on
+small synthetic/frozen fixtures.
+
+That Python reference is not an implementation or extension of `TRRIDG01`. It has
+distinct prepared solver/scorer/content identities, performs no subprocess or native
+execution, and promises tolerance-based numerical parity rather than bitwise or
+cross-platform numerical-digest equality. Its empirical residual factor 2,048 is a
+regression corruption/failure guard, not a theorem or universal error bound; it does
+not replace this protocol's separate factor-4,096 C residual check.
+
+A later scalable prepared training session must authenticate offline embedding
+preparation and add persistent/session semantics, aggregate loading and resource
+controls, plus calibration, exact lambda/tie selection, routing-decision, and final
+report parity. Any native form needs a separate session/training-engine identity,
+magic, and version distinct from this single-problem ridge-solver identity, with
+timeout, malformed-frame, digest, path-race, and three-platform artifact/link audits.
+It must not overload version 1. Neither reference execution nor this native protocol
+is evidence of RouterBench/full-dimensional execution, performance, quality retention,
+cost reduction, or production readiness; Issue #9 remains open.

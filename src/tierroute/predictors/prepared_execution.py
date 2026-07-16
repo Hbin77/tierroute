@@ -7,6 +7,12 @@ identity because Welford/Chan moments cannot reproduce the rowwise trainer's
 ``fmean``/``fsum`` operation order bit for bit.  The reference is intentionally
 small: it proves complete-graph coefficient and raw-score wiring on bounded
 fixtures, not scalable RouterBench execution or a native prepared session.
+
+Only the public ``build_*`` functions are supported derivation paths.  Direct
+record construction canonicalizes a caller's self-declared per-record values; it
+is not aggregate admission, provenance, derivation, or authenticity evidence and
+must not be used as an untrusted bundle loader.  Detecting substitution requires
+comparison with a trusted expected digest.
 """
 
 from __future__ import annotations
