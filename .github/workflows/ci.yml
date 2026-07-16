@@ -463,6 +463,7 @@ jobs:
           tests/test_native_binary_audit.py
           tests/test_prepared_files.py
           tests/test_native_prepared.py
+          tests/test_native_prepared_benchmark.py
 
       - name: Build and audit the macOS candidates locally
         if: runner.os == 'macOS'
