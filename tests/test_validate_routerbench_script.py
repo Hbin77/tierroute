@@ -400,7 +400,7 @@ def test_calibration_quotes_are_per_model_maxima() -> None:
 
     quotes = module._maximum_calibration_quotes(selected, model_ids=MODEL_IDS)
 
-    assert {model_id: module.canonical_cost_text(cost) for model_id, cost in quotes.items()} == {
+    assert {model_id: str(cost) for model_id, cost in quotes.items()} == {
         "cheap": "0.16",
         "mid": "0.24",
         "premium": "0.47",
@@ -425,6 +425,35 @@ def test_calibration_quotes_reject_inconsistent_model_catalogue() -> None:
 
     with pytest.raises(ValueError, match="changed the model catalogue"):
         module._maximum_calibration_quotes(selected, model_ids=MODEL_IDS)
+
+
+def test_evaluation_conversion_replaces_external_sample_id_with_surrogate() -> None:
+    module = load_script()
+    row = make_row(
+        "private-external-sample-id",
+        DOMAINS[0],
+        sequence=0,
+        costs=(0.10, 0.20, 0.40),
+    )
+    selected = module._SelectedRouterBenchRow(
+        row_number=17,
+        domain=DOMAINS[0],
+        sample_id=str(row["sample_id"]),
+        rank_sha256="a" * 64,
+        row=row,
+    )
+
+    examples = module._convert_and_preflight_evaluation(
+        (selected,),
+        quoted_costs={
+            "cheap": module.as_cost("0.10"),
+            "mid": module.as_cost("0.20"),
+            "premium": module.as_cost("0.40"),
+        },
+    )
+
+    assert examples[0].example_id == "routerbench-evaluation-0000"
+    assert examples[0].example_id != row["sample_id"]
 
 
 def test_evaluation_quote_overrun_aborts_before_predictor_fit(
@@ -531,14 +560,24 @@ def test_validate_nested_lodo_synthetic_end_to_end_uses_real_benchmark(
     assert document["artifact_written_by_validator"] is False
     assert document["performance_metrics_published"] is False
     assert document["row_level_results_published"] is False
-    assert document["evaluation"]["protocol"] == "true-nested-leave-one-domain-out"
+    assert document["evaluation"]["protocol"] == (
+        "quality-predictor-policy-nested-leave-one-domain-out"
+    )
+    assert document["evaluation"]["quote_tier_calibration_scope"] == (
+        "global-disjoint-all-domain-calibration-pool"
+    )
+    assert document["evaluation"]["end_to_end_domain_shift_claim"] is False
     assert document["evaluation"]["baseline_names"] == list(module.BASELINE_NAMES)
     assert document["evaluation"]["baseline_count"] == 6
     assert document["evaluation"]["fold_count"] == len(DOMAINS)
     assert document["split"]["calibration_example_count"] == 8
     assert document["split"]["evaluation_example_count"] == 8
+    assert document["split"]["benchmark_id_algorithm"] == (
+        module.ROUTERBENCH_SURROGATE_ID_ALGORITHM
+    )
     assert document["quoted_costs"]["evaluation_preflight"] == "passed"
-    assert document["quoted_costs"]["evaluation_quote_overrun_count"] == 0
+    assert document["quoted_costs"]["quote_values_published"] is False
+    assert document["tier_profile"]["budget_values_published"] is False
 
     serialized = json.dumps(document, ensure_ascii=False, sort_keys=True)
     assert "private prompt" not in serialized
@@ -578,6 +617,68 @@ def test_nested_cli_rejects_unsafe_or_ambiguous_combinations(
     assert message in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("json_output", (False, True))
+def test_nested_cli_failure_suppresses_private_exception_and_traceback(
+    json_output: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = load_script()
+    private_id = "private-sample-do-not-publish"
+    private_path = tmp_path / "private-routerbench-location.pkl"
+
+    def fail_with_private_context(_: Path) -> object:
+        raise RuntimeError(f"{private_id} at {private_path}")
+
+    monkeypatch.setattr(module, "validate_nested_lodo", fail_with_private_context)
+    arguments = ["--nested-lodo", "--acknowledge-noassertion"]
+    if json_output:
+        arguments.append("--json")
+
+    with pytest.raises(SystemExit) as captured:
+        module.main(tuple(arguments))
+
+    assert captured.value.code == 1
+    streams = capsys.readouterr()
+    combined = streams.out + streams.err
+    assert private_id not in combined
+    assert str(private_path) not in combined
+    assert "Traceback" not in combined
+    if json_output:
+        failure = json.loads(streams.out)
+        assert failure["execution_status"] == "failed"
+        assert failure["error_detail_published"] is False
+        assert not streams.err
+    else:
+        assert streams.err.startswith(module.ROUTERBENCH_DIAGNOSTIC_WARNING)
+        assert "error_detail_published=false" in streams.err
+        assert not streams.out
+
+
+def test_smoke_cli_failure_suppresses_private_path_and_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    module = load_script()
+    private_path = tmp_path / "private-routerbench-location.pkl"
+    monkeypatch.setattr(
+        module,
+        "validate_and_replay",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError(str(private_path))),
+    )
+
+    with pytest.raises(SystemExit) as captured:
+        module.main(())
+
+    assert captured.value.code == 1
+    streams = capsys.readouterr()
+    assert str(private_path) not in streams.err
+    assert "Traceback" not in streams.err
+    assert not streams.out
+
+
 def test_safe_json_contains_provenance_labels_but_no_private_rows_or_metrics(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -602,11 +703,13 @@ def test_safe_json_contains_provenance_labels_but_no_private_rows_or_metrics(
     assert decoded["budget_profile_official"] is False
     assert decoded["network_used"] is False
     assert decoded["artifact_written_by_validator"] is False
+    assert decoded["error_detail_published"] is False
     assert decoded["performance_metrics_published"] is False
     assert decoded["row_level_results_published"] is False
     assert decoded["evaluation"]["baseline_names"] == list(module.BASELINE_NAMES)
 
     forbidden_keys = {
+        "budget_limit",
         "example_id",
         "gap_recovery",
         "mean_cost",
@@ -644,6 +747,14 @@ def test_safe_human_output_warns_and_suppresses_private_results(
     assert output.startswith(module.ROUTERBENCH_DIAGNOSTIC_WARNING)
     assert "NOASSERTION" in output
     assert "not SKT data and not a competition score" in output
+    for boundary in (
+        "official_skt_data=false",
+        "competition_score=false",
+        "feature_set=surface-only",
+        "bge_m3_used=false",
+        "budget_profile_official=false",
+    ):
+        assert boundary in output
     assert "Performance, cost, gap, route, and row-level results: suppressed" in output
     assert "Validator-created artifact: none; network used: no" in output
     for private_value in (

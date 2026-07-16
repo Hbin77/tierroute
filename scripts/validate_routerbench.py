@@ -8,11 +8,13 @@ import hashlib
 import json
 import math
 import struct
+import sys
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import chain
 from pathlib import Path
+from typing import TextIO
 
 from tierroute.adapters import PerQueryBudgetLedger
 from tierroute.adapters.routerbench import (
@@ -25,7 +27,7 @@ from tierroute.adapters.routerbench import (
     normalize_routerbench_domain,
     routerbench_row_to_example,
 )
-from tierroute.core import BudgetTier, Cost, as_cost, canonical_cost_text
+from tierroute.core import BudgetTier, Cost, as_cost
 from tierroute.eval import EvaluationExample, OfflineSimulator, TierSpec
 from tierroute.policies import (
     BASELINE_NAMES,
@@ -56,6 +58,7 @@ ROUTERBENCH_MAX_LAMBDA_CANDIDATES = 32
 ROUTERBENCH_QUOTE_RULE = "calibration-only-per-model-maximum-realized-cost-v1"
 ROUTERBENCH_TIER_RULE = "sorted-quote-min-median-max-v1"
 ROUTERBENCH_DIAGNOSTIC_SCHEMA = "tierroute-routerbench-local-diagnostic-v1"
+ROUTERBENCH_SURROGATE_ID_ALGORITHM = "source-order-zero-padded-index-v1"
 ROUTERBENCH_DIAGNOSTIC_WARNING = "LOCAL OPTIONAL VALIDATION — NON-OFFICIAL, NON-REPORTABLE"
 _SPLIT_RANK_MAGIC = b"tierroute-routerbench-domain-rank-v1\0"
 _SPLIT_DIGEST_MAGIC = b"tierroute-routerbench-balanced-split-sha256-v1\0"
@@ -460,7 +463,18 @@ def _convert_and_preflight_evaluation(
         )
         if example is None:
             raise ValueError("balanced RouterBench evaluation retained an unmapped row")
-        examples.append(example)
+        # Benchmark internals and their failure messages use only a deterministic
+        # surrogate, never the external dataset's private sample identifier.
+        examples.append(
+            EvaluationExample(
+                example_id=f"routerbench-evaluation-{len(examples):04d}",
+                prompt=example.prompt,
+                domain=example.domain,
+                outcomes=example.outcomes,
+                candidate_models=example.candidate_models,
+                router_metadata=example.router_metadata,
+            )
+        )
     if not examples:
         raise ValueError("RouterBench balanced evaluation produced no examples")
     for example in examples:
@@ -534,6 +548,7 @@ def _diagnostic_document(
         "budget_profile_official": False,
         "network_used": False,
         "artifact_written_by_validator": False,
+        "error_detail_published": False,
         "performance_metrics_published": False,
         "row_level_results_published": False,
         "dataset": {
@@ -554,27 +569,30 @@ def _diagnostic_document(
             "calibration_example_count": len(split.calibration),
             "evaluation_example_count": len(split.evaluation),
             "evaluation_source_order_restored": True,
+            "benchmark_id_algorithm": ROUTERBENCH_SURROGATE_ID_ALGORITHM,
         },
         "quoted_costs": {
             "rule": ROUTERBENCH_QUOTE_RULE,
             "calibration_only": True,
             "evaluation_preflight": "passed",
-            "evaluation_quote_overrun_count": 0,
+            "quote_values_published": False,
         },
         "tier_profile": {
             "rule": ROUTERBENCH_TIER_RULE,
             "official": False,
+            "budget_values_published": False,
             "tiers": [
                 {
                     "tier": spec.tier.value,
-                    "budget_limit": canonical_cost_text(spec.budget_limit),
                     "weight": float(spec.weight),
                 }
                 for spec in tier_specs
             ],
         },
         "evaluation": {
-            "protocol": "true-nested-leave-one-domain-out",
+            "protocol": "quality-predictor-policy-nested-leave-one-domain-out",
+            "quote_tier_calibration_scope": "global-disjoint-all-domain-calibration-pool",
+            "end_to_end_domain_shift_claim": False,
             "predictor_kind": benchmark.predictor_kind,
             "accounting_scope": benchmark.accounting_scope,
             "data_sha256": benchmark.data_sha256,
@@ -715,6 +733,47 @@ def validate_and_replay(path: Path, *, replay_limit: int) -> None:
     print("Dataset license: NOASSERTION; redistribution is not authorized by tierroute.")
 
 
+def _diagnostic_failure_document() -> dict[str, object]:
+    """Return a valid JSON failure envelope without reflecting private exceptions."""
+
+    return {
+        "schema": ROUTERBENCH_DIAGNOSTIC_SCHEMA,
+        "warning": ROUTERBENCH_DIAGNOSTIC_WARNING,
+        "result_status": "diagnostic",
+        "execution_status": "failed",
+        "claim_scope": "external-routerbench-local-only-non-official-non-reportable",
+        "dataset_license": "NOASSERTION",
+        "redistribution_authorized": False,
+        "official_skt_data": False,
+        "competition_score": False,
+        "feature_set": "surface-only",
+        "bge_m3_used": False,
+        "budget_profile_official": False,
+        "network_used": False,
+        "artifact_written_by_validator": False,
+        "error_detail_published": False,
+        "performance_metrics_published": False,
+        "row_level_results_published": False,
+    }
+
+
+def _print_exact_diagnostic_boundaries(*, file: TextIO | None = None) -> None:
+    """Print the mandatory non-official claim labels with machine-readable values."""
+
+    destination = sys.stdout if file is None else file
+    for line in (
+        "dataset_license=NOASSERTION",
+        "redistribution_authorized=false",
+        "official_skt_data=false",
+        "competition_score=false",
+        "feature_set=surface-only",
+        "bge_m3_used=false",
+        "budget_profile_official=false",
+        "network_used=false",
+    ):
+        print(line, file=destination)
+
+
 def _print_nested_diagnostic(document: Mapping[str, object]) -> None:
     """Render a short human-safe view of a validated diagnostic document."""
 
@@ -727,6 +786,7 @@ def _print_nested_diagnostic(document: Mapping[str, object]) -> None:
         raise TypeError("diagnostic document has invalid evaluation evidence")
     print(ROUTERBENCH_DIAGNOSTIC_WARNING)
     print("RouterBench license: NOASSERTION; not SKT data and not a competition score.")
+    _print_exact_diagnostic_boundaries()
     print(f"Verified revision: {dataset['revision']}")
     print(f"SHA-256: {dataset['byte_sha256']}")
     print(f"Semantic SHA-256: {dataset['semantic_sha256']}")
@@ -734,9 +794,35 @@ def _print_nested_diagnostic(document: Mapping[str, object]) -> None:
     print(f"Calibration examples: {split['calibration_example_count']}")
     print(f"Evaluation examples: {split['evaluation_example_count']}")
     print(f"Nested LODO folds: {evaluation['fold_count']}")
+    print("Nested LODO scope: quality predictor and policy evaluation only")
+    print("Quote/tier calibration: global disjoint all-domain pool; end-to-end claim: no")
     print(f"Completed baselines: {evaluation['baseline_count']}")
     print("Performance, cost, gap, route, and row-level results: suppressed")
     print("Validator-created artifact: none; network used: no")
+
+
+def _emit_nested_failure(*, json_output: bool) -> None:
+    """Emit no exception text, local path, prompt, row ID, or traceback."""
+
+    if json_output:
+        print(
+            json.dumps(
+                _diagnostic_failure_document(),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+        )
+        return
+    print(ROUTERBENCH_DIAGNOSTIC_WARNING, file=sys.stderr)
+    _print_exact_diagnostic_boundaries(file=sys.stderr)
+    print("execution_status=failed", file=sys.stderr)
+    print("error_detail_published=false", file=sys.stderr)
+    print(
+        "Diagnostic failure details suppressed; local path and row data omitted.",
+        file=sys.stderr,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -776,9 +862,21 @@ def main(argv: Sequence[str] | None = None) -> None:
             parser.error("--nested-lodo requires --acknowledge-noassertion")
         if args.limit is not None:
             parser.error("--limit cannot be combined with the fixed --nested-lodo scope")
-        document = validate_nested_lodo(args.input)
+        try:
+            document = validate_nested_lodo(args.input)
+        except Exception:
+            _emit_nested_failure(json_output=args.json)
+            raise SystemExit(1) from None
         if args.json:
-            print(json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True))
+            print(
+                json.dumps(
+                    document,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+            )
         else:
             _print_nested_diagnostic(document)
         return
@@ -786,7 +884,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         parser.error("--acknowledge-noassertion is only valid with --nested-lodo")
     if args.json:
         parser.error("--json is only valid with --nested-lodo")
-    validate_and_replay(args.input, replay_limit=200 if args.limit is None else args.limit)
+    try:
+        validate_and_replay(args.input, replay_limit=200 if args.limit is None else args.limit)
+    except Exception:
+        print(
+            "RouterBench smoke validation failed; details and local path suppressed.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
