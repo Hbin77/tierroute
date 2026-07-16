@@ -2,10 +2,9 @@
 
 # Native prepared-session protocol
 
-Status: design-frozen experimental training protocol. It is separate from
-`TRRIDG01`, is not used by routing or quickstart, and is not an approved release
-accelerator until the repository records three-platform build, link, parity, and
-full-shape resource evidence.
+Status: design-frozen experimental training protocol with a bounded public Python
+per-query policy consumer. It is separate from `TRRIDG01`, is not used by routing or
+quickstart, and does not complete issue #9's remaining data, artifact, or platform gates.
 
 The protocol runs the complete prepared solve-and-score graph in one authenticated
 child process. The input feature matrix remains file-backed: the child computes one
@@ -22,6 +21,7 @@ block. It must not materialize the full feature matrix on the C heap.
 | moment solver | `tierroute.prepared-moment-ridge-cholesky-c11-v1` |
 | raw scorer | `tierroute.prepared-raw-dot-product-c11-v1` |
 | result container | `tierroute.prepared-session-result-f64le-v1` |
+| per-query policy benchmark | `tierroute.native-prepared-benchmark-v1` |
 
 The fixed magics are `TRPSTO01`, `TRPSES01`, and `TRPRES01`. These identities do
 not reinterpret the in-memory prepared-store identities or the single-problem
@@ -218,6 +218,71 @@ The norms and residual are accumulated in C `long double`, which a conforming ta
 may implement with the same precision as `double`. This is a corruption/solver-failure
 gate, not the separate cross-implementation parity tolerance.
 
+## Public Python per-query policy consumer
+
+`evaluate_native_prepared_per_query_benchmark` is the supported high-level bridge from
+one authenticated result to the existing learned-policy and six-baseline evidence. It
+requires all of the following:
+
+- an exact, open `NativePreparedSessionResult` that remains owned by the caller;
+- the prepared-store path and trusted `PreparedStoreFileReceipt`, whose whole-file
+  SHA-256 is the external store pin;
+- mandatory `expected_binary_sha256` and `expected_result_sha256` values retained by the
+  caller outside the mutable result object; and
+- exact evaluation examples, tier specifications, and the matching embedding identity
+  or `None` for a surface-only store.
+
+The bridge is deliberately split into two phases.
+
+1. It compares all three external credentials before store authentication or deep
+   evaluation traversal, then rehashes and structurally verifies the current result
+   mapping. It authenticates a private owner-only store snapshot, binds its row keys,
+   prompts, domains, model catalogue, and binary64 targets to the evaluation rows, and
+   consumes coefficient and raw-score views only through exact cell-addressed `at()`
+   reads. No caller callback runs while either mapping is consulted. After the final
+   score and target read, it rehashes the native result, compares the result/binary/store
+   credentials again, hashes the complete store snapshot, and closes the store it owns.
+   The caller-owned native result intentionally remains open, but the bridge does not
+   consult it again.
+2. It runs nested-LODO lambda evaluation, learned replay, and the six baselines using
+   only the owned calibrated snapshot and the fixed `PerQueryBudgetLedger`. The API does
+   not accept a ledger factory and does not expose cumulative or cascade controls.
+
+The returned `NativePreparedBenchmarkResult` is durable evidence, not an mmap lifetime.
+It retains execution and semantic identities, target/calibration lineage, isotonic
+breakpoints, learned evidence, and the six-baseline result. The calibrated destination
+matrices are created in phase one, span the private handoff into phase two, and are
+discarded before return; the returned graph contains no mmap, memoryview, native float
+view, raw-score matrix, target matrix, calibrated-score payload, or private policy-
+snapshot object. Cleanup failure cannot replace the primary authentication or
+consumption error.
+
+Compiled surface-only D4-D7 tests require strict equality with the authoritative rowwise
+learned result and six-baseline result. The D7 fixture has uneven domain counts
+`(1, 2, 1, 3, 2, 1, 2)` and three models. Adversarial tests cover credential fail-order,
+integrity before deep traversal, final external-pin comparison, persistent result
+mutation, bit-exact target mismatch, `at()`-only consumption, store closure before phase
+two, primary-error preservation under cleanup failure, config bounds, and recursive
+return-graph inspection. The focused native run recorded 89 passes. In the locked full
+suite, Python 3.10.19 with pip 26.1.2 recorded 1,044 passes with no skip; Python 3.12.10
+with pip 26.1.2 recorded 1,043 passes plus one expected skip for the locked Python 3.10
+`typing_extensions` compatibility dependency.
+
+High-level admission also binds the controls and the simultaneous owned-data model. The
+candidate cap is an exact integer from 2 through 257, `random_seed` is signed 64-bit, and
+`character_threshold` is a positive signed 64-bit integer; oversized values fail before
+baseline traversal. Direct calibration evidence cannot declare more isotonic points for
+one model than its admitted calibration rows. Because the immutable calibrated byte
+snapshot remains live while the existing evaluator caches unpacked predictor rows,
+modeled `owned_numeric_bytes` is
+`policy.postprocess_numeric_bytes + owned_calibrated_score_bytes + row_index_bytes`.
+This counts the simultaneous additional calibrated payload copy but still excludes
+Python tuple/object and allocator overhead.
+
+The baseline constructor/evidence term uses six reports times a conservative 32
+bookkeeping units per retained tier/query row, or `192 * tier_count * example_count`;
+these are modeled accounting units rather than measured CPU operations.
+
 ## Aggregate admission
 
 Both Python and C use checked unsigned arithmetic before mmap, large allocation, or
@@ -258,8 +323,15 @@ or overlong streams, nonce/shape/config/binary lineage mismatch, contradictory
 status/exit pairs, timeout, crash, and bounded-output overflow. POSIX owner-only temp
 directories and ordinary Windows user temp ACLs do not sandbox a malicious process
 running as the same user. Mapped drives and mounted network filesystems are caller
-responsibilities.
+responsibilities. Persistent mutation and credential replacement are checked before and
+after policy consumption. Concurrent same-process code that deliberately mutates and
+restores result-object credentials between checks, or reaches private file descriptors
+to flip and restore bytes within one locked read, is outside this in-process evidence
+model.
 
 Parity is tolerance-based. Byte-identical coefficients across compiler/CPU platforms
-are not promised. Full RouterBench/bge-m3 execution, quality retention, cost savings,
-or production readiness remain unproven until separately measured and recorded.
+are not promised. The strict D4-D7 policy equality above applies only to the named
+surface-only fixtures. It is not evidence for external or official data, an all-domain
+artifact, a shipped command or trainer, quality retention, cost savings, performance, or
+production readiness. [Issue #9](https://github.com/Hbin77/tierroute/issues/9) remains
+open.

@@ -18,7 +18,8 @@ quality and exact quote-error metrics, leakage-aware calibrated bilinear trainin
 an in-memory deterministic GBM reference trainer, paired descriptive family estimation,
 exact tier-lambda tuning, strict v1 bilinear-predictor/policy artifacts, a bounded
 prepared moment-solve/raw-score reference, an experimental authenticated file-backed
-prepared C11 solve/score session, and an external-data-free demo are implemented.
+prepared C11 solve/score session with a bounded per-query policy-benchmark bridge, and
+an external-data-free demo are implemented.
 The CLI selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
@@ -362,6 +363,22 @@ coefficient and raw-score block and remains mmap-backed until its context is clo
 These hashes authenticate exact bytes only against trusted expected values; they do not
 approve provenance, a compiler, or network behavior.
 
+The public Python entry point
+[`evaluate_native_prepared_per_query_benchmark`](src/tierroute/policies/native_prepared_benchmark.py)
+consumes an already authenticated, open `NativePreparedSessionResult` owned by its
+caller. The caller must also supply separately retained expected binary and result-file
+SHA-256 values and the trusted prepared-store receipt; the receipt's whole-file digest is
+the external store pin. Phase one compares those credentials before deep evaluation
+traversal, rehashes the current result mapping, authenticates an owner-only prepared-store
+snapshot, and reads native numeric views cell-by-cell through `at()`. It builds a bounded
+owned calibrated snapshot without invoking caller code, reauthenticates both inputs after
+the last mapped read, closes the store snapshot it owns, and stops consulting the still-
+open caller-owned result. Phase two uses only the owned snapshot with the fixed
+`PerQueryBudgetLedger` to run nested-LODO lambda evaluation and the six baselines. No
+caller-supplied ledger, cumulative accounting, or cascade control enters this API. The
+durable result retains calibration parameters and content identities, but no mmap,
+native view, raw-score matrix, target matrix, or calibrated-score payload.
+
 The project-owned source is dependency-free and included only in the sdist; no prepared
 binary or native source enters the wheel. A source-checkout helper uses an explicit
 absolute compiler path and never searches `PATH` or downloads anything:
@@ -371,10 +388,11 @@ python scripts/build_native_prepared.py \
   --compiler /absolute/path/to/clang \
   --output /absolute/new/path/tierroute-prepared
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
-  tests/test_prepared_files.py tests/test_native_prepared.py
+  tests/test_prepared_files.py tests/test_native_prepared.py \
+  tests/test_native_prepared_benchmark.py
 ```
 
-This is a Python API/test path, not a `tierroute train`, benchmark, or routing CLI path.
+This is a Python API/test path and is not wired to a `tierroute` command.
 Local Darwin evidence establishes actual D4-D7 coefficient/raw-score parity with the
 complete Python reference on small surface-only fixtures and completion of a
 `D4/N8/d1036/M1` synthetic corpus containing all 12 surface and 1,024 embedding
@@ -388,6 +406,22 @@ implementation at `ffa8b8059985298df9d1cf0feec20374589afc1c`; its
 [merged-main CI](https://github.com/Hbin77/tierroute/actions/runs/29537633261) compile,
 test, and link/import-audit ephemeral source-built candidates on macOS and Windows.
 Those jobs are source-portability evidence, not distributable release-artifact approval.
+
+The current high-level native-policy tests add surface-only D4, D5, D6, and D7 coverage.
+They require strict equality with the authoritative rowwise learned result and the same
+six-baseline result, including folds, selected calls, budgets, and evidence identities.
+The D7 fixture is deliberately uneven, with domain row counts `(1, 2, 1, 3, 2, 1, 2)`
+and three models. Adversarial cases require external binary/result/store credential
+failure before store authentication, result integrity before deep evaluation traversal,
+a final result-pin comparison after the last mapped read, persistent-mutation rejection,
+bit-exact target matching, `at()`-only native-view access, owned-store closure before
+learned or baseline replay, preservation of the primary error when cleanup also fails,
+and a returned object graph without mapped views or score payloads. The focused native
+run recorded 89 passes. In the locked full suite, Python 3.10.19 with pip 26.1.2 recorded
+1,044 passes with no skip; Python 3.12.10 with pip 26.1.2 recorded 1,043 passes and one
+expected skip for the locked Python 3.10 `typing_extensions` compatibility dependency.
+Remote CI for this policy slice has not run. This is bounded software evidence over
+project-authored fixtures, not an external benchmark result.
 
 Only the public builder functions are supported derivation paths. Direct leaf-dataclass
 construction validates a self-declared canonical record; it is not an aggregate loader,
@@ -405,16 +439,16 @@ by the bounded in-memory feature-store, statistics, and reference-execution caps
 separate file/native preflight admits its aggregate shape, but that is not materialized
 execution, numerical parity, or benchmark evidence.
 
-These references perform no provider inference or file I/O and make no performance,
-quality, or cost-reduction claim. The policy bridge is bounded in-memory proof code, not
-CLI/runtime integration, integration with the separate native prepared session, an
-all-domain deployable artifact, or a replacement for the default trainer. Tolerance-close raw
-scores are not guaranteed to preserve every PAV partition or exact decision; official-
-data parity must compare and fail closed rather than introduce an epsilon. Numeric
-digests remain local evidence, not a cross-platform promise. The prepared native slice
-also has no bge-m3 provider, official or RouterBench data, calibration/lambda/report
-bridge, all-domain artifact, prepared six-baseline wrapper, or quality/cost/performance
-claim. [Issue
+The in-memory references perform no provider inference or file I/O. The native slice now
+connects authenticated file-backed scores to calibration, lambda evaluation, the learned
+report, and all six baselines through the bounded public Python API above. That connection
+is fixed to per-query accounting and project-authored fixtures; it does not create an
+all-domain deployable artifact or alter a shipped command or trainer. Tolerance-close raw
+scores are not guaranteed to preserve every PAV partition or exact decision on a new
+dataset, so any later data-specific parity check must compare directly and fail closed
+rather than introduce an epsilon. Numeric digests remain local evidence, not a cross-
+platform promise. No bge-m3, official-data, RouterBench, quality, cost-reduction, or
+performance result follows from this bridge. [Issue
 #9](https://github.com/Hbin77/tierroute/issues/9) therefore remains open.
 
 Full training with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total
@@ -505,6 +539,12 @@ dependency-free because it uses only stored coefficients.
   also passes ephemeral source compile/test/link audits on macOS and Windows.
   Official-shape execution, policy/CLI integration, Linux-musl and distributable
   release-artifact audits, and performance claims are not implemented.
+- A public experimental Python bridge consumes a caller-owned open native result plus
+  mandatory external binary/result/store pins in two phases. It closes its owned store
+  snapshot before running fixed per-query nested-LODO learned replay and all six
+  baselines, and returns payload-free evidence. Surface-only D4-D7 fixtures, including
+  an uneven three-model D7 case, strictly match the complete rowwise benchmark result;
+  credential, mutation, access-path, cleanup, and return-graph tests fail closed.
 - A report-shaped per-query benchmark CLI compares that nested-LODO learned router
   against all six baselines on one identical evaluation scope and publishes compact,
   versioned outer-fold membership digests.
@@ -834,10 +874,12 @@ and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model 
 Full training at up to 1,036 total features remains gated on the provider, all-domain
 prepared/policy integration, official-shape execution, and three-platform release-
 artifact checks above.
-The native prepared slice proves small D4-D7 surface-only parity and one unprojected
-1,036-feature synthetic completion, while the full official tuple is preflight-only;
-none is evidence that the complete nested experiment has run. Embedding dimensions
-will not be silently projected away.
+The native prepared slice proves small D4-D7 surface-only solve/score parity, and the
+bounded policy consumer proves strict D4-D7 rowwise learned-plus-six-baseline parity,
+including an uneven three-model D7 fixture. One separate 1,036-feature synthetic session
+completes without projection, while the full official tuple is preflight-only; none is
+evidence that the complete nested experiment has run. Embedding dimensions will not be
+silently projected away.
 
 SK Telecom challenge data is likewise excluded until its license and redistribution
 terms are confirmed in writing.
