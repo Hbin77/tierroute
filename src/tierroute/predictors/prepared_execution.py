@@ -908,17 +908,16 @@ class PreparedScoredFeatureShardBundle:
                 or shard.embedding_identity != self.embedding_identity
             ):
                 raise ValueError("feature shard does not match its canonical domain position")
-        total_row_key_bytes = sum(
-            len(example_id.encode("utf-8")) + len(prompt_sha256)
-            for shard in self.shards
+        total_row_key_bytes = 0
+        for shard in self.shards:
             for example_id, prompt_sha256 in zip(
                 shard.example_ids,
                 shard.prompt_sha256s,
                 strict=True,
-            )
-        )
-        if total_row_key_bytes > MAX_PREPARED_REFERENCE_TEXT_UTF8_BYTES:
-            raise ValueError("feature-shard row keys exceed the reference text-byte limit")
+            ):
+                total_row_key_bytes += len(example_id.encode("utf-8")) + len(prompt_sha256)
+                if total_row_key_bytes > MAX_PREPARED_REFERENCE_TEXT_UTF8_BYTES:
+                    raise ValueError("feature-shard row keys exceed the reference text-byte limit")
         previous_example_id: str | None = None
         row_key_count = 0
         for example_id in heapq.merge(*(shard.example_ids for shard in self.shards)):

@@ -605,6 +605,47 @@ def test_excluded_target_and_prompt_mutations_remain_local_to_expected_outputs()
     assert original_scores.blocks[block_index].sha256 != prompt_scores.blocks[block_index].sha256
 
 
+def test_domain_omitted_from_training_and_scoring_does_not_change_the_leaf_block() -> None:
+    original_context = _context(_examples(), embedding_dimension=0)
+    changed_context = _context(
+        _mutate_domain(
+            _examples(),
+            "delta",
+            prompt="Unrelated changed prompt with Python and equations:\nimport decimal",
+            quality_delta=0.375,
+        ),
+        embedding_dimension=0,
+    )
+    original_coefficients, original_scores = _build_execution(original_context)
+    changed_coefficients, changed_scores = _build_execution(changed_context)
+    plan = original_context.store.plan
+    alpha_index = plan.domains.index("alpha")
+    bravo_index = plan.domains.index("bravo")
+    subset_index = next(
+        index
+        for index, subset in enumerate(plan.training_subsets)
+        if subset.domain_indices == (alpha_index,)
+    )
+    block_index = next(
+        index
+        for index, block in enumerate(plan.score_blocks)
+        if block.training_subset_index == subset_index and block.scored_domain_index == bravo_index
+    )
+
+    assert original_coefficients.blocks[subset_index].sha256 == (
+        changed_coefficients.blocks[subset_index].sha256
+    )
+    assert original_scores.feature_shards.shards[bravo_index].sha256 == (
+        changed_scores.feature_shards.shards[bravo_index].sha256
+    )
+    assert original_scores.blocks[block_index].sha256 == (changed_scores.blocks[block_index].sha256)
+    assert original_scores.blocks[block_index].scores_payload == (
+        changed_scores.blocks[block_index].scores_payload
+    )
+    assert original_coefficients.sha256 != changed_coefficients.sha256
+    assert original_scores.sha256 != changed_scores.sha256
+
+
 def test_direct_execution_records_reject_malformed_payloads_and_bundle_reordering() -> None:
     context = _context(_examples(), embedding_dimension=_EMBEDDING_DIMENSION)
     coefficients, scores = _build_execution(context)
@@ -755,7 +796,17 @@ class _BytesSubclass(bytes):
 
 @pytest.mark.parametrize(
     "ridge",
-    [True, math.nan, math.inf, -math.inf, 0.0, -0.0, -1.0, _FloatSubclass(1.0)],
+    [
+        True,
+        math.nan,
+        math.inf,
+        -math.inf,
+        0.0,
+        -0.0,
+        -1.0,
+        _FloatSubclass(1.0),
+        _IntSubclass(1),
+    ],
 )
 def test_coefficient_builder_rejects_invalid_ridge_before_combination(
     ridge: object,
@@ -873,6 +924,43 @@ def test_subset_validation_and_hash_work_are_included_in_aggregate_preflight() -
         execution_module._execution_estimate(coordinate_plan, coordinate_widths)
 
 
+def test_score_decode_encode_work_crosses_the_aggregate_cap() -> None:
+    plan = build_prepared_nested_lodo_plan(
+        ("alpha", "bravo", "charlie", "delta"),
+        (629, 629, 629, 628),
+        feature_count=185,
+        target_count=4,
+    )
+    widths = (178,) * len(plan.training_subsets)
+    values = execution_module._estimate_execution_values(plan, widths)
+
+    assert values["score_decode_encode_work_units"] == 19_136_635
+    assert values["total_work_units"] - values["score_decode_encode_work_units"] == (97_276_353)
+    assert values["total_work_units"] == 116_412_988
+    with pytest.raises(ValueError, match="aggregate work limit"):
+        execution_module._execution_estimate(plan, widths)
+
+
+def test_numeric_payload_validation_and_hash_work_crosses_the_aggregate_cap() -> None:
+    plan = build_prepared_nested_lodo_plan(
+        ("alpha", "bravo", "charlie", "delta"),
+        (62_949, 62_949, 62_949, 62_948),
+        feature_count=12,
+        target_count=1,
+    )
+    widths = (12,) * len(plan.training_subsets)
+    values = execution_module._estimate_execution_values(plan, widths)
+
+    assert values["numeric_payload_work_units"] == (
+        4 * values["coefficient_cells"] + 2 * values["score_cells"]
+    )
+    assert values["numeric_payload_work_units"] == 3_525_858
+    assert values["total_work_units"] - values["numeric_payload_work_units"] == 99_999_981
+    assert values["total_work_units"] == 103_525_839
+    with pytest.raises(ValueError, match="aggregate work limit"):
+        execution_module._execution_estimate(plan, widths)
+
+
 def test_score_rows_are_streamed_and_joined_by_preserved_example_ids() -> None:
     context = _context(_examples(), embedding_dimension=0)
     _, scores = _build_execution(context)
@@ -985,7 +1073,17 @@ def test_every_execution_payload_requires_exact_bytes(payload_name: str) -> None
 
 @pytest.mark.parametrize(
     "ridge",
-    [True, math.nan, math.inf, -math.inf, 0.0, -0.0, -1.0, _FloatSubclass(1.0)],
+    [
+        True,
+        math.nan,
+        math.inf,
+        -math.inf,
+        0.0,
+        -0.0,
+        -1.0,
+        _FloatSubclass(1.0),
+        _IntSubclass(1),
+    ],
 )
 def test_direct_coefficient_records_reject_invalid_ridge(ridge: object) -> None:
     context = _context(_examples(), embedding_dimension=0)
