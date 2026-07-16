@@ -373,10 +373,12 @@ protocol.
   Its `NOASSERTION` license and global all-domain quote/tier calibration prevent using
   it as a public result, an end-to-end domain-shift claim, or a paper reproduction.
 - A project-owned C11 sidecar for one bounded dense ridge solve is implemented and
-  parity-tested, but a local bge-m3 provider and the prepared session needed to reuse
-  domain statistics/factorizations across the complete nested run are not shipped at
-  the time of this outline. The sidecar alone is not evidence of a full-dimensional
-  RouterBench experiment.
+  parity-tested. A smaller bounded in-memory reference now canonicalizes fit rows,
+  computes per-domain Welford moments, and leakage-tests included-domain Chan
+  combinations, but it neither runs an embedding provider nor solves or scores the
+  prepared graph. A local bge-m3 provider and scalable persistent prepared execution
+  session are still not shipped. Neither the sidecar nor the reference alone is
+  evidence of a full-dimensional RouterBench experiment.
 - A cumulative-budget comparison needs a sequence-level oracle; summing independent
   per-query oracle choices is invalid.
 - Cascade remains disabled until sequential calls and their accounting are confirmed.

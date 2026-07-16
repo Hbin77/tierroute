@@ -2,9 +2,10 @@
 
 # Prepared nested-LODO graph contract
 
-Status: experimental graph enumeration and resource preflight only. No prepared
-feature store, sufficient-statistics builder, native session protocol, cache, or
-execution path is implemented by this contract.
+Status: experimental graph enumeration and resource preflight. A separate bounded
+[in-memory feature-store and sufficient-statistics reference](prepared-feature-store.md)
+now exercises this graph, but no native session protocol, persistent cache, or
+prepared execution path is implemented.
 
 ## Scope
 
@@ -20,6 +21,12 @@ from `RidgeSolver`, predictor artifacts, and the native dense-ridge protocol. Th
 planner accepts exact immutable tuples, keeps each domain/count pair together, sorts
 the pairs by Python string order, and assigns mask bits from that canonical catalogue.
 It never reads examples, prompts, embeddings, targets, or model outputs.
+
+`tierroute.predictors.prepared_store` is an experimental consumer of this contract. It
+adds canonical in-memory fit rows, training-only dynamic tags and population scaling,
+and per-domain Welford/Chan moments. It does not change the planner or default training
+path; its exact trust boundary and smaller Python reference caps are documented
+separately.
 
 This scope supports four through seven domains and covers nested evaluation only.
 Training one final deployable predictor on all domains would add one all-domain base
@@ -120,14 +127,16 @@ resource review.
 The graph rejects non-exact container/scalar types, duplicate or invalid Unicode
 domains, non-positive counts or dimensions, malformed node relationships, and any
 resource estimate beyond the reviewed limits. It does not authenticate a row store or
-prove training-data isolation by itself.
+prove training-data isolation by itself. The
+[prepared feature-store reference](prepared-feature-store.md) now tests canonical
+fit-content identity and subset isolation, but its digests are not authenticity or
+provenance evidence.
 
-A future prepared session still needs all of the following:
+A future prepared execution session still needs all of the following:
 
-- a descriptor-stable feature store bound to exact row, feature, model, configuration,
-  ridge, embedding, and source digests;
-- training-subset-only dynamic tag vocabularies and population scaling;
-- stable per-domain sufficient statistics and batched scoring;
+- a persistent descriptor/session protocol and cache bound to the in-memory reference
+  identities;
+- coefficient solving and batched scoring from the prepared subset statistics;
 - coefficient, raw-score, isotonic-calibrator, lambda, and final-report parity against
   the existing nested path, including near-tie adversarial cases;
 - a separate protocol identity and magic rather than overloading `TRRIDG01` version 1;

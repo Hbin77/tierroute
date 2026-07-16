@@ -222,6 +222,7 @@ known solver ID never substitutes for its absolute path and exact binary hash.
   [`predictors/_ridge.py`](../src/tierroute/predictors/_ridge.py),
   [`predictors/solvers.py`](../src/tierroute/predictors/solvers.py),
   [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py),
+  [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py),
   [`predictors/native_ridge.py`](../src/tierroute/predictors/native_ridge.py),
   [`native/tierroute_ridge.c`](../native/tierroute_ridge.c),
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
@@ -238,9 +239,11 @@ known solver ID never substitutes for its absolute path and exact binary hash.
   [`test_ridge_solver.py`](../tests/test_ridge_solver.py), and
   [`test_predictor_artifacts.py`](../tests/test_predictor_artifacts.py), plus
   [`test_native_ridge.py`](../tests/test_native_ridge.py) and
-  [`test_prepared_graph.py`](../tests/test_prepared_graph.py)
+  [`test_prepared_graph.py`](../tests/test_prepared_graph.py), plus
+  [`test_prepared_store.py`](../tests/test_prepared_store.py)
 - Design context: [lambda/training design](lambda-tuning.md) and
-  [prepared graph contract](prepared-session-graph.md), plus the
+  [prepared graph contract](prepared-session-graph.md), the
+  [prepared feature-store reference](prepared-feature-store.md), plus the
   [native ridge protocol](native-ridge-protocol.md)
 
 Owner questions:
@@ -270,9 +273,11 @@ Owner questions:
 10. Derive why a single 1,024-feature solve does not make 301-fit nested LODO feasible.
     Why does the prepared contract enumerate 63 unique training subsets, 154 score
     blocks, and `22N` scored-row memberships for seven-domain nested evaluation?
-11. Why is the prepared feature-cache estimate binary64? Explain why silently changing
-    it to binary32 would require calibrator, lambda, and final-report parity, and name
-    the feature-store, leakage, native-session, and platform evidence still missing.
+11. Why is the prepared feature cache binary64? Trace the caller-checked source and
+    precomputed-embedding digests, fixed 12+E raw layout, per-domain Welford moments,
+    included-domain Chan combination, and dynamic-tag isolation. Why is this not yet
+    bitwise parity with the row trainer, and which provider, persistent-session,
+    coefficient/score/calibrator/lambda/report, and platform gates remain?
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -414,7 +419,7 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity and macOS link evidence; no binary in the wheel | Explicit local opt-in only; Linux-musl and Windows-MSVC release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph and binary64 modeled numeric-resource preflight exist; no graph execution or cache exists | Authenticated raw-feature session, sufficient statistics, batched scores, leakage/noninterference and end-to-end parity, three-platform audits, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph plus a smaller bounded in-memory raw-feature/Welford/Chan reference with caller-checked source/embedding identities and subset-isolation tests exist; no provider, persistent session, solve, score, or scalable execution path exists | Audited offline local provider, scalable persistent prepared session, coefficient and batched-score execution, coefficient-to-report parity including near ties, three-platform audits, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |

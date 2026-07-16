@@ -9,14 +9,29 @@ the public API is pre-1.0.
 
 ### Added
 
+- A bounded, standard-library-only prepared feature-store reference that canonicalizes
+  fit-relevant source rows and caller-precomputed embeddings into immutable
+  little-endian binary64 payloads, requires caller-supplied expected source/embedding
+  content digests, and binds the complete layout with versioned SHA-256 identities;
+  independent trust in those expected values remains the caller's responsibility. It
+  computes per-domain centered Welford moments and combines only graph-included domains
+  with Chan arithmetic, preserving training-only dynamic tags and population scaling.
+  The surface extractor now publishes its versioned algorithm identity and fixed sorted
+  seven-tag catalogue so a semantic layout change cannot silently reuse an old digest.
+  Adversarial tests cover canonical permutations, uneven domains, excluded-domain
+  noninterference, signed-zero/non-finite/truncated/tampered payloads, semantic digest
+  fields, direct constructors, and fail-before-traversal resource limits. This
+  experimental path performs no provider inference, file I/O, solve, scoring,
+  calibration, or routing; its arithmetic has not passed coefficient-to-report parity
+  against the default trainer and makes no performance claim.
 - An experimental, standard-library-only prepared nested-LODO graph contract that
   canonicalizes domain/count pairs, enumerates the exact unique base-training subsets
   and held-out score blocks, and rejects closed-form count, byte, and work estimates
   before combination expansion. At the reviewed seven-domain shape it represents the
   reuse target underlying 301 logical base fits as a 63-subset/154-block graph with
   `22N` scored-row memberships. The modeled numeric buffers retain binary64 feature
-  semantics. No feature store, sufficient-statistics builder, native session, cache,
-  execution integration, dependency, or performance claim is added.
+  semantics. The graph contract itself has no native session, persistent cache,
+  execution integration, dependency, or performance claim.
 - An experimental project-owned Apache-2.0 C11 centered-ridge sidecar, fixed
   little-endian protocol, no-download/PATH-discovery build helper, and authenticated
   Python process adapter. Count/byte/allocation/work preflight and bounded 16-MiB
