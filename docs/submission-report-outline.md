@@ -199,8 +199,9 @@ flowchart LR
   and semantic scope, then runs the surface-only learned router and all six baselines
   on one shared local evaluation scope. It emits provenance, configuration, and
   completion evidence only; it publishes no metric, cost value, route, row, prompt,
-  output, prediction, model, or result artifact. RouterBench remains `NOASSERTION`,
-  local-only, non-SKT, non-official, non-reportable, and without `bge-m3`.
+  output, or prediction value and writes no converted dataset, prediction, learned
+  model, or result artifact. RouterBench remains `NOASSERTION`, local-only, non-SKT,
+  non-official, non-reportable, and without `bge-m3`.
 - Predictor fitting, lambda tuning, learned replay, and the domain-table baseline use
   nested LODO in that diagnostic, but quote/tier calibration uses a separate disjoint
   pool spanning all seven domains. The complete diagnostic is therefore not an
