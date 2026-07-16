@@ -19,12 +19,15 @@ from tierroute.policies.baselines import (
     RandomRouter,
 )
 from tierroute.policies.benchmark import (
+    BILINEAR_PREDICTOR_KIND,
     FOLD_MEMBERSHIP_HASH_ALGORITHM,
+    GBM_PREDICTOR_KIND,
     BenchmarkBaselineConfig,
     BenchmarkLambdaSearchConfig,
     OuterFoldMembershipDigest,
     PerQueryNestedLodoBenchmark,
     evaluate_per_query_bilinear_benchmark,
+    evaluate_per_query_gbm_benchmark,
 )
 from tierroute.policies.lambda_artifacts import (
     LAMBDA_NUMERIC_CONVENTION,
@@ -56,13 +59,24 @@ from tierroute.policies.lambda_tuning import (
     preflight_lambda_search,
     tune_tier_lambdas,
 )
+from tierroute.policies.predictor_comparison import (
+    COMPARISON_DIRECTION,
+    PAIRED_SELECTION_PROTOCOL,
+    HeldOutDomainPredictorDelta,
+    PairedPredictorComparison,
+    evaluate_per_query_paired_predictor_comparison,
+)
 
 __all__ = [
     "BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM",
     "BASELINE_NAMES",
+    "BILINEAR_PREDICTOR_KIND",
+    "COMPARISON_DIRECTION",
     "FOLD_MEMBERSHIP_HASH_ALGORITHM",
+    "GBM_PREDICTOR_KIND",
     "LAMBDA_NUMERIC_CONVENTION",
     "LAMBDA_POLICY_ARTIFACT_VERSION",
+    "PAIRED_SELECTION_PROTOCOL",
     "AlwaysCheapestRouter",
     "AlwaysPremiumRouter",
     "BaselineResult",
@@ -71,6 +85,7 @@ __all__ = [
     "CrossFittedPredictionTable",
     "DomainBestRouter",
     "DomainTableEntry",
+    "HeldOutDomainPredictorDelta",
     "LambdaCandidateSet",
     "LambdaInput",
     "LambdaPolicyArtifact",
@@ -82,6 +97,7 @@ __all__ = [
     "OuterFoldBaselineEvidence",
     "OuterFoldLambdaResult",
     "OuterFoldMembershipDigest",
+    "PairedPredictorComparison",
     "PerQueryNestedLodoBenchmark",
     "RandomRouter",
     "TierLambdaSelection",
@@ -92,7 +108,9 @@ __all__ = [
     "cross_fitted_prediction_table",
     "derive_lambda_candidate_set",
     "evaluate_per_query_bilinear_benchmark",
+    "evaluate_per_query_gbm_benchmark",
     "evaluate_per_query_lodo_baselines",
+    "evaluate_per_query_paired_predictor_comparison",
     "exact_lambda_candidates",
     "fit_tiered_lambda_router_for_fold",
     "nested_lodo_lambda_evaluation",

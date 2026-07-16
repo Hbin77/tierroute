@@ -27,9 +27,15 @@ from tierroute.policies.baseline_evaluation import (
 )
 from tierroute.policies.lambda_tuning import (
     NestedLodoLambdaResult,
+    PredictorTrainer,
     nested_lodo_lambda_evaluation,
 )
 from tierroute.predictors.base import QualityPredictor
+from tierroute.predictors.gbm_training import (
+    GbmTrainingConfig,
+    fit_calibrated_gbm,
+    preflight_nested_lodo_gbm,
+)
 from tierroute.predictors.training import (
     BilinearTrainingConfig,
     fit_calibrated_bilinear,
@@ -54,6 +60,10 @@ DOMAIN_TABLE_FIT_RULE = (
 )
 BASELINE_RANDOM_SEED = 2026
 BASELINE_CHARACTER_THRESHOLD = 120
+BILINEAR_PREDICTOR_KIND = "calibrated-bilinear-surface-v1"
+GBM_PREDICTOR_KIND = "calibrated-gbm-regression-stumps-surface-v1"
+
+TrainingConfig = BilinearTrainingConfig | GbmTrainingConfig
 
 
 class _DigestWriter(Protocol):
@@ -225,7 +235,7 @@ class PerQueryNestedLodoBenchmark:
     baselines: LodoSixBaselineEvaluation
     data_sha256: str
     replay_sha256: str
-    training_config: BilinearTrainingConfig
+    training_config: TrainingConfig
     lambda_search_config: BenchmarkLambdaSearchConfig
     baseline_config: BenchmarkBaselineConfig = field(init=False)
     learned_gap_recovery: float | None = field(init=False)
@@ -236,15 +246,23 @@ class PerQueryNestedLodoBenchmark:
     model_ids: tuple[str, ...] = field(init=False)
     fold_memberships: tuple[OuterFoldMembershipDigest, ...] = field(init=False)
     accounting_scope: str = field(default="per-query", init=False)
-    predictor_kind: str = field(default="calibrated-bilinear-surface-v1", init=False)
+    predictor_kind: str = field(init=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.learned, NestedLodoLambdaResult):
             raise TypeError("learned must be a NestedLodoLambdaResult")
         if not isinstance(self.baselines, LodoSixBaselineEvaluation):
             raise TypeError("baselines must be a LodoSixBaselineEvaluation")
-        if not isinstance(self.training_config, BilinearTrainingConfig):
-            raise TypeError("training_config must be a BilinearTrainingConfig")
+        config_type = type(self.training_config)
+        if config_type is BilinearTrainingConfig:
+            predictor_kind = BILINEAR_PREDICTOR_KIND
+        elif config_type is GbmTrainingConfig:
+            predictor_kind = GBM_PREDICTOR_KIND
+        else:
+            raise TypeError(
+                "training_config must be an exact BilinearTrainingConfig or "
+                "GbmTrainingConfig"
+            )
         if not isinstance(self.lambda_search_config, BenchmarkLambdaSearchConfig):
             raise TypeError("lambda_search_config must be a BenchmarkLambdaSearchConfig")
         baseline_config = BenchmarkBaselineConfig(
@@ -407,6 +425,7 @@ class PerQueryNestedLodoBenchmark:
         object.__setattr__(self, "model_ids", model_ids)
         object.__setattr__(self, "fold_memberships", fold_memberships)
         object.__setattr__(self, "baseline_config", baseline_config)
+        object.__setattr__(self, "predictor_kind", predictor_kind)
 
     @property
     def baseline_by_name(self) -> Mapping[str, BaselineResult]:
@@ -415,39 +434,25 @@ class PerQueryNestedLodoBenchmark:
         return MappingProxyType({row.name: row for row in self.baselines.baselines})
 
 
-def evaluate_per_query_bilinear_benchmark(
-    examples: Sequence[EvaluationExample],
-    tier_specs: Sequence[TierSpec],
+def _evaluate_per_query_benchmark(
+    ordered: tuple[EvaluationExample, ...],
+    specs: tuple[TierSpec, ...],
     *,
-    config: BilinearTrainingConfig | None = None,
-    max_candidates_per_tier: int | None = None,
-    allow_large_exhaustive: bool = False,
+    config: TrainingConfig,
+    train_predictor: PredictorTrainer,
+    max_candidates_per_tier: int | None,
+    allow_large_exhaustive: bool,
+    baselines: LodoSixBaselineEvaluation | None = None,
 ) -> PerQueryNestedLodoBenchmark:
-    """Evaluate calibrated bilinear routing and six baselines on one exact scope.
+    """Evaluate one fixed predictor family, optionally reusing baseline evidence."""
 
-    Four domains are the minimum for this concrete trainer: each outer training side
-    must retain three domains so its calibrated predictor can perform another inner
-    LODO fit without collapsing to a one-domain training partition.
-    """
-
-    ordered = tuple(examples)
-    specs = tuple(tier_specs)
-    domains = tuple(sorted({example.domain for example in ordered}))
-    if len(domains) < 4:
-        raise ValueError("calibrated bilinear nested LODO benchmark requires at least four domains")
+    if baselines is not None and type(baselines) is not LodoSixBaselineEvaluation:
+        raise TypeError("baselines must be an exact LodoSixBaselineEvaluation or None")
     catalogue = _stable_catalogue(ordered)
     search_config = BenchmarkLambdaSearchConfig(
         max_candidates_per_tier=max_candidates_per_tier,
         allow_large_exhaustive=allow_large_exhaustive,
     )
-    if config is None:
-        config = BilinearTrainingConfig()
-    elif not isinstance(config, BilinearTrainingConfig):
-        raise TypeError("config must be a BilinearTrainingConfig or None")
-
-    def train_predictor(training: tuple[EvaluationExample, ...]) -> QualityPredictor:
-        return fit_calibrated_bilinear(training, config=config).build_predictor()
-
     learned = nested_lodo_lambda_evaluation(
         ordered,
         specs,
@@ -465,15 +470,16 @@ def evaluate_per_query_bilinear_benchmark(
         random_seed=BASELINE_RANDOM_SEED,
         character_threshold=BASELINE_CHARACTER_THRESHOLD,
     )
-    baselines = evaluate_per_query_lodo_baselines(
-        ordered,
-        specs,
-        PerQueryBudgetLedger,
-        premium_model_id=baseline_config.premium_model_id,
-        strong_model_id=baseline_config.strong_model_id,
-        random_seed=baseline_config.random_seed,
-        character_threshold=baseline_config.character_threshold,
-    )
+    if baselines is None:
+        baselines = evaluate_per_query_lodo_baselines(
+            ordered,
+            specs,
+            PerQueryBudgetLedger,
+            premium_model_id=baseline_config.premium_model_id,
+            strong_model_id=baseline_config.strong_model_id,
+            random_seed=baseline_config.random_seed,
+            character_threshold=baseline_config.character_threshold,
+        )
     return PerQueryNestedLodoBenchmark(
         learned=learned,
         baselines=baselines,
@@ -481,4 +487,94 @@ def evaluate_per_query_bilinear_benchmark(
         replay_sha256=evaluation_replay_sha256(ordered),
         training_config=config,
         lambda_search_config=search_config,
+    )
+
+
+def _require_four_domains(
+    examples: Sequence[EvaluationExample],
+    tier_specs: Sequence[TierSpec],
+    *,
+    family_name: str,
+) -> tuple[tuple[EvaluationExample, ...], tuple[TierSpec, ...]]:
+    ordered = tuple(examples)
+    specs = tuple(tier_specs)
+    domains = tuple(sorted({example.domain for example in ordered}))
+    if len(domains) < 4:
+        raise ValueError(
+            f"calibrated {family_name} nested LODO benchmark requires at least four domains"
+        )
+    return ordered, specs
+
+
+def evaluate_per_query_bilinear_benchmark(
+    examples: Sequence[EvaluationExample],
+    tier_specs: Sequence[TierSpec],
+    *,
+    config: BilinearTrainingConfig | None = None,
+    max_candidates_per_tier: int | None = None,
+    allow_large_exhaustive: bool = False,
+) -> PerQueryNestedLodoBenchmark:
+    """Evaluate calibrated bilinear routing and six baselines on one exact scope.
+
+    Four domains are the minimum for this concrete trainer: each outer training side
+    must retain three domains so its calibrated predictor can perform another inner
+    LODO fit without collapsing to a one-domain training partition.
+    """
+
+    ordered, specs = _require_four_domains(
+        examples,
+        tier_specs,
+        family_name="bilinear",
+    )
+    if config is None:
+        config = BilinearTrainingConfig()
+    elif type(config) is not BilinearTrainingConfig:
+        raise TypeError("config must be an exact BilinearTrainingConfig or None")
+
+    def train_predictor(training: tuple[EvaluationExample, ...]) -> QualityPredictor:
+        return fit_calibrated_bilinear(training, config=config).build_predictor()
+
+    return _evaluate_per_query_benchmark(
+        ordered,
+        specs,
+        config=config,
+        train_predictor=train_predictor,
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
+
+
+def evaluate_per_query_gbm_benchmark(
+    examples: Sequence[EvaluationExample],
+    tier_specs: Sequence[TierSpec],
+    *,
+    config: GbmTrainingConfig | None = None,
+    max_candidates_per_tier: int | None = None,
+    allow_large_exhaustive: bool = False,
+    _baselines: LodoSixBaselineEvaluation | None = None,
+) -> PerQueryNestedLodoBenchmark:
+    """Evaluate the dependency-free calibrated GBM on the bilinear benchmark scope."""
+
+    ordered, specs = _require_four_domains(
+        examples,
+        tier_specs,
+        family_name="GBM",
+    )
+    if config is None:
+        config = GbmTrainingConfig()
+    elif type(config) is not GbmTrainingConfig:
+        raise TypeError("config must be an exact GbmTrainingConfig or None")
+    preflight_nested_lodo_gbm(ordered, config=config)
+
+    def train_predictor(training: tuple[EvaluationExample, ...]) -> QualityPredictor:
+        return fit_calibrated_gbm(training, config=config)
+
+    return _evaluate_per_query_benchmark(
+        ordered,
+        specs,
+        config=config,
+        train_predictor=train_predictor,
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+        baselines=_baselines,
     )
