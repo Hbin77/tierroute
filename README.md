@@ -16,8 +16,9 @@ Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge
 It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
 quality and exact quote-error metrics, leakage-aware calibrated bilinear training,
 an in-memory deterministic GBM reference trainer, paired descriptive family estimation,
-exact tier-lambda tuning, strict v1 bilinear-predictor/policy artifacts, and an
-external-data-free demo are implemented.
+exact tier-lambda tuning, strict v1 bilinear-predictor/policy artifacts, a bounded
+prepared moment-solve/raw-score reference, and an external-data-free demo are
+implemented.
 The CLI selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
@@ -316,28 +317,52 @@ after the child process starts; pre-authentication filesystem I/O and request
 serialization are bounded by byte ceilings but are not covered by that child timeout.
 
 This dense sidecar alone does not make the reportable full RouterBench run feasible:
-the current nested path still repeats feature work and 301 fits. An experimental
-[prepared graph contract](docs/prepared-session-graph.md) now proves that the
-seven-domain nested-evaluation graph contains 63 unique base-training subsets,
-154 subset/domain score blocks, and `22N` scored-row memberships, and it preflights a
-binary64 modeled-buffer and dominant-numeric-work estimate before enumeration. It does
-not execute any fit or score, and the estimate is not a peak-memory or complete-work
-bound. A separate bounded [prepared feature-store reference](docs/prepared-feature-store.md)
-now snapshots canonical little-endian binary64 fit rows from caller-checked source and
-precomputed-embedding digests, builds reusable per-domain Welford moments, and combines
-only included domains with Chan arithmetic to recover training-only tags and population
-scales. Excluded-domain mutation and direct-constructor adversarial tests protect this
-isolation boundary. The reference performs no provider inference or file I/O and does
-not solve, score, calibrate, or replace the default trainer; its arithmetic is not yet
-bitwise parity with the current row path.
+the deployed nested path still repeats feature work and 301 fits. An experimental
+[prepared graph contract](docs/prepared-session-graph.md) proves that the seven-domain
+nested-evaluation graph contains 63 unique base-training subsets, 154 subset/domain
+score blocks, and exactly `22N` scored-row memberships. A bounded
+[prepared feature-store reference](docs/prepared-feature-store.md) snapshots canonical
+little-endian binary64 fit rows from caller-checked source and precomputed-embedding
+digests, builds reusable per-domain Welford moments, and combines only included domains
+with Chan arithmetic to recover training-only tags and population scales.
+
+The bounded, standard-library-only
+[prepared execution reference](docs/prepared-reference-execution.md) now consumes that
+store and its moments. It combines, solves, and discards one canonical subset at a
+time, uses one Cholesky factor for all model targets in that subset, builds target-free
+per-domain feature shards, and emits row-major raw score blocks over every admitted
+feature coordinate. At seven domains the complete structure is still exactly 63
+coefficient blocks, 154 score blocks, `22N` scored-row memberships, and `22NM` scalar
+raw scores, including for uneven domain counts. Frozen synthetic tests establish
+numerical-tolerance parity with an independently fitted row reference. Moment reduction
+uses a different operation order, so this is not bitwise parity and the numeric payload
+digests are not promised to match across Python/platform arithmetic implementations.
+
+Only the public builder functions are supported derivation paths. Direct leaf-dataclass
+construction validates a self-declared canonical record; it is not an aggregate loader,
+proof that the record was derived from its claimed inputs, or provenance attestation.
+The versioned SHA-256 values are content identities, not authentication, and substitution
+detection requires comparison with a trusted expected digest. The reference preflight
+counts reviewed numeric admission units and modeled numeric payload/storage, but excludes
+Python object graphs, allocator overhead, caller-owned inputs, and other process memory;
+it is neither a peak-RSS estimate nor a wall-time promise. The complete pinned
+RouterBench/bge-m3 shape remains rejected by the bounded feature-store, statistics, and
+reference-execution caps.
+
+This slice performs no provider inference or file I/O and makes no performance, quality,
+or cost-reduction claim. It is not integrated with calibration, lambda tuning, report
+generation, the CLI, the native protocol, or persistent prepared artifacts, and it does
+not replace the default trainer. [Issue #9](https://github.com/Hbin77/tierroute/issues/9)
+therefore remains open.
 
 Full training with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total
-features) remains gated on an audited offline local provider, a scalable persistent
-prepared session with coefficient and batched-score execution, end-to-end parity, plus
-audited Linux-musl and Windows-MSVC artifacts. tierroute will not silently reduce or
-discard embedding dimensions. The existing row-training path keeps its conservative
-operation guard, static reviewed solver ID, pre-embedding preflight, and unknown-ID rejection;
-inference remains dependency-free because it uses only stored coefficients.
+features) remains gated on an audited offline local provider, a scalable authenticated
+persistent prepared session integrated through calibration, lambda tuning, reporting,
+and CLI reproduction, end-to-end parity, plus audited Linux-musl and Windows-MSVC
+artifacts. tierroute will not silently reduce or discard embedding dimensions. The
+existing row-training path keeps its conservative operation guard, static reviewed
+solver ID, pre-embedding preflight, and unknown-ID rejection; inference remains
+dependency-free because it uses only stored coefficients.
 
 ## What is implemented
 
@@ -398,6 +423,12 @@ inference remains dependency-free because it uses only stored coefficients.
   supported.
 - True nested LODO orchestration keeps every outer domain out of predictor fitting,
   calibration, and lambda tuning.
+- A bounded standard-library prepared reference sequentially combines the unique
+  nested-LODO subset moments, solves all model targets with one factorization per
+  subset, binds target-free feature shards, and emits all canonical raw-score blocks.
+  For seven domains its tested structure is exactly 63 subsets, 154 blocks, `22N`
+  row memberships, and `22NM` score cells. It is synthetic structural and
+  numerical-tolerance evidence only, not a scalable experiment or performance result.
 - A report-shaped per-query benchmark CLI compares that nested-LODO learned router
   against all six baselines on one identical evaluation scope and publishes compact,
   versioned outer-fold membership digests.

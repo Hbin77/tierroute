@@ -17,7 +17,8 @@ Lagrangian 정책입니다.
 라우팅 계약·replay 시뮬레이터·베이스라인 6종·지표·누수 방지 calibrated
 bilinear 학습·인메모리 결정론적 GBM 참조 학습기·두 계열의 paired 기술 추정·exact
 tier-lambda 튜닝·엄격한 bilinear 예측기 v1/정책 artifact·정확한 견적-실현 비용
-오차 지표·외부 데이터가 필요 없는 데모가 구현되어 있습니다.
+오차 지표·bounded prepared moment solve/raw-score 참조 경로·외부 데이터가 필요
+없는 데모가 구현되어 있습니다.
 CLI는 모델을 **선택**할 뿐 실제 LLM을 호출하거나 답변을 생성하지
 않습니다.
 
@@ -304,27 +305,49 @@ timeout은 child process가 시작된 뒤에만 적용됩니다. 인증 전 file
 serialization은 byte 상한으로 제한하지만 그 child timeout에는 포함되지 않습니다.
 
 이 dense sidecar 하나만으로는 RouterBench 전체 보고 실험이 가능해지지 않습니다.
-현재 nested 경로는 특징 계산과 301개 fit을 여전히 반복합니다. 실험적
+현재 배포 nested 경로는 특징 계산과 301개 fit을 여전히 반복합니다. 실험적
 [prepared graph 계약](docs/prepared-session-graph.md)은 7-domain nested 평가에 고유
-base-training subset 63개, subset/domain score block 154개, `22N` scored-row
-membership이 필요함을 machine-checkable 계약으로 고정하고, 열거 전에 binary64
-모델링 숫자 버퍼와 지배적 숫자 연산량을 preflight합니다. 이는 peak memory나 전체
-작업량 상한이 아니며 fit이나 score를 실행하지 않습니다. 별도의 bounded
+base-training subset 63개, subset/domain score block 154개, 정확히 `22N`
+scored-row membership이 필요함을 고정합니다. Bounded
 [prepared feature-store reference](docs/prepared-feature-store.md)는 호출자가 확인한
 source·사전 계산 embedding digest에서 canonical little-endian binary64 fit row를
 snapshot하고, 재사용 가능한 domain별 Welford moment를 만든 뒤 포함 domain만 Chan
-방식으로 결합해 training-only tag와 population scale을 복원합니다. 제외 domain 변이와
-직접 생성자 adversarial test로 이 격리를 검증합니다. 이 reference는 provider 추론이나
-file I/O를 하지 않고 solve·score·calibration을 수행하거나 기본 trainer를 대체하지
-않으며, 그 산술은 아직 현재 row 경로와 bitwise parity가 아닙니다.
+방식으로 결합해 training-only tag와 population scale을 복원합니다.
+
+Bounded·standard-library-only
+[prepared execution reference](docs/prepared-reference-execution.md)는 이 store와 moment를 사용합니다.
+canonical subset을 하나씩 결합·solve·폐기하고, subset별 하나의 Cholesky factor를
+모든 model target에 공유하며, target와 무관한 domain별 feature shard를 만들고,
+허용된 모든 feature coordinate를 사용한 row-major raw-score block을 생성합니다.
+7개 domain에서 전체 구조는 domain 행 수가 균등하지 않아도 정확히 coefficient
+block 63개, score block 154개, `22N` scored-row membership, `22NM` scalar raw
+score입니다. Frozen 합성 테스트는 독립적으로 row를 fit한 reference와 수치 tolerance
+내에서 같음을 검증합니다. Moment 축약은 연산 순서가 다르므로 bitwise parity가
+아니며, 숫자 payload digest가 Python/platform 산술 구현 간에 일치한다고
+보장하지 않습니다.
+
+지원하는 derivation 경로는 public builder 함수뿐입니다. Leaf dataclass 생성자를
+직접 호출하면 스스로 선언한 canonical record만 검증합니다. 이는 aggregate loader,
+주장한 입력에서 파생됐다는 증명, provenance 증명이 아닙니다. Versioned SHA-256은
+content identity이지 인증이 아니며, 바꾸치기를 탐지하려면 신뢰하는 expected digest와
+비교해야 합니다. Reference preflight는 검토한 수치 admission unit과 모델링한 숫자
+payload/storage를 계산하지만 Python object graph, allocator overhead, 호출자 소유 입력,
+기타 process memory는 포함하지 않습니다. Peak RSS 견적이나 wall-time 보장이
+아닙니다. 고정한 RouterBench/bge-m3 전체 크기는 bounded feature-store,
+statistics, reference-execution cap에 의해 계속 거부됩니다.
+
+이 slice는 provider 추론과 file I/O를 하지 않으며 성능·품질·비용 감소를 주장하지
+않습니다. Calibration, lambda tuning, 보고서 생성, CLI, native protocol,
+persistent prepared artifact와 연동되지 않았고 기본 trainer를 대체하지도 않습니다.
+따라서 [Issue #9](https://github.com/Hbin77/tierroute/issues/9)는 아직 열려 있습니다.
 
 계획된 1,024차원 bge-m3 임베딩과 표면 특징을 합친 최대 1,036차원 전체 학습은 감사된
-offline local provider, coefficient·batched-score 실행이 가능한 scalable persistent
-prepared session, end-to-end parity, 그리고 감사된 Linux-musl·Windows-MSVC artifact가
-있을 때까지 gate로 남습니다. 임베딩 차원을 조용히 줄이거나 버리지 않습니다. 기존
-row-training 경로의 보수적 연산량 guard, 정적 reviewed solver ID, pre-embedding
-preflight, unknown-ID 거부는 그대로며, 추론은 저장된 coefficient만 사용하므로
-의존성이 없습니다.
+offline local provider, calibration·lambda tuning·보고·CLI 재현 경로와 연동된 scalable
+authenticated persistent prepared session, end-to-end parity, 그리고 감사된
+Linux-musl·Windows-MSVC artifact가 있을 때까지 gate로 남습니다. 임베딩 차원을
+조용히 줄이거나 버리지 않습니다. 기존 row-training 경로의 보수적 연산량 guard,
+정적 reviewed solver ID, pre-embedding preflight, unknown-ID 거부는 그대로며, 추론은
+저장된 coefficient만 사용하므로 의존성이 없습니다.
 
 ## 현재 구현 범위
 
@@ -378,6 +401,12 @@ preflight, unknown-ID 거부는 그대로며, 추론은 저장된 coefficient만
   다른 pathname 전체에 대한 전원 장애 atomicity는 지원하지 않습니다.
 - 모든 outer domain을 predictor fitting·calibration·lambda tuning에서 제외하는 true
   nested LODO orchestration
+- Bounded standard-library prepared reference는 고유 nested-LODO subset moment를 순차적으로
+  결합하고, subset당 하나의 factorization으로 모든 model target을 solve하며,
+  target-free feature shard를 바인딩해 모든 canonical raw-score block을 생성합니다.
+  7개 domain의 테스트된 구조는 정확히 subset 63개, block 154개, `22N` row
+  membership, `22NM` score cell입니다. 이는 합성 구조·수치 tolerance 근거일 뿐,
+  scalable 실험이나 성능 결과가 아닙니다.
 - true nested-LODO 학습 라우터와 베이스라인 6종을 동일한 평가 scope에서 비교하고,
   버전이 지정된 compact outer-fold membership digest를 공개하는 쿼리별 보고 형태의
   benchmark CLI

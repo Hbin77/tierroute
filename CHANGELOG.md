@@ -9,6 +9,26 @@ the public API is pre-1.0.
 
 ### Added
 
+- A bounded, standard-library-only prepared moment execution reference that consumes
+  the immutable prepared store/statistics, sequentially combines, solves, and discards
+  each canonical training subset, and shares one Cholesky factor across all model
+  targets in a subset. It emits coefficient blocks, target-free per-domain feature
+  shards, and row-major raw scores across the complete admitted schema width without
+  projecting embedding coordinates. At seven domains, frozen uneven-domain tests prove
+  the exact 63-subset/154-block structure, `22N` scored-row memberships, and `22NM`
+  scalar scores, plus numerical-tolerance parity with an independently fitted row
+  reference. Moment operation order differs, so this is not bitwise parity and numeric
+  payload digests are not cross-Python/platform arithmetic promises. Public builders
+  are the only supported derivation path; direct leaf constructors validate
+  self-declared per-record canonical content and are neither aggregate loaders nor
+  derivation/provenance proof. Versioned SHA-256 values are content identities, not
+  authentication, so substitution detection requires a trusted expected digest. The
+  reviewed work/storage admission estimate excludes Python objects, allocator overhead,
+  caller-owned input, and other process memory and is not a peak-RSS or wall-time
+  estimate. Earlier store/statistics and execution caps reject the complete pinned
+  RouterBench/bge-m3 shape. This reference adds no dependency and has no calibration,
+  lambda, report, CLI, native-protocol, or persistent-artifact integration; it makes no
+  performance, quality, or cost-reduction claim, and Issue #9 remains open.
 - A bounded, standard-library-only prepared feature-store reference that canonicalizes
   fit-relevant source rows and caller-precomputed embeddings into immutable
   little-endian binary64 payloads, requires caller-supplied expected source/embedding
@@ -20,10 +40,10 @@ the public API is pre-1.0.
   seven-tag catalogue so a semantic layout change cannot silently reuse an old digest.
   Adversarial tests cover canonical permutations, uneven domains, excluded-domain
   noninterference, signed-zero/non-finite/truncated/tampered payloads, semantic digest
-  fields, direct constructors, and fail-before-traversal resource limits. This
-  experimental path performs no provider inference, file I/O, solve, scoring,
-  calibration, or routing; its arithmetic has not passed coefficient-to-report parity
-  against the default trainer and makes no performance claim.
+  fields, direct constructors, and fail-before-traversal resource limits. By itself,
+  this feature-store layer performs no provider inference, file I/O, solve, scoring,
+  calibration, or routing; no prepared coefficient-to-report integration or
+  performance claim has been established.
 - An experimental, standard-library-only prepared nested-LODO graph contract that
   canonicalizes domain/count pairs, enumerates the exact unique base-training subsets
   and held-out score blocks, and rejects closed-form count, byte, and work estimates
@@ -31,7 +51,7 @@ the public API is pre-1.0.
   reuse target underlying 301 logical base fits as a 63-subset/154-block graph with
   `22N` scored-row memberships. The modeled numeric buffers retain binary64 feature
   semantics. The graph contract itself has no native session, persistent cache,
-  execution integration, dependency, or performance claim.
+  dependency, or performance claim.
 - An experimental project-owned Apache-2.0 C11 centered-ridge sidecar, fixed
   little-endian protocol, no-download/PATH-discovery build helper, and authenticated
   Python process adapter. Count/byte/allocation/work preflight and bounded 16-MiB
@@ -211,10 +231,10 @@ the public API is pre-1.0.
 
 - Add a sequence-level oracle before reporting oracle-gap recovery under cumulative
   accounting, after the organizer confirms the official budget semantics.
-- Extend the reviewed dense C11 ridge candidate into one authenticated prepared
-  training session that computes raw features once, reuses the unique domain-subset
-  graph, batches scores, and passes three-platform artifact/link audits before the
-  full-dimensional bge-m3 experiment is reportable.
+- Move the bounded Python solve-and-score reference into one scalable authenticated
+  persistent prepared session, integrate calibration, lambda tuning, reporting, and
+  CLI reproduction, and pass end-to-end parity plus three-platform artifact/link audits
+  before the full-dimensional bge-m3 experiment is reportable.
 - Add a separately versioned GBM artifact and explicit `train`/`route` integration.
 - Run a preregistered family-selection-aware experiment on licensed data; the current
   paired runner estimates fixed families but cannot select a winner on the same outer
