@@ -9,6 +9,8 @@ import io
 import os
 import stat
 import struct
+import sys
+import traceback
 from collections.abc import Iterator
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -293,6 +295,14 @@ def test_adapter_read_error_omits_local_path(tmp_path: Path) -> None:
         routerbench.load_routerbench_table(missing)
 
     assert str(missing) not in str(captured.value)
+    rendered = "".join(
+        traceback.format_exception(
+            type(captured.value),
+            captured.value,
+            captured.value.__traceback__,
+        )
+    )
+    assert str(missing) not in rendered
 
 
 def test_download_reuses_existing_verified_file_without_network(
@@ -325,12 +335,16 @@ def test_download_streams_to_part_then_atomically_replaces_invalid_file(
     destination = tmp_path / "routerbench_0shot.pkl"
     destination.write_bytes(b"old invalid bytes")
     patch_artifact(downloader, monkeypatch, payload)
-    part_path = destination.with_name(f"{destination.name}.part")
+
+    def stage_paths() -> tuple[Path, ...]:
+        return tuple(tmp_path.glob(f".{destination.name}.*.part"))
 
     class PermissionCheckingResponse(FakeResponse):
         def read(self, size: int = -1) -> bytes:
+            staged = stage_paths()
+            assert len(staged) == 1
             if os.name == "posix":
-                assert stat.S_IMODE(part_path.stat().st_mode) == downloader.PRIVATE_FILE_MODE
+                assert stat.S_IMODE(staged[0].stat().st_mode) == downloader.PRIVATE_FILE_MODE
             return super().read(size)
 
     def fake_urlopen(request: object, *, timeout: float) -> FakeResponse:
@@ -344,7 +358,7 @@ def test_download_streams_to_part_then_atomically_replaces_invalid_file(
     downloader.download_routerbench(destination, timeout=5.0, chunk_size=3)
 
     assert destination.read_bytes() == payload
-    assert not part_path.exists()
+    assert not stage_paths()
     if os.name == "posix":
         assert stat.S_IMODE(destination.stat().st_mode) == downloader.PRIVATE_FILE_MODE
 
@@ -369,7 +383,7 @@ def test_download_removes_part_when_private_mode_cannot_be_enforced(
         downloader.download_routerbench(destination, chunk_size=3)
 
     assert destination.read_bytes() == b"old invalid bytes"
-    assert not destination.with_name(f"{destination.name}.part").exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.part"))
 
 
 def test_download_checksum_failure_keeps_existing_file(
@@ -391,7 +405,172 @@ def test_download_checksum_failure_keeps_existing_file(
         downloader.download_routerbench(destination, chunk_size=4)
 
     assert destination.read_bytes() == b"old invalid bytes"
-    assert not destination.with_name(f"{destination.name}.part").exists()
+    assert not tuple(tmp_path.glob(f".{destination.name}.*.part"))
+
+
+def test_download_uses_distinct_private_staging_files(tmp_path: Path) -> None:
+    downloader = load_download_module()
+    destination = tmp_path / "routerbench_0shot.pkl"
+
+    first_fd, first_path, first_identity = downloader._create_private_part(destination)
+    second_fd, second_path, second_identity = downloader._create_private_part(destination)
+    try:
+        assert first_path != second_path
+        assert first_identity != second_identity
+        if os.name == "posix":
+            assert stat.S_IMODE(first_path.stat().st_mode) == downloader.PRIVATE_FILE_MODE
+            assert stat.S_IMODE(second_path.stat().st_mode) == downloader.PRIVATE_FILE_MODE
+    finally:
+        os.close(first_fd)
+        os.close(second_fd)
+        downloader._unlink_owned_path(first_path, first_identity)
+        downloader._unlink_owned_path(second_path, second_identity)
+
+
+def test_download_rejects_staging_path_substitution_without_deleting_foreign_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloader = load_download_module()
+    payload = b"verified replacement"
+    destination = tmp_path / "routerbench_0shot.pkl"
+    destination.write_bytes(b"old invalid bytes")
+    patch_artifact(downloader, monkeypatch, payload)
+    foreign_payload = b"foreign concurrent stage"
+    substituted_path: Path | None = None
+
+    class SubstitutingResponse(FakeResponse):
+        def read(self, size: int = -1) -> bytes:
+            nonlocal substituted_path
+            if substituted_path is None:
+                staged = tuple(tmp_path.glob(f".{destination.name}.*.part"))
+                assert len(staged) == 1
+                substituted_path = staged[0]
+                substituted_path.unlink()
+                substituted_path.write_bytes(foreign_payload)
+            return super().read(size)
+
+    monkeypatch.setattr(
+        downloader,
+        "urlopen",
+        lambda *args, **kwargs: SubstitutingResponse(payload),
+    )
+
+    with pytest.raises(downloader.DownloadIntegrityError, match="staging path identity changed"):
+        downloader.download_routerbench(destination, chunk_size=3)
+
+    assert destination.read_bytes() == b"old invalid bytes"
+    assert substituted_path is not None
+    assert substituted_path.read_bytes() == foreign_payload
+
+
+def test_download_reauthenticates_installed_file_before_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloader = load_download_module()
+    payload = b"verified replacement"
+    tampered = b"tampered replacement"
+    assert len(tampered) == len(payload)
+    destination = tmp_path / "routerbench_0shot.pkl"
+    destination.write_bytes(b"old invalid bytes")
+    patch_artifact(downloader, monkeypatch, payload)
+    monkeypatch.setattr(downloader, "urlopen", lambda *args, **kwargs: FakeResponse(payload))
+    real_replace = downloader.os.replace
+
+    def replace_then_tamper(source: object, target: object) -> None:
+        real_replace(source, target)
+        Path(target).write_bytes(tampered)
+
+    monkeypatch.setattr(downloader.os, "replace", replace_then_tamper)
+
+    with pytest.raises(
+        downloader.DownloadIntegrityError,
+        match="failed post-replacement authentication",
+    ):
+        downloader.download_routerbench(destination, chunk_size=3)
+
+    assert destination.read_bytes() == tampered
+
+
+def test_download_rejects_source_swap_between_hash_and_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloader = load_download_module()
+    payload = b"verified replacement"
+    foreign = b"foreign replacement!"
+    assert len(foreign) == len(payload)
+    destination = tmp_path / "routerbench_0shot.pkl"
+    destination.write_bytes(b"old invalid bytes")
+    patch_artifact(downloader, monkeypatch, payload)
+    monkeypatch.setattr(downloader, "urlopen", lambda *args, **kwargs: FakeResponse(payload))
+    real_replace = downloader.os.replace
+
+    def substitute_source_then_replace(source: object, target: object) -> None:
+        source_path = Path(source)
+        source_path.unlink()
+        source_path.write_bytes(foreign)
+        real_replace(source_path, target)
+
+    monkeypatch.setattr(downloader.os, "replace", substitute_source_then_replace)
+
+    with pytest.raises(downloader.DownloadIntegrityError, match="installed path identity changed"):
+        downloader.download_routerbench(destination, chunk_size=3)
+
+    assert destination.read_bytes() == foreign
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX symlink checks require O_NOFOLLOW")
+def test_download_rejects_valid_symlink_without_chmod_or_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    downloader = load_download_module()
+    payload = b"already verified"
+    target = tmp_path / "shared-routerbench.pkl"
+    target.write_bytes(payload)
+    target.chmod(0o644)
+    destination = tmp_path / "routerbench_0shot.pkl"
+    destination.symlink_to(target)
+    patch_artifact(downloader, monkeypatch, payload)
+    monkeypatch.setattr(
+        downloader,
+        "urlopen",
+        lambda *args, **kwargs: pytest.fail("a rejected symlink must not trigger network"),
+    )
+
+    assert not downloader.verify_file(
+        destination,
+        expected_size=len(payload),
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    with pytest.raises(downloader.DownloadIntegrityError, match="absent or a regular file"):
+        downloader.download_routerbench(destination, chunk_size=2)
+
+    assert destination.is_symlink()
+    assert target.read_bytes() == payload
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+
+
+def test_download_cli_failure_omits_local_path_and_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    downloader = load_download_module()
+    private_path = tmp_path / "private-routerbench-location.pkl"
+    monkeypatch.setattr(sys, "argv", ["download_routerbench.py", "--output", str(private_path)])
+    monkeypatch.setattr(
+        downloader,
+        "download_routerbench",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError(str(private_path))),
+    )
+
+    with pytest.raises(SystemExit) as captured:
+        downloader.main()
+
+    assert captured.value.code == 1
+    streams = capsys.readouterr()
+    combined = streams.out + streams.err
+    assert str(private_path) not in combined
+    assert "Traceback" not in combined
 
 
 def test_adapter_rejects_arbitrary_pickle_before_decoding(

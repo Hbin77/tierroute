@@ -306,8 +306,10 @@ def _read_verified_payload(path: str | Path) -> bytes:
             payload = stream.read(ROUTERBENCH_SIZE + 1)
     except RouterBenchIntegrityError:
         raise
-    except OSError as error:
-        raise RouterBenchIntegrityError("cannot read RouterBench file (path omitted)") from error
+    except OSError:
+        # Suppress the original filesystem exception because its rendered traceback
+        # includes the caller's absolute local path.
+        raise RouterBenchIntegrityError("cannot read RouterBench file (path omitted)") from None
 
     if len(payload) != ROUTERBENCH_SIZE:
         raise RouterBenchIntegrityError(

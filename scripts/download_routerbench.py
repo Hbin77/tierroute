@@ -13,8 +13,9 @@ import argparse
 import hashlib
 import hmac
 import os
+import stat
+import tempfile
 from pathlib import Path
-from typing import BinaryIO
 from urllib.request import Request, urlopen
 
 ROUTERBENCH_FILENAME = "routerbench_0shot.pkl"
@@ -34,34 +35,135 @@ class DownloadIntegrityError(RuntimeError):
     """The downloaded bytes do not match the pinned RouterBench artifact."""
 
 
-def _ensure_private_file_mode(path: Path) -> None:
-    """Restrict a local artifact to its owner on POSIX systems.
-
-    RouterBench has no declared redistribution license at the pinned revision,
-    so a verified local copy must not inherit a permissive process umask.  A
-    chmod failure is intentionally propagated instead of returning a path that
-    appears ready for use without the promised local-only permissions.
-    """
-
-    if os.name == "posix":
-        path.chmod(PRIVATE_FILE_MODE)
-
-
-def _open_private_part(path: Path) -> BinaryIO:
-    """Create an exclusive binary partial file with owner-only permissions."""
-
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+def _read_flags() -> int:
+    flags = os.O_RDONLY
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
+    if os.name == "posix":
+        if not hasattr(os, "O_NOFOLLOW"):
+            raise DownloadIntegrityError("this POSIX platform cannot enforce no-follow reads")
+        flags |= os.O_NOFOLLOW
+    return flags
 
-    descriptor = os.open(path, flags, PRIVATE_FILE_MODE)
+
+def _file_identity(file_stat: os.stat_result) -> tuple[int, int]:
+    return file_stat.st_dev, file_stat.st_ino
+
+
+def _path_matches_identity(path: Path, identity: tuple[int, int]) -> bool:
+    try:
+        file_stat = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISREG(file_stat.st_mode) and _file_identity(file_stat) == identity
+
+
+def _open_verified_regular_file(
+    path: Path,
+    *,
+    expected_size: int,
+    expected_sha256: str,
+    chunk_size: int,
+) -> int | None:
+    """Verify one no-follow regular-file descriptor and its current pathname."""
+
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    try:
+        descriptor = os.open(path, _read_flags())
+    except OSError:
+        return None
+    transferred = False
+    try:
+        opened_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(opened_stat.st_mode) or opened_stat.st_size != expected_size:
+            return None
+        digest = hashlib.sha256()
+        while chunk := os.read(descriptor, chunk_size):
+            digest.update(chunk)
+        if not hmac.compare_digest(digest.hexdigest(), expected_sha256.lower()):
+            return None
+        if not _path_matches_identity(path, _file_identity(opened_stat)):
+            return None
+        transferred = True
+        return descriptor
+    finally:
+        if not transferred:
+            os.close(descriptor)
+
+
+def _reuse_verified_private_file(
+    path: Path,
+    *,
+    expected_size: int,
+    expected_sha256: str,
+    chunk_size: int,
+) -> bool:
+    """Hash and chmod the same descriptor, rejecting symlinks and path swaps."""
+
+    descriptor = _open_verified_regular_file(
+        path,
+        expected_size=expected_size,
+        expected_sha256=expected_sha256,
+        chunk_size=chunk_size,
+    )
+    if descriptor is None:
+        return False
     try:
         if os.name == "posix":
             os.fchmod(descriptor, PRIVATE_FILE_MODE)
-        return os.fdopen(descriptor, "wb")
+        return _path_matches_identity(path, _file_identity(os.fstat(descriptor)))
+    finally:
+        os.close(descriptor)
+
+
+def _create_private_part(destination: Path) -> tuple[int, Path, tuple[int, int]]:
+    """Create an unpredictable same-directory staging file owned by this invocation."""
+
+    descriptor, raw_path = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".part",
+        dir=destination.parent,
+    )
+    path = Path(raw_path)
+    identity: tuple[int, int] | None = None
+    try:
+        file_stat = os.fstat(descriptor)
+        identity = _file_identity(file_stat)
+        if os.name == "posix":
+            os.fchmod(descriptor, PRIVATE_FILE_MODE)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise DownloadIntegrityError("RouterBench staging descriptor is not a regular file")
+        if not _path_matches_identity(path, identity):
+            raise DownloadIntegrityError("RouterBench staging path changed during creation")
+        return descriptor, path, identity
     except BaseException:
         os.close(descriptor)
+        if identity is not None:
+            _unlink_owned_path(path, identity)
         raise
+
+
+def _unlink_owned_path(path: Path, identity: tuple[int, int]) -> None:
+    """Remove only the exact staging inode created by this invocation."""
+
+    if _path_matches_identity(path, identity):
+        path.unlink(missing_ok=True)
+
+
+def _reject_non_regular_destination(path: Path) -> None:
+    try:
+        file_stat = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise DownloadIntegrityError(
+            "cannot inspect RouterBench destination (path omitted)"
+        ) from error
+    if not stat.S_ISREG(file_stat.st_mode):
+        raise DownloadIntegrityError(
+            "RouterBench destination must be absent or a regular file (path omitted)"
+        )
 
 
 def sha256_file(path: str | Path, *, chunk_size: int = DEFAULT_CHUNK_SIZE) -> str:
@@ -84,16 +186,18 @@ def verify_file(
     expected_sha256: str = ROUTERBENCH_SHA256,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> bool:
-    """Return whether a regular file has the expected size and SHA-256 digest."""
+    """Verify a no-follow regular file through one descriptor."""
 
-    candidate = Path(path)
-    try:
-        if not candidate.is_file() or candidate.stat().st_size != expected_size:
-            return False
-        actual_sha256 = sha256_file(candidate, chunk_size=chunk_size)
-    except OSError:
+    descriptor = _open_verified_regular_file(
+        Path(path),
+        expected_size=expected_size,
+        expected_sha256=expected_sha256,
+        chunk_size=chunk_size,
+    )
+    if descriptor is None:
         return False
-    return hmac.compare_digest(actual_sha256, expected_sha256.lower())
+    os.close(descriptor)
+    return True
 
 
 def download_routerbench(
@@ -115,27 +219,29 @@ def download_routerbench(
         raise ValueError("chunk_size must be positive")
 
     destination = Path(destination)
-    if verify_file(
+    _reject_non_regular_destination(destination)
+    if _reuse_verified_private_file(
         destination,
         expected_size=ROUTERBENCH_SIZE,
         expected_sha256=ROUTERBENCH_SHA256,
         chunk_size=chunk_size,
     ):
-        _ensure_private_file_mode(destination)
         return destination
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    part_path = destination.with_name(f"{destination.name}.part")
-    part_path.unlink(missing_ok=True)
     request = Request(
         ROUTERBENCH_URL,
         headers={"User-Agent": "tierroute-routerbench-downloader/0.1"},
     )
     digest = hashlib.sha256()
     downloaded_size = 0
+    descriptor, part_path, part_identity = _create_private_part(destination)
 
     try:
-        with urlopen(request, timeout=timeout) as response, _open_private_part(part_path) as output:
+        with (
+            urlopen(request, timeout=timeout) as response,
+            os.fdopen(descriptor, "wb", closefd=False) as output,
+        ):
             while chunk := response.read(chunk_size):
                 downloaded_size += len(chunk)
                 if downloaded_size > ROUTERBENCH_SIZE:
@@ -158,11 +264,27 @@ def download_routerbench(
                 f"RouterBench SHA-256 mismatch: expected {ROUTERBENCH_SHA256}, got {actual_sha256}"
             )
 
+        if not _path_matches_identity(part_path, part_identity):
+            raise DownloadIntegrityError("RouterBench staging path identity changed")
+        if os.name == "posix":
+            os.fchmod(descriptor, PRIVATE_FILE_MODE)
         os.replace(part_path, destination)
-        _ensure_private_file_mode(destination)
-    except BaseException:
-        part_path.unlink(missing_ok=True)
-        raise
+        if not _path_matches_identity(destination, part_identity):
+            raise DownloadIntegrityError("RouterBench installed path identity changed")
+        if not _reuse_verified_private_file(
+            destination,
+            expected_size=ROUTERBENCH_SIZE,
+            expected_sha256=ROUTERBENCH_SHA256,
+            chunk_size=chunk_size,
+        ):
+            raise DownloadIntegrityError(
+                "RouterBench installed file failed post-replacement authentication"
+            )
+    finally:
+        try:
+            os.close(descriptor)
+        finally:
+            _unlink_owned_path(part_path, part_identity)
 
     return destination
 
@@ -181,7 +303,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    download_routerbench(args.output)
+    try:
+        download_routerbench(args.output)
+    except DownloadIntegrityError as error:
+        parser.exit(1, f"RouterBench download failed: {error}\n")
+    except OSError:
+        parser.exit(1, "RouterBench local/network operation failed (path omitted)\n")
     print("Verified RouterBench artifact (local path omitted)")
     print(f"SHA-256: {ROUTERBENCH_SHA256}")
     print("Dataset license: NOASSERTION; review the upstream terms before use or redistribution.")
