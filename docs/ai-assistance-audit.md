@@ -23,7 +23,7 @@ Later rows record material assisted work outside that retrospective snapshot.
 |---|---|
 | Service | OpenAI Codex coding agent; the current development environment identifies a GPT-5 basis |
 | Exact model revision | The exact historical model ID/checkpoint was not exposed or retained; no reproducible revision is claimed |
-| Period covered | Repository work on 2026-07-15 and 2026-07-16 through PR #31 |
+| Period covered | Repository work on 2026-07-15 and 2026-07-16 through PR #33 |
 | Material assistance | Requirement decomposition, implementation and refactoring proposals, test design, adversarial review, documentation drafting, local verification commands, and issue/branch/PR workflow |
 | Human-supplied decisions | Contest scope, architecture, package/license choices, one-shot default, LODO requirement, baseline set, offline/network prohibition, dependency policy, and approval gates |
 | Runtime role | None. Codex is not imported, packaged, called, or required by tierroute at build, training, evaluation, or inference time |
@@ -90,6 +90,7 @@ every owner walkthrough is **PENDING**.
 | [PR #28](https://github.com/Hbin77/tierroute/pull/28) | `e87409a`; **REPO** | Reportable true nested-LODO learned-router benchmark, six-baseline comparison binding, deterministic evidence schema, tests, documentation, and repository workflow | Fold membership and prediction digests, canonical baseline configuration evidence, bounded lambda-search controls, deterministic benchmark JSON, adversarial comparison checks, and dual-Python offline/dependency-free-wheel CI | **PENDING** |
 | [PR #29](https://github.com/Hbin77/tierroute/pull/29) | `0eb78cf`; **REPO** | Audited three-step Fast/Balanced/Premium showcase, direct nested-fold replay matching, scope/conservation guards, tests, documentation, and repository workflow | Canonical stream identity, fail-closed benchmark-query matching, separate oracle replay, exact cost/quality accounting, pinned JSON SHA-256, dual-Python offline/dependency-free-wheel CI, and current-tree fresh-clone audit in issue #19 | **PENDING** |
 | [PR #31](https://github.com/Hbin77/tierroute/pull/31) | PR and branch commits; **REPO** | Stale assistance-ledger discovery and correction, current-tree reproduction evidence review, bilingual quickstart portability wording, documentation review, and repository workflow | Issue #30 acceptance record; merge/evidence links for PRs #28 and #29; issue #19 current-main fresh-clone audit; diff, Ruff, SPDX, and dual-Python CI checks | **PENDING** |
+| [PR #33](https://github.com/Hbin77/tierroute/pull/33) | PR and branch commits; **REPO** | Plan/repository gap audit, issue drafting, five-page submission-source and architecture drafting, claim-boundary review, verification, and repository workflow | Issue #32 acceptance record; explicit implemented/measured/planned/organizer-gated states; per-number evidence template; synthetic-result prohibition; 555 tests passed with one expected skip in the pinned local environment | **PENDING** |
 
 Future material AI-assisted changes must add or update one ledger row in the same PR.
 Pure typo or formatting changes may state the assistance in the PR without adding a
