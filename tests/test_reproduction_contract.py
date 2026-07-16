@@ -4,6 +4,12 @@
 from pathlib import Path
 
 MAKEFILE = (Path(__file__).resolve().parents[1] / "Makefile").read_text(encoding="utf-8")
+INFERENCE_SMOKE = (Path(__file__).resolve().parents[1] / "scripts" / "smoke.py").read_text(
+    encoding="utf-8"
+)
+TRAINING_SMOKE = (Path(__file__).resolve().parents[1] / "scripts" / "training_smoke.py").read_text(
+    encoding="utf-8"
+)
 
 
 def _between(start: str, end: str) -> str:
@@ -36,6 +42,7 @@ def test_inference_reproduction_excludes_bilinear_and_lambda_training() -> None:
     assert " lint " not in recipe
     assert " test " not in recipe
     assert " licenses " not in recipe
+    assert '_run_cli(executable, "demo"' not in INFERENCE_SMOKE
 
 
 def test_training_reproduction_preserves_complete_locked_pipeline() -> None:
@@ -49,3 +56,4 @@ def test_training_reproduction_preserves_complete_locked_pipeline() -> None:
         assert target in recipe
     assert "scripts/smoke.py" in recipe
     assert "scripts/training_smoke.py" in recipe
+    assert '_run_cli(executable, "demo", "--json")' in TRAINING_SMOKE

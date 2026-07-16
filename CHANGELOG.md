@@ -29,6 +29,14 @@ the public API is pre-1.0.
   wiring-only; licenses and claims for user-supplied replay data remain the caller's
   responsibility. The fitting command runs in `training-smoke`/`reproduce-training`,
   not the inference lane.
+- A human/JSON `tierroute demo` showcase over three bundled Fast/Balanced/Premium rows.
+  Each step directly replays the matching outer-fold learned policy and must agree with
+  the nested benchmark result, then reports its illustrative budget, quote and realized
+  cost, observed/oracle quality, running realized cost, and unweighted
+  `sum(observed) / sum(independent per-query oracle)` retention. Mixed-tier cost and
+  retention are synthetic reporting-only diagnostics, not shared-budget accounting, a
+  sequence-level oracle, or oracle-gap recovery. The training-backed demo runs only in
+  `training-smoke`/`reproduce-training`; the inference lane does not invoke it.
 - Canonical policy artifacts bound to predictor, data, replay-order, tier-spec, ledger,
   and candidate-search provenance, with the OOF prediction digest recorded as
   reproducibility audit metadata.

@@ -31,7 +31,7 @@ python -m pip install -e .
 ```
 
 Run one routing decision, all six replay baselines, the learned-versus-baseline
-benchmark, and the combined demo:
+benchmark, and the training-backed three-step showcase:
 
 ```bash
 tierroute route "Prove that sqrt(2) is irrational." --tier fast
@@ -41,15 +41,15 @@ tierroute demo
 ```
 
 The equivalent module entry point is `python -m tierroute`. Machine-readable output
-is available for `route`, `evaluate`, `benchmark`, and `train` with `--json`; a
-compatible versioned replay JSON can be supplied to evaluation and benchmarking:
+is available for `route`, `evaluate`, `benchmark`, `demo`, and `train` with `--json`;
+a compatible versioned replay JSON can be supplied to evaluation and benchmarking:
 
 ```bash
 tierroute route "Debug this Python function" --tier balanced --json
 tierroute evaluate --data src/tierroute/data/synthetic.json --json
 tierroute benchmark --budget-scope per-query \
   --data src/tierroute/data/synthetic.json --json
-HF_HUB_OFFLINE=1 tierroute demo
+HF_HUB_OFFLINE=1 tierroute demo --json
 ```
 
 `route --json` is a pre-execution decision: `cost` remains a semantic alias for
@@ -60,6 +60,58 @@ actually executed. Neither command makes a live provider call.
 The bundled prompts, costs, outputs, predicted qualities, scorecard, and benchmark
 rows are project-authored **synthetic smoke-test values**. They verify wiring and are
 not a benchmark result, an empirical model comparison, or a competition score.
+
+### Three-step learned-router showcase
+
+The human and machine-readable showcase commands are:
+
+```bash
+tierroute demo
+tierroute demo --json
+```
+
+The demo presents a deterministic three-prompt stream with one bundled synthetic row
+at each of Fast, Balanced, and Premium. For every step, it takes the learned/tuned
+policy fitted strictly on that row's outer-LODO training side and runs a direct
+one-example, one-tier `OfflineSimulator` replay. That direct result must match the same
+row and tier in the nested-LODO learned result audited by `tierroute benchmark`; a
+mismatch fails the showcase instead of being hidden.
+
+Each step reports its illustrative per-query budget, quoted and realized cost,
+observed synthetic quality, independent per-query oracle quality, running realized
+cost, and the unweighted running quality-retention ratio:
+
+| Step / tier | Bundled row | Budget | Model | Quoted → realized | Observed / oracle | Running cost | Retention |
+| --- | --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 1 / Fast | `synthetic-science-001` | 0.35 | `swift` | 0.2 → 0.2 | 0.78 / 0.78 | 0.2 | 100% |
+| 2 / Balanced | `synthetic-math-002` | 0.7 | `steady` | 0.6 → 0.6 | 0.75 / 0.75 | 0.8 | 100% |
+| 3 / Premium | `synthetic-code-002` | 1 | `expert` | 1 → 1 | 0.96 / 0.96 | 1.8 | 100% |
+
+```text
+running quality retention = sum(observed synthetic quality so far)
+                            / sum(independent per-query oracle quality so far)
+```
+
+If the cumulative oracle sum is zero, retention is undefined and the CLI emits
+`N/A`/JSON `null` instead of dividing by zero.
+
+> **Interpretation boundary:** the running realized cost adds calls from different
+> tiers that each used an independent per-query ledger. It is reporting-only, not an
+> official shared or cumulative budget. The retention denominator is the sum of
+> independent per-query oracle values, not a sequence-level oracle; the ratio is not
+> oracle-gap recovery and does not use the official tier weights. Every prompt, cost,
+> quality, and oracle value is project-authored synthetic wiring evidence, not an
+> empirical or competition result.
+
+The three selected stream rows are a presentation view only. Human output follows them
+with a clearly separate full-population learned-plus-six-baseline table; JSON uses the
+versioned `tierroute-routing-stream-showcase` schema and keeps the three rows under
+`stream.steps`, the reporting rules under `accounting`, and the complete benchmark
+under `benchmark_evidence`. That evidence is independently available through
+`tierroute benchmark --budget-scope per-query`; the demo does not replace or summarize
+the full population with its three selected rows. Each JSON step exposes `budget_limit`,
+`cost.quoted`, `cost.realized`, `cost.cumulative_realized_reporting_only`,
+`quality.observed`, `quality.per_query_oracle`, and `quality.cumulative_retention`.
 
 ### Offline predictor and policy training
 
@@ -231,6 +283,10 @@ solver, and unknown IDs still fail closed.
 - A report-shaped per-query benchmark CLI compares that nested-LODO learned router
   against all six baselines on one identical evaluation scope and publishes compact,
   versioned outer-fold membership digests.
+- A three-step Fast/Balanced/Premium showcase directly replays the corresponding
+  outer-fold learned policies through `OfflineSimulator`, checks agreement with the
+  nested result, and labels its mixed-tier running cost and unweighted retention as
+  synthetic reporting-only values.
 - A per-query outer-LODO six-baseline suite fits every domain table on its outer
   training side, records fold evidence, and replays all methods once on the same
   original-order rows. A live guard verifies that the actual ledger used by every
@@ -373,6 +429,15 @@ memberships; the CLI does not expose the underlying example IDs. This digest is 
 reproducibility evidence, not an authenticated signature. Cumulative and cascade
 evaluation remain gated as described above.
 
+`tierroute demo [--json]` is intentionally narrower than that benchmark. It selects
+three bundled rows, one per tier, and directly replays each row with the same
+outer-training-only learned policy. Its running realized cost is a mixed-tier display
+sum over independent per-query ledgers. Its unweighted quality retention is
+`sum(observed) / sum(independent per-query oracle)`. Neither value is shared-budget
+accounting, a sequence-level oracle comparison, or oracle-gap recovery. The human
+command appends the separate full benchmark table; JSON retains it under
+`benchmark_evidence`, outside the three-row `stream.steps` array.
+
 The scope digest is an accidental-mix and reproducibility identity, not an authenticated
 signature. It excludes router actions so different policies remain comparable. Ledger
 implementation semantics cannot be hashed safely; the metric layer separately compares
@@ -504,22 +569,23 @@ installs the audited lock with flit_core.
 Two locked, no-external-data reproduction lanes are available:
 
 ```bash
-make reproduce-inference PYTHON=python  # fast: installed routing, evaluation, and demo
-make reproduce-training PYTHON=python   # complete: checks, tests, training, and routing
+make reproduce-inference PYTHON=python  # fast: installed routing and evaluation
+make reproduce-training PYTHON=python   # complete: checks, fitting, benchmark, and demo
 ```
 
 Both create an empty temporary Hugging Face cache and force offline mode. The fast lane
-skips `tierroute train`, `tierroute benchmark`, and all bilinear/lambda-policy fitting;
-it exercises installed synthetic prediction, artifact loading, routing, evaluation,
-and the demo. Evaluation and demo still fit the required outer-LODO domain-table
-baseline, but do not fit the learned predictor. The complete lane additionally runs
-lint, SPDX, tests, license and install checks, then its training smoke fits and consumes
-synthetic predictor/policy artifacts and executes the nested-LODO benchmark. Thus
-benchmark training runs only in `training-smoke`/`reproduce-training`, not the inference
-lane. `make reproduce` remains an alias for the complete lane. These targets install
-the pinned reviewed development packages but do not remove every unrelated
-distribution. Start from a fresh dedicated virtual environment so unrelated packages
-cannot contaminate the reproduction claim.
+skips `tierroute train`, `tierroute benchmark`, `tierroute demo`, and all
+bilinear/lambda-policy fitting. It exercises installed synthetic prediction, artifact
+loading, routing, and the six-baseline evaluation; evaluation fits only the required
+outer-training domain table, not the learned predictor. The complete lane additionally
+runs lint, SPDX, tests, license and install checks, then its training smoke fits and
+consumes synthetic predictor/policy artifacts, executes the nested-LODO benchmark, and
+runs the training-backed three-step demo. Thus benchmark and showcase fitting run only
+in `training-smoke`/`reproduce-training`, not the inference lane. `make reproduce`
+remains an alias for the complete lane. These targets install the pinned reviewed
+development packages but do not remove every unrelated distribution. Start from a
+fresh dedicated virtual environment so unrelated packages cannot contaminate the
+reproduction claim.
 
 CI runs linting, tests, a
 dependency-free wheel install, both CLI smoke paths, offline-mode checks, and a
