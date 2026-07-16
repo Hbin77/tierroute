@@ -584,9 +584,17 @@ deep 순회 전·마지막 read 후 mapping 검증, 지속 mutation 거부, bit-
 payload-free 반환 graph를 고정한다. Focused native 실행은 89 passed다. 잠긴 전체
 suite에서 Python 3.10.19·pip 26.1.2는 1,044 passed·skip 없음, Python 3.12.10·pip
 26.1.2는 1,043 passed와 잠긴 Python 3.10 `typing_extensions` 호환성 의존성 관련
-expected skip 1을 기록했다. 현재 policy test를 포함한 원격 CI는 아직 실행하지 않았고,
-PR #50의 이전 platform job은 이 slice를 포함하지 않는다. 이 근거로 issue #9가 완료되지는
-않으며 사람 walkthrough도 pending이다.
+expected skip 1을 기록했다.
+[Branch-push CI run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699)과
+[PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)은
+head `9ed400d580e288bb9648a300a8de12a5c2200fff`에서 각각 Python 3.10, Python
+3.12, dependency-free wheel, Native source portability macOS, Native source
+portability Windows의 5개 job을 모두 통과했다.
+[PR #52](https://github.com/Hbin77/tierroute/pull/52)의 기록된 branch commit은
+`f159e04`, `85393e2`, `a8e0896`, `9ed400d`다. 이는 branch push와 PR-head CI이며
+merged-main 근거가 아니다. PR #50의 이전 platform job은 별도의 session-layer 근거로
+남는다. 사람 walkthrough는 **PENDING**이고 배포 가능한 release artifact를 승인하지
+않으며, 이 근거로 issue #9가 완료되지는 않는다.
 
 변이 전에 `TRPSTO01`의 exclusive 0600 staging→section serialization→header/payload/
 whole-file hash→publish→lstat/open/fstat 안정성→private copy를 추적한다. receipt의

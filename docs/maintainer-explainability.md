@@ -378,9 +378,16 @@ before replay, primary-error preservation, bounded configuration, and a payload-
 returned graph. The focused native run recorded 89 passes. In the locked full suite,
 Python 3.10.19 with pip 26.1.2 recorded 1,044 passes with no skip; Python 3.12.10 with pip
 26.1.2 recorded 1,043 passes and one expected skip for the locked Python 3.10
-`typing_extensions` compatibility dependency. Remote CI covering the current policy
-test has not run; PR #50's earlier platform jobs do not cover this slice. This evidence
-does not complete issue #9, and the human walkthrough remains pending.
+`typing_extensions` compatibility dependency.
+[Branch-push CI run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699)
+and [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
+at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
+3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
+source portability Windows. The recorded [PR #52](https://github.com/Hbin77/tierroute/pull/52)
+branch commits are `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is
+branch-push and PR-head CI, not merged-main evidence; PR #50's earlier platform jobs
+remain separate session-layer evidence. The human walkthrough remains **PENDING**, no
+distributable release artifact is approved, and this evidence does not complete issue #9.
 
 Owner questions:
 
@@ -607,7 +614,7 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity, and macOS/Windows ephemeral source-portability evidence; no binary in the wheel | Explicit local opt-in only; macOS/Linux-musl/Windows-MSVC distributable release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer now produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. One local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates. PR #50's earlier session-only macOS/Windows source-portability CI passes, but remote CI covering the current policy benchmark test is pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, all-domain artifact, shipped command/trainer integration, official data, Linux-musl/distributable cross-platform release artifact, or performance claim exists | Audited offline local provider, all-domain artifact and command integration, full official-shape execution/parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, current policy-test CI, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer now produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. One local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates. PR #50's earlier session-only macOS/Windows source-portability CI passes; branch-push CI run `29542245699` and PR #52 head CI run `29542451542` cover the current policy benchmark test and all five jobs at `9ed400d580e288bb9648a300a8de12a5c2200fff`. This is not merged-main or distributable release-artifact evidence, and the human walkthrough remains pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, all-domain artifact, shipped command/trainer integration, official data, Linux-musl/distributable cross-platform release artifact, or performance claim exists | Audited offline local provider, all-domain artifact and command integration, full official-shape execution/parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, merged-main evidence as required, human walkthrough, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
