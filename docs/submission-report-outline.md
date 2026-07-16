@@ -10,6 +10,12 @@ This document fixes the five-page narrative, architecture source, and evidence s
 before official challenge data are available. The final report is written in Korean;
 the control language here is English so claim states remain unambiguous during review.
 
+Final-template constraints are fixed: the report body is at most five pages, uses
+Malgun Gothic 10 pt, and does not alter the provided margins. Deliver one editable
+HWP/HWPX/DOCX file and one PDF by 2026-08-27 18:00 KST. In the private submission
+workspace, give both files the required base name
+`2026 오픈소스 개발자대회 결과보고서_접수번호(팀명)` and the appropriate extension.
+
 ## Claim states and hard rules
 
 Use one of these states beside every contest-facing technical statement:
@@ -49,6 +55,10 @@ Claim state: MEASURED
 Dataset name and license evidence:
 Dataset revision and content checksum:
 Adapter/schema version:
+Quality-label/evaluator identity and revision:
+Scoring prompt/template, normalization, units, and valid range:
+Per-domain label/evaluator mapping and provenance:
+Domain source/classification rule and version:
 Budget scope, tier limits, and tier weights:
 Split protocol and ordered fold-membership digest:
 Command, config, seed, and Python/platform:
@@ -80,9 +90,12 @@ used to avoid implying a unique product-name claim.
 
 ### Objective
 
-Explain a single, testable objective: select one affordable candidate model before any
-model call, using prompt-derived features and calibrated quality estimates, to maximize
-tier-weighted quality under the declared budget semantics.
+Explain a single, testable objective: select one candidate whose pre-call quoted cost
+fits the visible budget, using prompt-derived features and calibrated quality estimates,
+and tune the policy toward higher tier-weighted quality under the declared budget
+semantics. Realized-cost feasibility is separate replay evidence because a realized
+charge may exceed its quote. This is an evaluation objective, not a claim of global
+optimization over every policy.
 
 ### Contributions table
 
@@ -92,7 +105,7 @@ tier-weighted quality under the declared budget semantics.
 | Offline replay with exact quote/realized-cost evidence | `IMPLEMENTED` | replay artifact and conservation tests |
 | Six common baselines on one immutable evaluation scope | `IMPLEMENTED` | baseline decision digest and benchmark JSON |
 | Surface-feature bilinear predictor with per-model isotonic calibration | `IMPLEMENTED` | nested-LODO fold and artifact digests |
-| Exact one-shot lambda-threshold policy | `IMPLEMENTED` | lambda search evidence and policy SHA-256 |
+| Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | search strategy, exhaustive flag, retained candidates, and policy SHA-256 |
 | Local bge-m3 provider and controlled feature ablation | `PLANNED` | model manifest, provider tests, ablation record |
 | GBM-versus-bilinear comparison | `PLANNED` | implementation plus matched-scope result |
 | Official SKT adapter and official score | `ORGANIZER-GATED` | written license/schema evidence and result artifact |
@@ -113,7 +126,7 @@ flowchart LR
 
     STATE --> SURFACE["Surface features<br/>length, code, math, domain tags"]
     STATE -. local assets only .-> BGE["bge-m3 dense embedding<br/>PLANNED"]
-    PREP["Explicit preparation step<br/>network allowed only here"] -. pinned files and manifest .-> ASSET["Local model directory"]
+    PREP["bge-m3 preparation and manifest<br/>PLANNED"] -. pinned files .-> ASSET["Validated local model directory<br/>PLANNED"]
     ASSET -. validated local path .-> BGE
 
     SURFACE --> ENCODER["Versioned feature schema"]
@@ -122,27 +135,44 @@ flowchart LR
     ENCODER -. matched comparison .-> GBM["GBM predictor<br/>PLANNED"]
     BILINEAR --> CAL["Per-model isotonic calibration"]
     GBM -. future .-> CAL
-    CAL --> POLICY["One-shot exact lambda-threshold policy"]
+    CAL --> POLICY["One-shot exact-arithmetic<br/>lambda-threshold decision"]
     POLICY --> ACTION["CallModel or SelectOutput"]
 
+    RAW -. outer-training partition .-> OUTERTRAIN["Outer-training rows and labels"]
+    OUTERTRAIN --> INNER["Training-side cross-fitted<br/>calibrated predictions"]
+    INNER --> TUNE["Tier lambda tuning"]
+    OUTERTRAIN -->|held-in outcomes, quality, realized cost| TUNE
+    OUTERTRAIN --> REFIT["Final calibrated bilinear refit<br/>outer-training side only"]
+    REFIT -. fold predictor .-> BILINEAR
+    TUNE -. per-tier fold lambda mapping .-> POLICY
+
     ACTION --> REPLAY["Offline replay simulator<br/>logged outcomes only"]
-    PRIVATE["Held-out outputs and quality labels<br/>never visible to RouterState"] --> REPLAY
-    REPLAY --> LEDGER["Injected budget ledger<br/>scope owned by adapter"]
+    RAW -. outer-held-out partition .-> PRIVATE["Outer-held-out outputs and labels<br/>never enter fold fitting or RouterState"]
+    PRIVATE --> REPLAY
+    LEDGER["Injected budget ledger<br/>scope owned by adapter"] -->|budget contract| REPLAY
+    REPLAY -->|realized charge| LEDGER
+    LEDGER -. remaining budget snapshot .-> STATE
     REPLAY --> METRICS["Tier quality, exact cost evidence,<br/>per-query oracle-gap recovery"]
 
-    OFFICIAL["Official SKT data and scoring"] -. license and schema pending .-> ADAPTER
-    CASCADE["Cascade and sequence oracle"] -. organizer-gated .-> POLICY
+    OFFICIAL["Official SKT data and scoring<br/>ORGANIZER-GATED"] -. license and schema pending .-> ADAPTER
+    CASCADE["Cascade and sequence oracle<br/>ORGANIZER-GATED"] -. organizer-gated .-> POLICY
 
     classDef planned stroke-dasharray: 6 4;
-    class BGE,GBM,OFFICIAL,CASCADE planned;
+    classDef gated stroke-width: 3px,stroke-dasharray: 2 3;
+    class BGE,PREP,ASSET,GBM planned;
+    class OFFICIAL,CASCADE gated;
 ```
 
 ### Boundary notes for the prose
 
-- Runtime routing, feature extraction, prediction, policy choice, and replay perform no
-  network access.
-- Model/data downloads are separate preparation actions with fixed revisions and
-  checksums; runtime receives local paths only.
+- Shipped built-in surface-feature routing, prediction, policy, and replay paths are
+  verified with runtime networking disabled. An injected third-party predictor,
+  embedding provider, or adapter is outside that guarantee until it passes the same
+  offline tests.
+- The implemented RouterBench preparation script uses a fixed revision and checksum
+  outside runtime and does not redistribute the dataset. bge-m3 preparation, manifest
+  validation, and inference remain `PLANNED`; any future provider must accept local
+  assets only and pass empty-cache offline tests.
 - Uncalled outputs and held-out quality labels stay outside `RouterState`.
 - `adapters/` owns unresolved per-query-versus-cumulative budget interpretation.
 - The default policy makes one model choice. The typed action/history contract permits
@@ -160,6 +190,9 @@ Record all of the following above or below the first results table:
 
 - dataset name, written license evidence, revision, file checksum, and decoded semantic
   checksum;
+- quality-label/evaluator identity and revision, scoring prompt or template,
+  normalization, units/range, and any per-domain evaluator mapping;
+- domain source or classification rule, rule version, and provenance;
 - official or illustrative status of tier limits and weights;
 - budget scope and maximum calls per query;
 - outer and inner LODO protocol, ordered fold digest, and domain counts;
@@ -183,8 +216,13 @@ oracle-gap recovery =
     sum_t w_t * (Q_oracle,t - Q_cheapest,t)
 ```
 
-The score is unavailable if a required tier is incomplete or infeasible. Oracle-gap
-recovery is unavailable when the denominator is zero; negative values remain negative.
+The metric implementation makes the score unavailable if any *included* tier is
+incomplete or infeasible; it cannot infer that an expected tier is missing. Before a
+report is accepted, separately assert that the ordered tier set exactly matches the
+declared or official set. Oracle-gap recovery is unavailable when the denominator is
+zero; negative values remain negative. Exact arithmetic governs each fixed-lambda
+decision. Lambda selection is exhaustive only when its artifact says `exhaustive:
+true`; a bounded retained search must stay labeled approximate.
 
 ### Results table template
 
@@ -192,9 +230,9 @@ recovery is unavailable when the denominator is zero; negative values remain neg
 | --- | ---: | ---: | ---: | ---: | --- |
 | Mean quality | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | `TBD` |
 | Budget-feasible queries / total | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | not pooled | `TBD` |
-| Realized replay cost | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | diagnostic only | `TBD` |
-| Absolute quote error | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | diagnostic only | `TBD` |
-| Oracle-gap recovery | contribution in artifact | contribution in artifact | contribution in artifact | `TBD-MEASURED` | `TBD` |
+| Total realized replay cost (state unit and query count) | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | diagnostic only | `TBD` |
+| Total absolute quote error (same cost unit) | `TBD-MEASURED` | `TBD-MEASURED` | `TBD-MEASURED` | diagnostic only | `TBD` |
+| Oracle-gap recovery | not separately emitted by v1 JSON | not separately emitted by v1 JSON | not separately emitted by v1 JSON | `TBD-MEASURED` | `TBD` |
 
 ### Required comparisons and figures
 
@@ -232,17 +270,18 @@ HF_HUB_OFFLINE=1 tierroute demo
 
 The final report should state the tested operating systems and Python versions, not the
 full range merely declared in package metadata. Cite CI, exact dependency lock, SPDX
-coverage, the license gate, [SBOM](../SBOM.md), and the current fresh-clone audit.
+coverage, the license gate, [SBOM](../SBOM.md), and the current
+[fresh-clone audit](https://github.com/Hbin77/tierroute/issues/19).
 
 ### Novelty comparison template
 
 | Dimension | Prior-work reference | tierroute measured/implemented distinction | Evidence ID |
 | --- | --- | --- | --- |
 | Decision timing | RouteLLM / RouterBench / FrugalGPT / cascade routing | one pre-call choice is `IMPLEMENTED`; cascade is `ORGANIZER-GATED` | `TBD` |
-| Budget objective | routing and cascade literature | exact one-shot lambda utility is `IMPLEMENTED`; official weights are gated | `TBD` |
+| Budget objective | routing and cascade literature | fixed-lambda exact cost-utility comparison is `IMPLEMENTED`; bounded tuning stays approximate; official weights are gated | `TBD` |
 | Distribution shift | random-split and transfer findings | true nested LODO orchestration is `IMPLEMENTED`; official-data result is not | `TBD` |
 | Calibration | predictor reliability literature | per-model isotonic layer is `IMPLEMENTED`; empirical gain is `TBD-MEASURED` | `TBD` |
-| Offline/compliance | deployment constraint | dependency-free core and network-free runtime are `IMPLEMENTED` | `TBD` |
+| Offline/compliance | deployment constraint | dependency-free core and network-free shipped built-in paths are `IMPLEMENTED`; injected extensions need separate offline proof | `TBD` |
 
 Avoid saying tierroute invented LLM routing, budget-aware selection, cascades, LODO, or
 isotonic calibration. The defensible contribution is the verified combination and its
@@ -301,6 +340,10 @@ dataset listed as planned is not a distributed component.
   revision, manifest/checksum, license, local preparation method, and inference role.
 - If any model is fine-tuned, add the required type-2 public weights, training script,
   configuration, model card, and license evidence.
+- Keep classification of tierroute's trained ridge/bilinear-plus-isotonic artifact as
+  `ORGANIZER-GATED` until a written interpretation is received. Record that answer and,
+  if the artifact is treated as a type-3 self-developed model, add every required
+  type-3 field rather than assuming the type-1/type-2 entries are sufficient.
 - Derive commercial AI-assistance disclosure from
   [ai-assistance-audit.md](ai-assistance-audit.md). Do not invent an unavailable model
   snapshot, code percentage, or human sign-off.
@@ -318,6 +361,8 @@ dataset listed as planned is not a distributed component.
       explicit.
 - [ ] All external code, data, models, fonts, images, and media have source and license
       records.
+- [ ] The organizer's written interpretation of the trained tierroute artifact is
+      preserved, and the type-3 declaration is completed if required.
 - [ ] The owner completed the eight-boundary explainability walkthrough.
 - [ ] A clean checkout reproduces the cited commands with runtime networking disabled.
 - [ ] The official HWP/HWPX/DOCX retains its required margins, font, and five-page
