@@ -285,11 +285,16 @@ That focused count is local software evidence, not performance or human sign-off
 `8ec9cc1`
 passed the dependency-free wheel, macOS/Windows native-source jobs, Python 3.10
 (921 passed, one expected skip), and Python 3.12 (920 passed, two expected skips).
-Those PR #47 counts do not cover the later prepared policy bridge. Its own branch
-implementation is `63e288e` with tests at `3249a3c`; local Darwin arm64 verification
-recorded Python 3.10 with 954 passed and Python 3.12 with 953 passed plus one expected
-compatibility skip. Branch CI must still be recorded separately before submission.
-Automated CI still does not replace the owner walkthrough below.
+Those PR #47 counts do not cover the later prepared policy bridge. That bridge merged
+in [PR #48](https://github.com/Hbin77/tierroute/pull/48) at
+`566678c9c0181d9bcb76378ab423858150bff7b4`; its implementation is `63e288e` with
+tests at `3249a3c`. Local Darwin arm64 verification recorded Python 3.10 with 954
+passed and Python 3.12 with 953 passed plus one expected compatibility skip. The
+[PR-head CI run `29530846709`](https://github.com/Hbin77/tierroute/actions/runs/29530846709)
+at `cfa0c72` and
+[merged-main run `29531008829`](https://github.com/Hbin77/tierroute/actions/runs/29531008829)
+both passed Python 3.10/3.12, dependency-free wheel, and macOS/Windows native-source
+jobs. Automated CI still does not replace the owner walkthrough below.
 
 Owner questions:
 
