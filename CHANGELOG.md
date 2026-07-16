@@ -125,7 +125,8 @@ the public API is pre-1.0.
   finite-binary64 normalization, and planned-shape model, feature, scalar, metadata, and
   calibration caps apply across construction, parsing, serialization, save validation,
   and policy hashing. This is an intentional pre-1.0 rejection of oversized version-1
-  inputs; valid canonical bytes and the pinned predictor SHA-256 remain unchanged.
+  inputs; valid canonical bytes and the pinned platform-local predictor SHA-256 values
+  remain unchanged.
 - Policy artifacts additionally reject malformed/noncanonical rational values,
   predictor/data/order mismatches, invalid Unicode metadata, and unsafe binary input.
   Bounded reads now reject artifacts above 8 MiB, 404,096 digits per exact integer, or

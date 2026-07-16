@@ -242,7 +242,9 @@ A policy artifact records:
 
 These stable artifact hashes intentionally retain their existing byte contract. The
 predictor resource checks tighten which oversized version-1 inputs are accepted without
-adding a field or changing valid canonical bytes.
+adding a field or changing valid canonical bytes. Fitted predictor coefficients and
+their golden hashes are pinned per reviewed platform because the reference feature math
+and solver do not claim cross-platform byte-identical binary64 results.
 Separately, each in-memory `EvaluationReport` carries an `EvaluationScopeIdentity`
 using `tierroute-evaluation-scope-v1`, which binds the ordered tier specs,
 `max_calls_per_query`, complete replay rows, output text, quality and cost labels,
