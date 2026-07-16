@@ -16,6 +16,7 @@ import re
 import struct
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from itertools import pairwise
 
 from tierroute.core import ModelSpec
 from tierroute.eval.schemas import CandidateOutcome, EvaluationExample
@@ -84,8 +85,8 @@ def _sha256_hex(value: object, name: str) -> str:
 
 
 def _bounded_text(value: object, name: str, *, max_bytes: int) -> str:
-    if type(value) is not str or not value.strip():
-        raise ValueError(f"{name} must be a non-empty exact string")
+    if type(value) is not str:
+        raise ValueError(f"{name} must be an exact string")
     if len(value) > max_bytes:
         raise ValueError(f"{name} exceeds the reviewed UTF-8 byte limit")
     try:
@@ -94,6 +95,8 @@ def _bounded_text(value: object, name: str, *, max_bytes: int) -> str:
         raise ValueError(f"{name} must contain valid UTF-8 text") from error
     if len(encoded) > max_bytes:
         raise ValueError(f"{name} exceeds the reviewed UTF-8 byte limit")
+    if not value.strip():
+        raise ValueError(f"{name} must be non-empty non-whitespace text")
     return value
 
 
@@ -144,6 +147,31 @@ def _validate_universal_feature_means(
 
 def _prompt_sha256(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
+def _row_key_text_bytes(
+    example_ids: tuple[str, ...],
+    prompt_sha256s: tuple[str, ...],
+    *,
+    require_canonical_order: bool,
+) -> int:
+    total_bytes = 0
+    previous_id: str | None = None
+    for example_id, prompt_digest in zip(example_ids, prompt_sha256s, strict=True):
+        _bounded_text(
+            example_id,
+            "row-key example_id",
+            max_bytes=MAX_PREPARED_ROW_ID_UTF8_BYTES,
+        )
+        _sha256_hex(prompt_digest, "row-key prompt_sha256")
+        encoded_id = example_id.encode("utf-8")
+        total_bytes += len(encoded_id) + len(prompt_digest)
+        if total_bytes > MAX_PREPARED_REFERENCE_TEXT_UTF8_BYTES:
+            raise ValueError("prepared row keys exceed the reference text-byte limit")
+        if require_canonical_order and previous_id is not None and previous_id >= example_id:
+            raise ValueError("prepared row-key example IDs must be strictly increasing")
+        previous_id = example_id
+    return total_bytes
 
 
 class _HashWriter:
@@ -268,19 +296,11 @@ class PreparedEmbeddingSnapshot:
             raise TypeError("embedding payload must be immutable bytes")
         if len(self.payload) != expected_bytes:
             raise ValueError("embedding payload has the wrong exact byte length")
-        for example_id in self.example_ids:
-            _bounded_text(
-                example_id,
-                "embedding example_id",
-                max_bytes=MAX_PREPARED_ROW_ID_UTF8_BYTES,
-            )
-        if (
-            self.example_ids != tuple(sorted(self.example_ids))
-            or len(set(self.example_ids)) != row_count
-        ):
-            raise ValueError("embedding example IDs must be sorted and unique")
-        for prompt_digest in self.prompt_sha256s:
-            _sha256_hex(prompt_digest, "embedding prompt_sha256")
+        _row_key_text_bytes(
+            self.example_ids,
+            self.prompt_sha256s,
+            require_canonical_order=True,
+        )
         for (value,) in struct.iter_unpack("<d", self.payload):
             if not math.isfinite(value):
                 raise ValueError("embedding payload must contain only finite binary64 values")
@@ -347,8 +367,13 @@ def build_prepared_embedding_snapshot(
         raise TypeError("embedding rows must contain exact PreparedEmbeddingInput values")
     if any(len(row.values) != dimension for row in rows):
         raise ValueError("every embedding row must match the declared dimension")
+    _row_key_text_bytes(
+        tuple(row.example_id for row in rows),
+        tuple(row.prompt_sha256 for row in rows),
+        require_canonical_order=False,
+    )
     ordered = tuple(sorted(rows, key=lambda row: row.example_id))
-    if len({row.example_id for row in ordered}) != len(ordered):
+    if any(left.example_id >= right.example_id for left, right in pairwise(ordered)):
         raise ValueError("embedding rows must have unique example IDs")
     payload = bytearray(payload_bytes)
     for row_index, row in enumerate(ordered):
@@ -421,15 +446,11 @@ class PreparedFeatureStore:
                 raise TypeError(f"{name} must be an exact tuple")
             if len(values) != row_count:
                 raise ValueError(f"{name} has the wrong exact row count")
-        for example_id in self.example_ids:
-            _bounded_text(example_id, "example_id", max_bytes=MAX_PREPARED_ROW_ID_UTF8_BYTES)
-        if (
-            self.example_ids != tuple(sorted(self.example_ids))
-            or len(set(self.example_ids)) != row_count
-        ):
-            raise ValueError("example IDs must be sorted and unique")
-        for prompt_digest in self.prompt_sha256s:
-            _sha256_hex(prompt_digest, "prompt_sha256")
+        _row_key_text_bytes(
+            self.example_ids,
+            self.prompt_sha256s,
+            require_canonical_order=True,
+        )
         domain_counts = [0] * len(self.plan.domains)
         for domain_index in self.domain_indices:
             index = _exact_nonnegative_int(domain_index, "domain index")
@@ -620,7 +641,7 @@ def _validated_examples_for_store(
             raise ValueError("prepared source text exceeds the reference byte limit")
 
     ordered = tuple(sorted(examples, key=lambda example: example.example_id))
-    if len({example.example_id for example in ordered}) != len(ordered):
+    if any(left.example_id >= right.example_id for left, right in pairwise(ordered)):
         raise ValueError("prepared examples must have unique example IDs")
 
     domain_counts = [0] * len(plan.domains)
@@ -848,6 +869,14 @@ class PreparedDomainStatistics:
             raise ValueError("statistics feature_count is outside the universal prepared layout")
         if target_count > MAX_PREPARED_TARGETS:
             raise ValueError("statistics dimensions exceed the prepared limits")
+        scalar_count = (
+            feature_count
+            + target_count
+            + _packed_upper_length(feature_count)
+            + feature_count * target_count
+        )
+        if scalar_count > MAX_PREPARED_REFERENCE_STATISTIC_SCALARS:
+            raise ValueError("domain statistics exceed the reference scalar limit")
         mask = _exact_nonnegative_int(self.active_tag_mask, "active_tag_mask")
         if mask >= 1 << len(SURFACE_DOMAIN_TAG_CATALOGUE):
             raise ValueError("active_tag_mask contains an unknown tag bit")
@@ -979,6 +1008,8 @@ class PreparedDomainStatisticsBundle:
         _sha256_hex(self.store_sha256, "statistics store_sha256")
         if type(self.model_ids) is not tuple:
             raise TypeError("statistics model_ids must be an exact tuple")
+        if len(self.model_ids) != self.plan.target_count:
+            raise ValueError("statistics model catalogue does not match the plan")
         for model_id in self.model_ids:
             _bounded_text(
                 model_id,
@@ -987,8 +1018,6 @@ class PreparedDomainStatisticsBundle:
             )
         if self.model_ids != tuple(sorted(set(self.model_ids))):
             raise ValueError("statistics model_ids must be a sorted unique exact tuple")
-        if len(self.model_ids) != self.plan.target_count:
-            raise ValueError("statistics model catalogue does not match the plan")
         dimension = _exact_nonnegative_int(self.embedding_dimension, "embedding dimension")
         if self.plan.feature_count != _UNIVERSAL_SURFACE_DIMENSION + dimension:
             raise ValueError("statistics embedding dimension does not match the plan")
@@ -1156,6 +1185,8 @@ class PreparedSubsetStatistics:
             raise ValueError("subset row_count does not match the prepared plan")
         if type(self.model_ids) is not tuple:
             raise TypeError("subset model_ids must be an exact tuple")
+        if len(self.model_ids) != self.plan.target_count:
+            raise ValueError("subset model catalogue does not match the prepared plan")
         for model_id in self.model_ids:
             _bounded_text(
                 model_id,
@@ -1164,14 +1195,25 @@ class PreparedSubsetStatistics:
             )
         if self.model_ids != tuple(sorted(set(self.model_ids))):
             raise ValueError("subset model_ids must be a sorted unique exact tuple")
-        if len(self.model_ids) != self.plan.target_count:
-            raise ValueError("subset model catalogue does not match the prepared plan")
         if type(self.feature_schema) is not PromptFeatureSchema:
             raise TypeError("feature_schema must be an exact PromptFeatureSchema")
+        if any(
+            value == 0.0 and math.copysign(1.0, value) < 0
+            for value in self.feature_schema.continuous_means
+        ):
+            raise ValueError("feature schema means must use canonical positive zero")
         feature_count = _UNIVERSAL_SURFACE_DIMENSION + self.feature_schema.embedding_dimension
         if feature_count != self.plan.feature_count:
             raise ValueError("subset feature schema does not match the prepared plan")
         target_count = len(self.model_ids)
+        scalar_count = (
+            feature_count
+            + target_count
+            + _packed_upper_length(feature_count)
+            + feature_count * target_count
+        )
+        if scalar_count > MAX_PREPARED_REFERENCE_STATISTIC_SCALARS:
+            raise ValueError("subset statistics exceed the reference scalar limit")
         mask = _exact_nonnegative_int(self.active_tag_mask, "active_tag_mask")
         if mask >= 1 << len(SURFACE_DOMAIN_TAG_CATALOGUE):
             raise ValueError("active_tag_mask contains an unknown tag bit")

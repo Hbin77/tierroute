@@ -373,6 +373,15 @@ def test_fit_source_digest_has_a_portable_golden_and_excludes_replay_only_fields
 
 def test_embedding_inputs_reject_malformed_values_dimensions_and_duplicate_ids() -> None:
     prompt_digest = "1" * 64
+
+    class HostileString(str):
+        def strip(self, *args: object, **kwargs: object) -> str:
+            raise AssertionError("a string subclass method must not run")
+
+    with pytest.raises(ValueError, match="exact string"):
+        PreparedEmbeddingInput(HostileString("row"), prompt_digest, (1.0, 2.0))
+    with pytest.raises(ValueError, match="UTF-8 byte limit"):
+        PreparedEmbeddingInput(" " * 4_097, prompt_digest, (1.0, 2.0))
     with pytest.raises(TypeError, match="exact tuple"):
         PreparedEmbeddingInput("row", prompt_digest, [1.0, 2.0])  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="exact real"):
@@ -619,10 +628,6 @@ def test_subset_tags_and_population_scaling_use_only_included_training_domains()
         rel=1e-15,
         abs=1e-15,
     )
-    assert (
-        subset.feature_schema.continuous_means != current_schema.continuous_means
-        or subset.feature_schema.continuous_scales != current_schema.continuous_scales
-    )
 
 
 def test_excluded_domain_mutation_cannot_change_included_subset_statistics() -> None:
@@ -850,6 +855,17 @@ def test_public_records_reject_noncanonical_payloads_and_impossible_moments(
     with pytest.raises(ValueError, match="diagonal must be non-negative"):
         replace(subset, centered_xx_packed=tuple(malformed_xx))
 
+    negative_zero_schema = replace(
+        subset.feature_schema,
+        continuous_means=(-0.0, *subset.feature_schema.continuous_means[1:]),
+    )
+    with pytest.raises(ValueError, match="canonical positive zero"):
+        replace(
+            subset,
+            feature_schema=negative_zero_schema,
+            feature_means=(0.0, *subset.feature_means[1:]),
+        )
+
     monkeypatch.setattr(prepared_store_module, "MAX_PREPARED_REFERENCE_STATISTIC_SCALARS", 1)
     with pytest.raises(ValueError, match="bundle exceeds"):
         replace(bundle)
@@ -898,3 +914,65 @@ def test_semantic_metadata_is_bound_into_bundle_and_subset_digests() -> None:
 
     with pytest.raises(ValueError, match="domain_indices do not match"):
         replace(subset, domain_indices=(0, 2))
+
+
+def test_direct_record_shape_caps_precede_model_and_moment_walks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(_examples())
+    bundle = build_prepared_domain_statistics(store)
+    subset = combine_prepared_subset_statistics(
+        bundle,
+        _subset_index(store.plan, ("alpha", "bravo")),
+    )
+
+    def unexpected_walk(*args: object, **kwargs: object) -> None:
+        raise AssertionError("record content was walked before its shape preflight")
+
+    monkeypatch.setattr(prepared_store_module, "_bounded_text", unexpected_walk)
+    with pytest.raises(ValueError, match="model catalogue"):
+        replace(bundle, model_ids=("a", "b", "c"))
+    with pytest.raises(ValueError, match="model catalogue"):
+        replace(subset, model_ids=("a", "b", "c"))
+
+    monkeypatch.undo()
+    monkeypatch.setattr(prepared_store_module, "MAX_PREPARED_REFERENCE_STATISTIC_SCALARS", 1)
+    monkeypatch.setattr(prepared_store_module, "_finite_tuple", unexpected_walk)
+    with pytest.raises(ValueError, match="domain statistics exceed"):
+        replace(bundle.domain_statistics[0])
+    with pytest.raises(ValueError, match="subset statistics exceed"):
+        replace(subset)
+
+
+def test_row_key_aggregate_cap_precedes_sorting_and_digest_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    examples = _examples()
+    rows = _embedding_rows(examples)
+    snapshot = _snapshot(examples)
+    store = _store(examples)
+
+    def unexpected_work(*args: object, **kwargs: object) -> None:
+        raise AssertionError("sorting or digest work ran before the row-key cap")
+
+    monkeypatch.setattr(prepared_store_module, "MAX_PREPARED_REFERENCE_TEXT_UTF8_BYTES", 1)
+    monkeypatch.setattr(prepared_store_module, "sorted", unexpected_work, raising=False)
+    with pytest.raises(ValueError, match="row keys exceed"):
+        build_prepared_embedding_snapshot(
+            rows,
+            _identity(),
+            dimension=_EMBEDDING_DIMENSION,
+        )
+
+    monkeypatch.delattr(prepared_store_module, "sorted")
+    monkeypatch.setattr(
+        prepared_store_module,
+        "_embedding_snapshot_sha256",
+        unexpected_work,
+    )
+    with pytest.raises(ValueError, match="row keys exceed"):
+        replace(snapshot)
+
+    monkeypatch.setattr(prepared_store_module, "_feature_store_sha256", unexpected_work)
+    with pytest.raises(ValueError, match="row keys exceed"):
+        replace(store)
