@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Exercise every installed CLI path without network access or external data."""
+"""Exercise installed inference/evaluation paths without network or external data."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def _run_cli(executable: str, *arguments: str) -> str:
 
 
 def main() -> int:
-    """Run core route, artifact route, evaluate, and demo through the console script."""
+    """Run core route, artifact route, and evaluation through the console script."""
 
     hf_home = _require_empty_offline_home()
     executable = shutil.which("tierroute")
@@ -170,14 +170,10 @@ def main() -> int:
     if baseline_names != REQUIRED_BASELINES:
         raise RuntimeError(f"evaluate smoke returned unexpected baselines: {baseline_names}")
 
-    demo = _run_cli(executable, "demo")
-    if "tierroute offline quickstart" not in demo or "domain-best-table" not in demo:
-        raise RuntimeError("demo smoke output is incomplete")
-
     if any(hf_home.iterdir()):
         raise RuntimeError("the CLI wrote to HF_HOME during an offline smoke test")
 
-    print("CLI smoke passed: core, predictor/policy artifacts, evaluate, and demo ran offline.")
+    print("CLI smoke passed: core, predictor/policy artifacts, and evaluate ran offline.")
     return 0
 
 

@@ -43,6 +43,7 @@ from tierroute.predictors import (
     BilinearTrainingConfig,
     fit_calibrated_bilinear,
 )
+from tierroute.showcase import RoutingStreamShowcase, build_routing_stream_showcase
 
 DEFAULT_MAX_LAMBDA_CANDIDATES = 257
 
@@ -185,7 +186,11 @@ def _build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--seed", type=int, default=0, help="recorded reproducibility seed")
     train_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
-    subparsers.add_parser("demo", help="run the self-contained offline quickstart")
+    demo_parser = subparsers.add_parser(
+        "demo",
+        help="replay the self-contained learned-router stream showcase",
+    )
+    demo_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     return parser
 
 
@@ -534,6 +539,172 @@ def _benchmark_payload(
         "learned_router": learned,
         "baselines": [_baseline_payload(row) for row in result.baselines.baselines],
     }
+
+
+def _showcase_payload(result: RoutingStreamShowcase) -> dict[str, Any]:
+    """Serialize the stream separately from its full-population benchmark evidence."""
+
+    benchmark = _benchmark_payload(
+        result.benchmark,
+        dataset_name=result.dataset.name,
+        dataset_license=result.dataset.license,
+        provenance=result.dataset.provenance,
+        bundled_synthetic=True,
+    )
+    steps = []
+    for step in result.steps:
+        retention = step.cumulative_quality_retention
+        steps.append(
+            {
+                "index": step.index,
+                "example_id": step.example_id,
+                "prompt": step.prompt,
+                "tier": step.tier.value,
+                "budget_limit": canonical_cost_text(step.budget_limit),
+                "evaluation_scope": {
+                    "algorithm": step.evaluation_scope.algorithm,
+                    "sha256": step.evaluation_scope.sha256,
+                    "max_calls_per_query": step.evaluation_scope.max_calls_per_query,
+                },
+                "routing": {
+                    "model": step.selected_model_id,
+                    "lambda_cost": _fraction_payload(step.lambda_cost),
+                    "predicted_quality": round(step.predicted_quality, 6),
+                    "reason": step.decision_reason,
+                    "audited_benchmark_query_match": True,
+                },
+                "cost": {
+                    "quoted": canonical_cost_text(step.quoted_cost),
+                    "realized": canonical_cost_text(step.realized_cost),
+                    "cumulative_realized_reporting_only": canonical_cost_text(
+                        step.cumulative_realized_cost
+                    ),
+                },
+                "quality": {
+                    "kind": "project-authored-synthetic-observed-replay",
+                    "observed": round(step.observed_quality, 6),
+                    "per_query_oracle": {
+                        "model": step.oracle_model_id,
+                        "realized_cost": canonical_cost_text(step.oracle_realized_cost),
+                        "quality": round(step.oracle_quality, 6),
+                    },
+                    "cumulative_observed": round(
+                        float(step.cumulative_observed_quality),
+                        6,
+                    ),
+                    "cumulative_observed_exact": _fraction_payload(
+                        step.cumulative_observed_quality
+                    ),
+                    "cumulative_per_query_oracle": round(
+                        float(step.cumulative_oracle_quality),
+                        6,
+                    ),
+                    "cumulative_per_query_oracle_exact": _fraction_payload(
+                        step.cumulative_oracle_quality
+                    ),
+                    "cumulative_retention": (
+                        None if retention is None else round(float(retention), 6)
+                    ),
+                    "cumulative_retention_exact": (
+                        None if retention is None else _fraction_payload(retention)
+                    ),
+                },
+            }
+        )
+    retention = result.quality_retention
+    return {
+        "schema": "tierroute-routing-stream-showcase",
+        "schema_version": 1,
+        "command": "demo",
+        "stream_id": result.stream_id,
+        "dataset": result.dataset.name,
+        "dataset_license": result.dataset.license,
+        "provenance": result.dataset.provenance,
+        "claim_scope": "project-authored-synthetic-wiring-only",
+        "network_used": False,
+        "data_sha256": result.data_sha256,
+        "replay_sha256": result.replay_sha256,
+        "policy": {
+            "kind": result.benchmark.predictor_kind,
+            "routing": "one-shot exact-rational tier lambda",
+            "validation": "direct one-row replays match audited true nested-LODO queries",
+        },
+        "accounting": {
+            "budget_scope": "independent-per-query-illustrative",
+            "cumulative_cost_scope": ("mixed-tier-reporting-only; not an official shared budget"),
+            "oracle_scope": "independent-budget-feasible-per-query-evaluation-only",
+            "quality_retention_formula": (
+                "sum(observed synthetic quality) / sum(independent per-query oracle quality)"
+            ),
+            "quality_retention_scope": (
+                "unweighted display ratio; not a sequence-level oracle or oracle-gap recovery"
+            ),
+        },
+        "stream": {
+            "step_count": len(result.steps),
+            "steps": steps,
+            "totals": {
+                "realized_cost_reporting_only": canonical_cost_text(result.total_realized_cost),
+                "observed_quality": round(float(result.total_observed_quality), 6),
+                "observed_quality_exact": _fraction_payload(result.total_observed_quality),
+                "per_query_oracle_quality": round(float(result.total_oracle_quality), 6),
+                "per_query_oracle_quality_exact": _fraction_payload(result.total_oracle_quality),
+                "quality_retention": (None if retention is None else round(float(retention), 6)),
+                "quality_retention_exact": (
+                    None if retention is None else _fraction_payload(retention)
+                ),
+            },
+        },
+        "benchmark_evidence": benchmark,
+    }
+
+
+def _print_showcase(result: RoutingStreamShowcase) -> None:
+    """Render the exact three-tier stream before the separate benchmark table."""
+
+    print("tierroute offline routing stream showcase\n")
+    print(f"Dataset: {result.dataset.name}")
+    print("Claim: project-authored synthetic wiring evidence, not benchmark results")
+    print("Budget scope: independent illustrative per-query limits")
+    print("Running cost: mixed-tier reporting-only; not an official shared budget")
+    print(
+        "Retention: unweighted sum(observed synthetic quality) / "
+        "sum(independent per-query oracle quality)"
+    )
+    print("Oracle note: not a sequence-level oracle or oracle-gap recovery\n")
+    for step in result.steps:
+        retention = step.cumulative_quality_retention
+        retention_label = "N/A" if retention is None else f"{100 * float(retention):.1f}%"
+        print(f"Step {step.index} [{step.tier.value}] {step.example_id}")
+        print(f"  prompt:            {step.prompt}")
+        print(
+            f"  route:             {step.selected_model_id} "
+            f"(one-shot lambda={_fraction_label(step.lambda_cost)})"
+        )
+        print(
+            "  cost:              "
+            f"budget={canonical_cost_text(step.budget_limit)}, "
+            f"quoted={canonical_cost_text(step.quoted_cost)}, "
+            f"realized={canonical_cost_text(step.realized_cost)}"
+        )
+        print(
+            "  synthetic quality: "
+            f"observed={step.observed_quality:.3f}, "
+            f"per-query oracle={step.oracle_quality:.3f} ({step.oracle_model_id})"
+        )
+        print(
+            "  running display:   "
+            f"cost={canonical_cost_text(step.cumulative_realized_cost)}, "
+            f"quality retention={retention_label}"
+        )
+    final_retention = result.quality_retention
+    final_label = "N/A" if final_retention is None else f"{100 * float(final_retention):.1f}%"
+    print("\nStream summary:")
+    print(
+        f"  realized cost:      {canonical_cost_text(result.total_realized_cost)} (reporting-only)"
+    )
+    print(f"  quality retention:  {final_label} (unweighted display ratio)")
+    print("  network:            disabled")
 
 
 def _format_score(value: float | None) -> str:
@@ -972,25 +1143,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "demo":
-        print("tierroute offline quickstart\n")
-        prompts = (
-            (BudgetTier.FAST, "What gas do plants take in?"),
-            (BudgetTier.BALANCED, "Prove that sqrt(2) is irrational."),
-            (
-                BudgetTier.PREMIUM,
-                "Debug an async payment retry race and propose an idempotent implementation.",
-            ),
+        benchmark = evaluate_per_query_bilinear_benchmark(
+            dataset.examples,
+            dataset.tier_specs,
+            config=BilinearTrainingConfig(),
+            max_candidates_per_tier=DEFAULT_MAX_LAMBDA_CANDIDATES,
         )
-        for tier, prompt in prompts:
-            decision = route_prompt(dataset, prompt, tier)
+        showcase = build_routing_stream_showcase(dataset, benchmark)
+        if args.json:
             print(
-                f"[{tier.value:<8}] {decision.model_id:<7} "
-                "quoted_cost="
-                f"{canonical_cost_text(decision.model_cost)} "
-                f"predicted_quality={decision.predicted_quality:.3f}"
+                json.dumps(
+                    _showcase_payload(showcase),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
             )
-        print()
-        _print_scorecard(dataset.name, evaluate_six_baselines(dataset))
+        else:
+            _print_showcase(showcase)
+            print("\nSeparate full-population learned + six-baseline evidence:\n")
+            _print_benchmark(benchmark, dataset.name, bundled_synthetic=True)
         return 0
 
     parser.error(f"unsupported command: {args.command}")

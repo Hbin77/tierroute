@@ -158,6 +158,48 @@ def main() -> int:
         ):
             raise RuntimeError("nested benchmark fold membership evidence is incomplete")
 
+        showcase = json.loads(_run_cli(executable, "demo", "--json"))
+        if (
+            showcase.get("schema") != "tierroute-routing-stream-showcase"
+            or showcase.get("schema_version") != 1
+            or showcase.get("network_used") is not False
+            or showcase.get("claim_scope") != "project-authored-synthetic-wiring-only"
+        ):
+            raise RuntimeError("routing stream showcase did not preserve its offline contract")
+        accounting = showcase.get("accounting", {})
+        if (
+            accounting.get("budget_scope") != "independent-per-query-illustrative"
+            or "reporting-only" not in accounting.get("cumulative_cost_scope", "")
+            or "not a sequence-level oracle" not in accounting.get("quality_retention_scope", "")
+        ):
+            raise RuntimeError("routing stream showcase did not label its evidence boundaries")
+        stream = showcase.get("stream", {})
+        steps = stream.get("steps", [])
+        if (
+            [step.get("tier") for step in steps] != ["fast", "balanced", "premium"]
+            or [step.get("routing", {}).get("model") for step in steps]
+            != ["swift", "steady", "expert"]
+            or [step.get("cost", {}).get("cumulative_realized_reporting_only") for step in steps]
+            != ["0.2", "0.8", "1.8"]
+        ):
+            raise RuntimeError("routing stream showcase returned an unexpected curated replay")
+        totals = stream.get("totals", {})
+        if (
+            totals.get("realized_cost_reporting_only") != "1.8"
+            or totals.get("quality_retention") != 1.0
+        ):
+            raise RuntimeError("routing stream showcase totals do not conserve its steps")
+        showcase_benchmark = showcase.get("benchmark_evidence", {})
+        if (
+            showcase_benchmark.get("data_sha256") != benchmark.get("data_sha256")
+            or showcase_benchmark.get("replay_sha256") != benchmark.get("replay_sha256")
+            or showcase_benchmark.get("learned_router", {}).get("prediction_sha256")
+            != benchmark.get("learned_router", {}).get("prediction_sha256")
+            or [row.get("name") for row in showcase_benchmark.get("baselines", [])]
+            != baseline_names
+        ):
+            raise RuntimeError("showcase did not retain the audited benchmark evidence")
+
         predictor_route = json.loads(
             _run_cli(
                 executable,
@@ -208,8 +250,8 @@ def main() -> int:
         raise RuntimeError("training or artifact routing wrote to HF_HOME")
 
     print(
-        "Training smoke passed: predictor fit, nested benchmark, exact policy tuning, "
-        "and both routes ran offline."
+        "Training smoke passed: predictor fit, nested benchmark, routing stream, "
+        "exact policy tuning, and both routes ran offline."
     )
     return 0
 

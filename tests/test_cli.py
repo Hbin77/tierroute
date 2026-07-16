@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """End-to-end tests for clone-without-data quickstart commands."""
 
+import hashlib
 import json
 import os
 from dataclasses import replace
@@ -87,6 +88,89 @@ def test_demo_router_changes_model_with_tier_and_difficulty() -> None:
         lambda_cost=Fraction(1, 3),
     )
     assert injected.lambda_cost == Fraction(1, 3)
+
+
+def test_demo_json_is_deterministic_versioned_and_keeps_scopes_separate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["demo", "--json"]) == 0
+    first = capsys.readouterr().out
+    assert main(["demo", "--json"]) == 0
+    second = capsys.readouterr().out
+    payload = json.loads(first)
+
+    assert first == second
+    assert (
+        hashlib.sha256(first.encode("utf-8")).hexdigest()
+        == "2733b41f7e61d33acf8a34ed186ec848ddf86256402dacf74afa80e26d3dd4fa"
+    )
+    assert payload["schema"] == "tierroute-routing-stream-showcase"
+    assert payload["schema_version"] == 1
+    assert payload["network_used"] is False
+    assert payload["claim_scope"] == "project-authored-synthetic-wiring-only"
+    assert payload["accounting"]["budget_scope"] == "independent-per-query-illustrative"
+    assert "reporting-only" in payload["accounting"]["cumulative_cost_scope"]
+    assert "not a sequence-level oracle" in payload["accounting"]["quality_retention_scope"]
+
+    steps = payload["stream"]["steps"]
+    assert [step["example_id"] for step in steps] == [
+        "synthetic-science-001",
+        "synthetic-math-002",
+        "synthetic-code-002",
+    ]
+    assert [step["tier"] for step in steps] == ["fast", "balanced", "premium"]
+    assert [step["routing"]["model"] for step in steps] == ["swift", "steady", "expert"]
+    assert all(
+        step["routing"]["audited_benchmark_query_match"] is True
+        and step["evaluation_scope"]["algorithm"] == "tierroute-evaluation-scope-v1"
+        and step["evaluation_scope"]["max_calls_per_query"] == 1
+        and len(step["evaluation_scope"]["sha256"]) == 64
+        for step in steps
+    )
+    assert [step["cost"]["realized"] for step in steps] == ["0.2", "0.6", "1"]
+    assert [step["cost"]["cumulative_realized_reporting_only"] for step in steps] == [
+        "0.2",
+        "0.8",
+        "1.8",
+    ]
+    assert all(
+        step["quality"]["observed"] <= step["quality"]["per_query_oracle"]["quality"]
+        for step in steps
+    )
+    totals = payload["stream"]["totals"]
+    assert totals["realized_cost_reporting_only"] == "1.8"
+    assert totals["quality_retention"] == 1.0
+    assert totals["quality_retention_exact"] == {"numerator": "1", "denominator": "1"}
+
+    evidence = payload["benchmark_evidence"]
+    assert evidence["validation_scope"] == "true-nested-lodo-original-order"
+    assert [row["name"] for row in evidence["baselines"]] == [
+        "always-cheapest",
+        "always-premium",
+        "random",
+        "length-heuristic",
+        "oracle",
+        "domain-best-table",
+    ]
+
+
+def test_demo_human_output_shows_stream_and_interpretation_boundaries(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["demo"]) == 0
+    output = capsys.readouterr().out
+
+    assert "tierroute offline routing stream showcase" in output
+    assert "Step 1 [fast]" in output
+    assert "Step 2 [balanced]" in output
+    assert "Step 3 [premium]" in output
+    assert "project-authored synthetic wiring evidence" in output
+    assert "mixed-tier reporting-only" in output
+    assert "not a sequence-level oracle or oracle-gap recovery" in output
+    assert "Separate full-population learned + six-baseline evidence" in output
+    assert "tierroute-nested-lodo" in output
+    assert "domain-best-table" in output
+    assert "network:            disabled" in output
 
 
 def test_cli_fraction_rendering_supports_ten_thousand_digits() -> None:
