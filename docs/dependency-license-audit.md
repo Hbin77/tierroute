@@ -62,15 +62,18 @@ only; the base wheel contains neither prepared source nor executable, adds no ru
 dependency, and never compiles or invokes it during installation, routing, or the
 default trainer path.
 
-Strict local Darwin compilation and the focused store/native suite reported 58 passed,
-including 35 native-session cases, small surface-only compiled D4-D7 reference parity,
+Strict local Darwin compilation and the focused store/native suite reported 64 passed,
+including 38 native-session cases, small surface-only compiled D4-D7 reference parity,
 and one unprojected synthetic `D4/N8/d1036/M1` completion. No executable is committed,
 distributed, or approved.
 The official `D7/N34778/d1036/M11` tuple is aggregate-preflight evidence only, and the
-new macOS/Windows CI result remains pending. Toolchain provenance, Linux-musl and
-Windows-MSVC release linkage, bge-m3/provider assets, official/RouterBench data,
-all-domain policy/CLI/six-baseline integration, and performance claims remain outside
-this source-license approval.
+ephemeral source candidates passed macOS/Windows compile, test, and link/import audits
+in [PR #50](https://github.com/Hbin77/tierroute/pull/50),
+[PR-head CI](https://github.com/Hbin77/tierroute/actions/runs/29537455566), and
+[merged-main CI](https://github.com/Hbin77/tierroute/actions/runs/29537633261).
+Toolchain provenance, macOS/Linux-musl/Windows-MSVC distributable release linkage,
+bge-m3/provider assets, official/RouterBench data, all-domain policy/CLI/six-baseline
+integration, and performance claims remain outside this source-license approval.
 
 ## Reviewed permissive license evidence
 

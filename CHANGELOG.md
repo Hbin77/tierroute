@@ -22,16 +22,19 @@ the public API is pre-1.0.
   performs one Cholesky factorization per subset for all targets, emits every raw-score
   block in `TRPRES01`, and leaves the validated result mmap-backed until its context is
   closed. Aggregate file, scratch, C-heap, output, scan, and numeric-work accounting is
-  checked before launch. A focused local Darwin store/native run reports 58 passed,
-  including 35 native-session cases, and establishes actual D4-D7 reference
+  checked before launch. A focused local Darwin store/native run reports 64 passed,
+  including 38 native-session cases, and establishes actual D4-D7 reference
   coefficient/raw-score parity on small surface-only fixtures plus completion
   of a `D4/N8/d1036/M1` corpus containing 12 surface plus 1,024 synthetic embedding
   coordinates with no projection. The pinned
   `D7/N34778/d1036/M11` shape has exact aggregate preflight only, not a full execution.
   The project-owned dependency-free C source is sdist-only; wheels and the repository
-  contain no executable. There is no bge-m3 provider, official/RouterBench data result,
-  all-domain policy/artifact integration, prepared six-baseline wrapper, cross-platform
-  release evidence, or quality, cost, speed, memory-efficiency, or throughput claim.
+  contain no executable. PR #50 and its PR-head/merged-main CI runs compile, test, and
+  link/import-audit ephemeral source-built candidates on macOS and Windows. There is no
+  bge-m3 provider, official/RouterBench data result, all-domain policy/artifact
+  integration, prepared six-baseline wrapper, Linux-musl or distributable
+  cross-platform release evidence, or quality, cost, speed, memory-efficiency, or
+  throughput claim.
   Issue #9 remains open.
 - A bounded prepared reference policy pipeline that maps canonical raw-score contexts
   through the existing per-model isotonic calibration, exact/bounded tier-lambda

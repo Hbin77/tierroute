@@ -28,11 +28,14 @@ are admission accounting, not peak-RSS or wall-time estimates.
 | `native/tierroute_prepared.c` | `TRPSTO01`/`TRPSES01`/`TRPRES01` protocol v1; SHA-256 `3aafbe9f90e8db1258a87a16aed3c8dd3eaa1e570bc358bea7f1d173a4b569e0` | Apache-2.0 | https://github.com/Hbin77/tierroute | Experimental authenticated file-backed prepared nested-LODO moment solve and raw-score sidecar | Source distribution only; no executable in wheel or repository |
 
 No locally compiled executable is distributed. The earlier dense-ridge sidecar has
-separate platform evidence documented elsewhere; the new prepared-session candidate
-currently has local Darwin evidence only. Its macOS/Windows CI audits and all
-Linux-musl/Windows-MSVC release-artifact approvals remain pending. System compilers are
-build-environment tools; an explicitly selected toolchain archive or a distributed
-executable would require a new SBOM and license-audit entry.
+separate platform evidence documented elsewhere. The prepared-session candidate has
+local Darwin numerical evidence plus ephemeral macOS/Windows source compile, test, and
+link/import audit evidence in [PR #50](https://github.com/Hbin77/tierroute/pull/50),
+[PR-head CI](https://github.com/Hbin77/tierroute/actions/runs/29537455566), and
+[merged-main CI](https://github.com/Hbin77/tierroute/actions/runs/29537633261).
+macOS/Linux-musl/Windows-MSVC distributable release-artifact approval remains pending.
+System compilers are build-environment tools; an explicitly selected toolchain archive
+or a distributed executable would require a new SBOM and license-audit entry.
 
 ## Build dependency
 

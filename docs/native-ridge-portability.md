@@ -6,10 +6,13 @@ The `native-source-portability` CI job is configured to compile both project-own
 sources on `macos-latest` and `windows-latest`, run `tests/test_native_ridge.py` plus
 the prepared file/session suites, and audit one ephemeral local executable per source
 on each host. No executable is uploaded or included in the wheel. The workflow
-definition is not passing-run evidence; the new prepared-session candidate's first
-macOS/Windows CI result remains pending until a run finishes successfully.
+definition alone is not passing-run evidence. The prepared-session candidate passed
+the macOS and Windows jobs in [PR #50](https://github.com/Hbin77/tierroute/pull/50),
+[PR-head CI `29537455566`](https://github.com/Hbin77/tierroute/actions/runs/29537455566),
+and [merged-main CI `29537633261`](https://github.com/Hbin77/tierroute/actions/runs/29537633261)
+for merge `ffa8b8059985298df9d1cf0feec20374589afc1c`.
 
-When green, this job proves only that the current source candidates compile and pass
+Those green jobs prove only that the cited source candidates compile and pass
 their protocol and numerical tests in those runner environments. It is not a
 released-artifact audit:
 the runner images and compiler installations are not pinned binary inputs, the
