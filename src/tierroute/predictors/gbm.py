@@ -117,8 +117,7 @@ class GbmModel:
         """Score one finite feature row."""
 
         row = tuple(
-            _finite_float(value, label=f"feature[{index}]")
-            for index, value in enumerate(features)
+            _finite_float(value, label=f"feature[{index}]") for index, value in enumerate(features)
         )
         if len(row) != self.feature_width:
             raise ValueError(
@@ -128,10 +127,7 @@ class GbmModel:
             score = math.fsum(
                 (
                     self.base_value,
-                    *(
-                        self.learning_rate * stump.predict_features(row)
-                        for stump in self.stumps
-                    ),
+                    *(self.learning_rate * stump.predict_features(row) for stump in self.stumps),
                 )
             )
         except OverflowError as error:
@@ -181,8 +177,7 @@ class GbmQualityPredictor:
 
     def _row(self, values: Sequence[float]) -> tuple[float, ...]:
         row = tuple(
-            _finite_float(value, label=f"feature[{index}]")
-            for index, value in enumerate(values)
+            _finite_float(value, label=f"feature[{index}]") for index, value in enumerate(values)
         )
         if len(row) != self.feature_width:
             raise ValueError(
@@ -227,8 +222,7 @@ class GbmQualityPredictor:
             raise ValueError("batch vectorizer returned the wrong number of rows")
         rows = tuple(self._row(values) for values in raw_rows)
         return tuple(
-            {model_id: self._score(row, model_id) for model_id in requested}
-            for row in rows
+            {model_id: self._score(row, model_id) for model_id in requested} for row in rows
         )
 
 
@@ -340,9 +334,7 @@ def _fit_model(
             if row[candidate.feature_index] >= candidate.split_value
         )
         try:
-            left_value = math.fsum(residuals[index] for index in left_indices) / len(
-                left_indices
-            )
+            left_value = math.fsum(residuals[index] for index in left_indices) / len(left_indices)
             right_value = math.fsum(residuals[index] for index in right_indices) / len(
                 right_indices
             )
@@ -426,9 +418,7 @@ def fit_gradient_boosted_stumps(
 
     if not isinstance(targets_by_model, Mapping) or not targets_by_model:
         raise ValueError("targets_by_model must be a non-empty mapping")
-    if any(
-        not isinstance(model_id, str) or not model_id for model_id in targets_by_model
-    ):
+    if any(not isinstance(model_id, str) or not model_id for model_id in targets_by_model):
         raise ValueError("target model IDs must be non-empty strings")
     raw_targets: dict[str, tuple[float, ...]] = {}
     for model_id in sorted(targets_by_model):

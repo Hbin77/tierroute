@@ -50,9 +50,7 @@ class GbmTrainingConfig:
             or not isinstance(self.n_estimators, int)
             or not 1 <= self.n_estimators <= MAX_GBM_ESTIMATORS
         ):
-            raise ValueError(
-                f"n_estimators must be an integer from 1 to {MAX_GBM_ESTIMATORS}"
-            )
+            raise ValueError(f"n_estimators must be an integer from 1 to {MAX_GBM_ESTIMATORS}")
         if (
             isinstance(self.learning_rate, bool)
             or not isinstance(self.learning_rate, (int, float))
@@ -160,12 +158,7 @@ def _estimated_split_scans(
     target_count: int,
     config: GbmTrainingConfig,
 ) -> int:
-    return (
-        target_count
-        * config.n_estimators
-        * feature_count
-        * max(sample_count - 1, 0)
-    )
+    return target_count * config.n_estimators * feature_count * max(sample_count - 1, 0)
 
 
 def _preflight_calibrated_fit(
@@ -225,11 +218,7 @@ def _fit_base(
         raise ValueError("encoded feature matrix has an unexpected shape")
     targets_by_model = {
         model_id: tuple(
-            next(
-                outcome.quality
-                for outcome in example.outcomes
-                if outcome.model_id == model_id
-            )
+            next(outcome.quality for outcome in example.outcomes if outcome.model_id == model_id)
             for example in ordered
         )
         for model_id in model_ids

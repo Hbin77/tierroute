@@ -133,9 +133,7 @@ def test_gbm_calibration_is_cross_fitted_separately_per_model() -> None:
     assert isinstance(predictor.base, GbmQualityPredictor)
     assert set(predictor.calibrators) == set(predictor.base.models)
     assert predictor.calibrators["swift"] is not predictor.calibrators["expert"]
-    assert max(predictor.calibrators["swift"].values) < min(
-        predictor.calibrators["expert"].values
-    )
+    assert max(predictor.calibrators["swift"].values) < min(predictor.calibrators["expert"].values)
 
 
 def test_gbm_isotonic_fit_receives_one_oof_prediction_per_training_row(
@@ -265,9 +263,7 @@ def test_gbm_training_config_rejects_unsafe_values(
 
 def test_gbm_training_requires_multiple_domains_and_valid_fold_type() -> None:
     one_domain = tuple(
-        example
-        for example in load_evaluation_dataset().examples
-        if example.domain == "science"
+        example for example in load_evaluation_dataset().examples if example.domain == "science"
     )
 
     with pytest.raises(ValueError, match="at least two domains"):
