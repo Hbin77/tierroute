@@ -17,8 +17,8 @@ It is currently pre-alpha: the routing contracts, replay simulator, six baseline
 quality and exact quote-error metrics, leakage-aware calibrated bilinear training,
 an in-memory deterministic GBM reference trainer, paired descriptive family estimation,
 exact tier-lambda tuning, strict v1 bilinear-predictor/policy artifacts, a bounded
-prepared moment-solve/raw-score reference, and an external-data-free demo are
-implemented.
+prepared moment-solve/raw-score reference, an experimental authenticated file-backed
+prepared C11 solve/score session, and an external-data-free demo are implemented.
 The CLI selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
@@ -349,6 +349,41 @@ candidate evidence, exact selected lambdas, decisions, accounting, and final rep
 The seven-domain fixture exercises all 63 coefficient blocks, 154 raw-score blocks,
 `22N` raw memberships, 28 calibrated subsets, and 49 calibrated destinations.
 
+A separate experimental
+[native prepared-session protocol](docs/native-prepared-session-protocol.md) now adds
+an authenticated file-backed vertical slice without changing the default trainer or
+CLI. The fixed little-endian `TRPSTO01` container stores canonical row keys, domain
+indices, binary64 features, and targets. Its caller-pinned receipt binds the whole file,
+source-fit identity, logical prepared-store identity, and optional precomputed-embedding
+snapshot. The `TRPSES01` adapter authenticates both that store and one explicitly chosen
+local executable, makes descriptor-stable private copies, preflights the complete graph,
+and launches exactly one C11 child. A successful `TRPRES01` response contains every
+coefficient and raw-score block and remains mmap-backed until its context is closed.
+These hashes authenticate exact bytes only against trusted expected values; they do not
+approve provenance, a compiler, or network behavior.
+
+The project-owned source is dependency-free and included only in the sdist; no prepared
+binary or native source enters the wheel. A source-checkout helper uses an explicit
+absolute compiler path and never searches `PATH` or downloads anything:
+
+```bash
+python scripts/build_native_prepared.py \
+  --compiler /absolute/path/to/clang \
+  --output /absolute/new/path/tierroute-prepared
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
+  tests/test_prepared_files.py tests/test_native_prepared.py
+```
+
+This is a Python API/test path, not a `tierroute train`, benchmark, or routing CLI path.
+Local Darwin evidence establishes actual D4-D7 coefficient/raw-score parity with the
+complete Python reference on small surface-only fixtures and completion of a
+`D4/N8/d1036/M1` synthetic corpus containing all 12 surface and 1,024 embedding
+coordinates without projection. The focused local store/native run reports 58 passed,
+including 35 native-session cases; it is software evidence, not a performance
+measurement. The pinned
+`D7/N34778/d1036/M11` shape has exact aggregate preflight only; the full store/session
+was not executed. macOS/Windows CI evidence for this new source is still pending.
+
 Only the public builder functions are supported derivation paths. Direct leaf-dataclass
 construction validates a self-declared canonical record; it is not an aggregate loader,
 proof that the record was derived from its claimed inputs, or provenance attestation.
@@ -360,23 +395,28 @@ counts reviewed numeric
 admission units and modeled numeric payload/storage, but excludes Python object graphs,
 allocator overhead, caller-owned inputs, other process memory, and arbitrary work or
 side effects inside a caller-supplied ledger factory; it is neither a peak-RSS estimate
-nor a wall-time promise. The complete pinned
-RouterBench/bge-m3 shape remains rejected by the bounded feature-store, statistics, and
-reference-execution caps.
+nor a wall-time promise. The complete pinned RouterBench/bge-m3 shape remains rejected
+by the bounded in-memory feature-store, statistics, and reference-execution caps. The
+separate file/native preflight admits its aggregate shape, but that is not materialized
+execution, numerical parity, or benchmark evidence.
 
 These references perform no provider inference or file I/O and make no performance,
 quality, or cost-reduction claim. The policy bridge is bounded in-memory proof code, not
-CLI/runtime integration, a native protocol, a persistent/scalable session, an all-domain
-deployable artifact, or a replacement for the default trainer. Tolerance-close raw
+CLI/runtime integration, integration with the separate native prepared session, an
+all-domain deployable artifact, or a replacement for the default trainer. Tolerance-close raw
 scores are not guaranteed to preserve every PAV partition or exact decision; official-
 data parity must compare and fail closed rather than introduce an epsilon. Numeric
-digests remain local evidence, not a cross-platform promise. [Issue
+digests remain local evidence, not a cross-platform promise. The prepared native slice
+also has no bge-m3 provider, official or RouterBench data, calibration/lambda/report
+bridge, all-domain artifact, prepared six-baseline wrapper, or quality/cost/performance
+claim. [Issue
 #9](https://github.com/Hbin77/tierroute/issues/9) therefore remains open.
 
 Full training with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total
-features) remains gated on an audited offline local provider, a scalable authenticated
-persistent prepared session and CLI reproduction, official-shape end-to-end parity,
-plus audited Linux-musl and Windows-MSVC artifacts. tierroute will not silently reduce
+features) remains gated on an audited offline local provider, integration of the
+authenticated prepared session with all-domain artifacts and CLI reproduction,
+official-shape end-to-end execution/parity, plus audited macOS, Linux-musl, and
+Windows-MSVC evidence. tierroute will not silently reduce
 or discard embedding dimensions. The
 existing row-training path keeps its conservative operation guard, static reviewed
 solver ID, pre-embedding preflight, and unknown-ID rejection; inference remains
@@ -453,6 +493,12 @@ dependency-free because it uses only stored coefficients.
   result; trusted digest checks, aggregate preflight, original-order replay, both budget
   adapters, and held-out-target noninterference fail closed under tests. It is not a
   deployable prepared artifact or a universal exact-parity claim.
+- An experimental authenticated file-backed prepared store and single-invocation C11
+  solve/score adapter emit the complete admitted coefficient/raw-score graph without
+  loading result payloads into Python tuples. D4-D7 surface-only reference parity and
+  one unprojected 1,036-feature synthetic completion are local Darwin evidence only.
+  Official-shape execution, policy/CLI integration, three-platform audits, and
+  performance claims are not implemented.
 - A report-shaped per-query benchmark CLI compares that nested-LODO learned router
   against all six baselines on one identical evaluation scope and publishes compact,
   versioned outer-fold membership digests.
@@ -779,10 +825,12 @@ The embedding contract pins `BAAI/bge-m3` at revision
 `5617a9f61b028005a4858fdac845db406aefb181` (MIT). Weights are not bundled and no
 runtime downloader exists. The planned provider will accept only a prepared local path
 and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model ID.
-Full training at up to 1,036 total features remains gated on the prepared-session and
-three-platform release checks above. The experimental one-solve C11 candidate is not
-evidence that the complete nested experiment has run; embedding dimensions will not be
-silently projected away.
+Full training at up to 1,036 total features remains gated on the provider, all-domain
+prepared/policy integration, official-shape execution, and three-platform checks above.
+The native prepared slice proves small D4-D7 surface-only parity and one unprojected
+1,036-feature synthetic completion, while the full official tuple is preflight-only;
+none is evidence that the complete nested experiment has run. Embedding dimensions
+will not be silently projected away.
 
 SK Telecom challenge data is likewise excluded until its license and redistribution
 terms are confirmed in writing.

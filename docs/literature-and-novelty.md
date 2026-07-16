@@ -368,17 +368,24 @@ invented cost-aware model routing:
 - The project-owned C11 sidecar implements one bounded dense ridge solve; it does not
   remove repeated feature work, nested-fold factorizations, or scoring from the complete
   validation graph and is not evidence that a full-dimensional run has completed.
+- A separate experimental `TRPSTO01`/`TRPSES01` path now authenticates a file-backed
+  prepared store and executes the complete canonical solve-and-score graph in one C11
+  child. Small surface-only D4–D7 fixtures match the Python reference within tolerance,
+  and one D4/N8/d1036/M1 synthetic fixture exercises 12 surface plus 1,024 embedding
+  columns without projection. This is implementation evidence, not a full-shape,
+  throughput, peak-memory, or speedup result.
 - The prepared references establish bounded canonical rows, caller-checked content
   identities, domain moments, subset isolation, moment-ridge coefficients, and complete
   raw-score plus calibration/lambda/final-report wiring on synthetic/frozen fixtures.
   Stable four- and seven-domain corpora match the rowwise nested result, while raw
   numerical agreement remains tolerance-based rather than bitwise or a cross-platform
   digest promise. They do not authenticate dataset/model provenance, run an embedding
-  provider, provide a scalable persistent/native session or all-domain artifact,
-  execute the planned full RouterBench shape, or prove throughput, memory efficiency,
-  quality, cost savings, or a speedup. Their resource estimates also do not bound the
-  work or side effects of an arbitrary caller-supplied ledger callback. Issue #9
-  remains open.
+  provider or all-domain artifact, connect the native result to the prepared policy
+  bridge/six-baseline report, execute the planned full RouterBench shape, or prove
+  throughput, peak memory, quality, cost savings, or a speedup. The official-size D7
+  tuple has exact aggregate admission evidence only, not a completed execution. Their
+  resource estimates also do not bound the work or side effects of an arbitrary
+  caller-supplied ledger callback. Issue #9 remains open.
 - Prepared content digests are deterministic content identities, not authenticity or
   provenance proofs. Supported builders enforce derivation/topology associations;
   direct leaf constructors validate only self-declared canonical record content.

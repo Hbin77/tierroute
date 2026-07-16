@@ -212,8 +212,8 @@ CLI contract; the no-selection paired-estimation command is its only shipped CLI
 The optional C11 ridge process is a training-only, explicitly authenticated solver; a
 known solver ID never substitutes for its absolute path and exact binary hash.
 
-The separate prepared execution path is a bounded in-memory Python reference, not the
-production trainer or a native/persistent session. For active raw coordinates `a_i`
+The prepared execution reference remains bounded in-memory Python proof code, not the
+production trainer and not integrated with the separate native/persistent session. For active raw coordinates `a_i`
 and continuous scales `s_i` (one for noncontinuous coordinates), it constructs
 `G_ij = Cxx[a_i,a_j] / (s_i s_j) + ridge * 1[i=j]` and
 `h_i,m = Cxy[a_i,m] / s_i`, performs exactly one Cholesky factorization per unique
@@ -236,6 +236,31 @@ child-digest configuration. It does not manufacture a second report schema or an
 all-domain deployable artifact. Arbitrary injected ledger callback work and side
 effects are outside the code-owned resource estimate.
 
+The experimental native prepared path is a separate training-side vertical slice.
+`prepared_files.py` writes or authenticates the fixed little-endian `TRPSTO01` store.
+A caller-pinned receipt binds its whole-file bytes, source-fit identity, logical
+prepared-store identity, and optional precomputed-embedding snapshot. Authentication
+uses regular-file checks, descriptor/path metadata stability, exact section validation,
+streaming hashes, and owner-only private copies; a digest without a separately trusted
+expected value remains only an identity. `native_prepared.py` also authenticates one
+explicit absolute executable, copies the store directly behind one `TRPSES01` request
+header, and launches one child for the complete admitted graph. The C11 sidecar combines
+domain moments, solves every subset with one factorization shared across targets, and
+emits every score block in one exact-size `TRPRES01` result.
+
+Python and C mirror the same public file/result/heap/scratch/work ceilings, so an input
+cannot pass public preflight and encounter an undisclosed smaller C-only shape cap.
+The request nonce is sampled until nonzero rather than giving one random all-zero draw
+protocol meaning. Known nonzero status is a structured child failure; unknown status,
+bad identity,
+length, record order, digest, resource echo, non-finite payload, or exit/status mismatch
+is a protocol failure. Successful records expose bounded binary64 views over one
+context-managed mmap. One reentrant lock serializes read/view creation with close.
+Closing while an exported view exists must remain retryable;
+after a successful close every record/view access fails and private workspace cleanup
+owns the descriptor on both POSIX and Windows paths. The adapter has no CLI, policy,
+calibration, lambda, all-domain artifact, or prepared six-baseline integration.
+
 - Core: [`features/encoding.py`](../src/tierroute/features/encoding.py),
   [`features/surface.py`](../src/tierroute/features/surface.py),
   [`features/embeddings.py`](../src/tierroute/features/embeddings.py),
@@ -248,8 +273,11 @@ effects are outside the code-owned resource estimate.
   [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py),
   [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py),
   [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py),
+  [`predictors/prepared_files.py`](../src/tierroute/predictors/prepared_files.py),
+  [`predictors/native_prepared.py`](../src/tierroute/predictors/native_prepared.py),
   [`predictors/native_ridge.py`](../src/tierroute/predictors/native_ridge.py),
   [`native/tierroute_ridge.c`](../native/tierroute_ridge.c),
+  [`native/tierroute_prepared.c`](../native/tierroute_prepared.c),
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
   [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py), with limits in
   [`predictors/resource_limits.py`](../src/tierroute/predictors/resource_limits.py),
@@ -268,13 +296,16 @@ effects are outside the code-owned resource estimate.
   [`test_prepared_graph.py`](../tests/test_prepared_graph.py), plus
   [`test_prepared_store.py`](../tests/test_prepared_store.py) and
   [`test_prepared_execution.py`](../tests/test_prepared_execution.py), plus
-  [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py)
+  [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py),
+  [`test_prepared_files.py`](../tests/test_prepared_files.py), and
+  [`test_native_prepared.py`](../tests/test_native_prepared.py)
 - Design context: [lambda/training design](lambda-tuning.md) and
   [prepared graph contract](prepared-session-graph.md), the
   [prepared feature-store reference](prepared-feature-store.md), the
   [prepared execution reference](prepared-reference-execution.md), the
   [prepared policy-pipeline reference](prepared-reference-pipeline.md), plus the
-  [native ridge protocol](native-ridge-protocol.md)
+  [native ridge protocol](native-ridge-protocol.md) and
+  [native prepared-session protocol](native-prepared-session-protocol.md)
 
 The prepared **execution slice** began at `f4b07bc`, its primary parity suite at
 `608468b`, and admission/locality security regressions were hardened through
@@ -295,6 +326,16 @@ at `cfa0c72` and
 [merged-main run `29531008829`](https://github.com/Hbin77/tierroute/actions/runs/29531008829)
 both passed Python 3.10/3.12, dependency-free wheel, and macOS/Windows native-source
 jobs. Automated CI still does not replace the owner walkthrough below.
+
+The later focused file-backed/native-session run reports 58 passed locally on Darwin,
+including 35 native-session cases. They include actual compiled D4-D7
+coefficient/raw-score parity with the complete Python reference on small surface-only
+fixtures and one `D4/N8/d1036/M1` completion using 12
+surface plus 1,024 synthetic embedding coordinates without projection. The official
+`D7/N34778/d1036/M11` tuple has exact aggregate preflight only: no full store/session or
+official/RouterBench data was run. Those tests are local software evidence, not a
+speed, memory-efficiency, throughput, quality, or cost result. macOS/Windows CI for the
+new prepared source remains pending, and no human sign-off is implied.
 
 Owner questions:
 
@@ -357,6 +398,23 @@ Owner questions:
     the candidate-cap exhaustive
     flag, the injected-ledger exclusion, and why stable frozen-result equality is not
     universal near-tie parity.
+16. Trace `TRPSTO01` from exclusive owner-only staging through row/domain/feature/target
+    serialization, header/payload/whole-file hashes, publication, lstat/open/fstat
+    stability checks, and private-copy authentication. Which receipt values need an
+    independently trusted origin, and why is a matching content digest not provenance?
+17. Trace one `TRPSES01` request and `TRPRES01` response. Why must public and C resource
+    ceilings match exactly, why is there one child for all subsets/score blocks, and how
+    do the nonce, store/binary/graph identities, exact record order, exit/status pair,
+    finite scan, and scale-aware residual gate fail closed?
+18. Why do result payloads remain mmap-backed? Explain ownership of the descriptor and
+    private workspace, why the same reentrant lock must serialize read and close, why
+    close with an exported view must be retryable, and which
+    accesses fail after a successful close. Which Windows cleanup hardening is code
+    evidence versus platform-CI evidence still pending?
+19. Distinguish the D4-D7 small surface-only parity fixtures, the unprojected
+    `D4/N8/d1036/M1` synthetic completion, and the aggregate-only
+    `D7/N34778/d1036/M11` preflight. Why does none establish bge-m3, RouterBench,
+    official-data, all-domain policy/six-baseline integration, or performance?
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -498,7 +556,7 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity and macOS link evidence; no binary in the wheel | Explicit local opt-in only; Linux-musl and Windows-MSVC release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph plus bounded in-memory store/moment-ridge/raw-score and calibration/lambda/final-report references exist. Stable four- and seven-domain frozen fixtures equal the rowwise nested result, but no provider, persistent/native session, all-domain artifact, official-shape parity, scalable execution, or performance result exists | Audited offline local provider, scalable persistent/native prepared session, all-domain artifact, broader near-tie and official-shape parity, three-platform audits, licensed-data evidence, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. Small surface-only D4-D7 fixtures have actual compiled reference parity, and one local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, policy/all-domain artifact, CLI, prepared six-baseline wrapper, official data, cross-platform result, or performance claim exists | Audited offline local provider, all-domain policy/artifact and CLI integration, full official-shape execution/parity, broader near-tie checks, three-platform audits, licensed-data evidence, prepared six-baseline wrapper, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
@@ -526,6 +584,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_gbm_core.py tests/test_gbm_training.py \
   tests/test_prepared_graph.py tests/test_prepared_store.py \
   tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \
+  tests/test_prepared_files.py tests/test_native_prepared.py \
   tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
   tests/test_lambda_tuning.py tests/test_lambda_policy_artifacts.py \
   tests/test_routerbench_adapter.py tests/test_validate_routerbench_script.py \
@@ -535,6 +594,16 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
 HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   make verify PYTHON=python
 test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
+```
+
+To review the build boundary itself, choose an already installed compiler explicitly;
+the output path must be absolute and nonexistent. The helper neither searches `PATH`
+nor downloads, but it cannot attest that the selected toolchain stayed offline:
+
+```bash
+python scripts/build_native_prepared.py \
+  --compiler /absolute/path/to/clang \
+  --output /absolute/new/path/tierroute-prepared
 ```
 
 `make verify` reaches the benchmark, paired estimation, and showcase through
@@ -561,7 +630,7 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 | Budget adapters, replay, and call evidence |  |  |  |  |
 | Complete evaluation-scope identity |  |  |  |  |
 | Metrics, learned-versus-six-baseline nested LODO, and showcase |  |  |  |  |
-| Features, ridge/GBM predictors, prepared reference execution, and calibration |  |  |  |  |
+| Features, ridge/GBM predictors, prepared references, file/native session, and calibration |  |  |  |  |
 | Exact lambda tuning and policy artifacts |  |  |  |  |
 | RouterBench hostile-data and local diagnostic boundary |  |  |  |  |
 | Atomic I/O, offline, build, and licenses |  |  |  |  |

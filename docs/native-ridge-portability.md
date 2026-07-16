@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
-# Native ridge source-portability gate
+# Native source-portability gate
 
-The `native-source-portability` CI job compiles the project-owned C11 source on
-`macos-latest` and `windows-latest`, runs `tests/test_native_ridge.py`, and audits one
-ephemeral local executable on each host. No executable is uploaded or included in the
-wheel.
+The `native-source-portability` CI job is configured to compile both project-owned C11
+sources on `macos-latest` and `windows-latest`, run `tests/test_native_ridge.py` plus
+the prepared file/session suites, and audit one ephemeral local executable per source
+on each host. No executable is uploaded or included in the wheel. The workflow
+definition is not passing-run evidence; the new prepared-session candidate's first
+macOS/Windows CI result remains pending until a run finishes successfully.
 
-This job proves only that the current source candidate compiles and passes its protocol
-and numerical tests in those runner environments. It is not a released-artifact audit:
+When green, this job proves only that the current source candidates compile and pass
+their protocol and numerical tests in those runner environments. It is not a
+released-artifact audit:
 the runner images and compiler installations are not pinned binary inputs, the
 ephemeral hashes are not release hashes, and no platform executable receives license or
 SBOM approval from this job.
@@ -58,10 +61,11 @@ the absence of every indirect operating-system capability.
 This gate does not build or approve a Linux-musl executable. It does not establish a
 three-platform release matrix, reproducible compiler provenance, distributable binary
 hashes, license closure, or an executable SBOM record. Those remain separate release
-requirements. The dependency-free wheel must exclude `native/tierroute_ridge.c`; the
-source distribution must contain exactly that source file so downstream review and
-local compilation remain possible. CI treats the working `native/` tree as an exact
-one-file allowlist, rejects symbolic/hard links, executable mode and native/binary
+requirements. The dependency-free wheel must exclude both native sources; the source
+distribution must contain exactly `native/tierroute_ridge.c` and
+`native/tierroute_prepared.c` so downstream review and local compilation remain
+possible. CI treats the working `native/` tree as an exact two-file allowlist, rejects
+symbolic/hard links, executable mode and native/binary
 suffixes in release archives, requires no exact `native` path segment anywhere in the
 wheel, and verifies that the working source, sdist member, and SBOM SHA-256 are
 identical.

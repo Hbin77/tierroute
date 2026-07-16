@@ -376,19 +376,24 @@ The separate bounded
 [prepared reference execution](prepared-reference-execution.md) now implements the
 previously open coefficient and raw-score steps for small synthetic/frozen fixtures.
 The bounded [prepared policy pipeline](prepared-reference-pipeline.md) consumes those
-scores through calibration, lambda tuning, and final replay on frozen fixtures. Neither
-successor adds persistence, native execution, scalable RouterBench execution, an
-all-domain artifact, or a reportable performance result.
+scores through calibration, lambda tuning, and final replay on frozen fixtures. A later
+[native prepared-session slice](native-prepared-session-protocol.md) adds authenticated
+file persistence and one-invocation C11 solve/scoring as a separate Python API/test
+path. It is not integrated with the policy bridge, CLI, an all-domain artifact, or a
+prepared six-baseline wrapper. Its official D7/N34778/d1036/M11 tuple is preflight-only,
+so none of these successors establishes scalable RouterBench execution or a reportable
+performance result.
 
 The default bilinear training and evaluation path remains unchanged. Before a
 prepared execution path can replace any repeated fit, the complete parity gate must
 use a frozen corpus and independently reviewed tolerances to compare, in order:
 
 1. selected feature coordinates, training-only schemas, and sufficient statistics;
-2. per-subset ridge coefficients and intercepts — now exercised by the bounded
-   reference, not yet by a scalable replacement;
-3. every prepared raw-score block — now exercised by the bounded reference, not yet
-   by a persistent or native session;
+2. per-subset ridge coefficients and intercepts — exercised by the bounded reference
+   and small D4-D7 compiled native fixtures, not yet an official-shape replacement;
+3. every prepared raw-score block — exercised by the bounded reference, small D4-D7
+   native parity fixtures, and one unprojected D4/N8/d1036/M1 synthetic completion, not
+   yet a full official-shape session;
 4. isotonic calibration, exact lambda candidate/tie selection, tier decisions, and
    final per-fold/aggregate reports — now equal on stable bounded four- and seven-
    domain fixtures, not yet an official-shape scalable replacement.
