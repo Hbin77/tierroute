@@ -204,10 +204,26 @@ holdout, and at least two domains for the predictor's calibration fit.
 ## Artifact provenance
 
 Predictor and policy state use strict canonical JSON; pickle and unknown fields are
-rejected. Policy input is read with an 8 MiB bound before decoding; each exact integer
-is limited to 404,096 decimal digits, which covers roots and adjacent midpoints
-derivable from the core cost range and finite binary64 predictions. Each tier is
-limited to 100,000 retained candidates, and ledger-adapter names are limited to 4 KiB.
+rejected. Predictor input, canonical output, save validation, and policy hashing share
+a 32 MiB UTF-8 bound. Predictor v1 additionally limits models/training domains/feature
+tags to 4,096 each, feature dimension to 16,384, numeric scalars to 1,000,000, JSON
+number tokens to 640 characters, individual metadata to 4 KiB, and aggregate metadata
+to 1 MiB; a calibrator cannot contain more points than its recorded training rows.
+Before `json.loads`, a lexical scan that does not materialize decoded JSON values caps
+nesting at 32, JSON string tokens at 32,768, encoded characters per string token at
+24,578, and opening-container/comma tokens at 1,100,000. The numeric parse callbacks
+share a 1,000,005-token ceiling: one million
+model scalars plus five fixed version/count/identity integers. Direct sequence and
+mapping inputs are consumed into one bounded built-in snapshot before validation, and
+all predictor parameters normalize to finite binary64 so construction, serialization,
+and reload agree. Predictor hashing requires the exact artifact class so a subclass
+cannot replace canonical serialization with dynamically dispatched bytes. The planned
+11-model, 1,036-feature, 34,778-row shape uses at most 776,530 counted numeric scalars
+and roughly 19.3 MiB under the pessimistic canonical-float estimate. Policy input is
+read with an 8 MiB bound before decoding; each exact integer is limited to
+404,096 decimal digits, which covers roots and adjacent midpoints derivable from the
+core cost range and finite binary64 predictions. Each tier is limited to 100,000
+retained candidates, and ledger-adapter names are limited to 4 KiB.
 The pre-fit size estimate includes exact JSON/UTF-8 domain strings and tier-budget
 text, plus a conservative cross-example root/midpoint width. The same checks apply to
 in-memory artifact construction for integer width, candidate count, and ledger
@@ -224,7 +240,11 @@ A policy artifact records:
   breakpoint occurrence counts. The complete derived-candidate count is `null` for a
   truncated bounded search because it was intentionally never materialized.
 
-These stable artifact hashes intentionally retain their existing byte contract.
+These stable artifact hashes intentionally retain their existing byte contract. The
+predictor resource checks tighten which oversized version-1 inputs are accepted without
+adding a field or changing valid canonical bytes. Fitted predictor coefficients and
+their golden hashes are pinned per reviewed platform because the reference feature math
+and solver do not claim cross-platform byte-identical binary64 results.
 Separately, each in-memory `EvaluationReport` carries an `EvaluationScopeIdentity`
 using `tierroute-evaluation-scope-v1`, which binds the ordered tier specs,
 `max_calls_per_query`, complete replay rows, output text, quality and cost labels,

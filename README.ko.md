@@ -130,7 +130,7 @@ replay합니다.
 
 내장 solver는 표면 특징 schema와 적당한 크기의 행렬을 위한 감사 가능한 참조
 backend이며 복잡도는 `O(n*d^2 + d^3)`입니다. 계획된 1,024차원 bge-m3 임베딩과
-표면 특징을 합친 약 1,030차원으로 RouterBench 전체 보고 실험을 하려면 별도로
+표면 특징을 합친 최대 1,036차원으로 RouterBench 전체 보고 실험을 하려면 별도로
 검토한 가속 backend와 수치 parity 테스트가 필요합니다. 참조 solver에 맞추기 위해
 임베딩 차원을 조용히 줄이거나 버리지 않습니다. 보수적인 연산량 guard가 검토되지
 않은 큰 작업이 cubic 참조 경로에 들어가기 전에 즉시 실패시킵니다. 학습은 정적으로
@@ -164,7 +164,16 @@ ID는 계속 fail-closed 처리합니다.
   작성한 결정론적 centered-ridge, inner-LODO out-of-fold 예측, 모델별 독립
   isotonic calibration
 - 엄격히 검증하는 canonical JSON 예측기 artifact. 예측기 로더는 pickle을 받지 않고,
-  batch 예측은 프롬프트 batch를 한 번만 vectorize/embed
+  읽기·parsing·직렬화·저장·정책 hash에 동일한 UTF-8 32 MiB 상한을 적용합니다. v1 구조는
+  모델·학습 domain·feature tag 각각 4,096개, 전체 feature 16,384차원, 수치 scalar
+  1,000,000개, JSON 숫자당 640자, metadata 값당 4 KiB·전체 1 MiB로 제한합니다. decoding
+  전 decoded JSON 값을 materialize하지 않는 lexical pass는 nesting 32, JSON string token
+  32,768개, 인코딩된 string token당 24,578자, 여는 container/comma 1,100,000개를 제한하고
+  숫자 callback은 고정 필드 5개를 포함해 1,000,005개까지만 받습니다. 직접 전달한
+  container는 한 번만 snapshot하고 수치는 finite binary64로 정규화합니다. calibrator
+  point는 기록한 학습 example 수를 넘지
+  않습니다. 이 범위는 계획된 11모델·1,036특징·34,778행 RouterBench/bge-m3 규모를 명시적
+  여유와 함께 포괄합니다. batch 예측은 프롬프트 batch를 한 번만 vectorize/embed합니다.
 - canonical 정책 artifact는 정확한 predictor hash, 학습/지표에 관련된 replay
   내용과 순서, tier 명세, ledger 식별자, 남긴 후보 탐색 근거를 함께 결합합니다. OOF 예측
   hash는 감사 메타데이터로 기록하며, 라우팅 시 OOF 표가 없으므로 검증하려면 cross-fitted
@@ -392,7 +401,7 @@ replay합니다.
 `5617a9f61b028005a4858fdac845db406aefb181`(MIT)을 고정합니다. 가중치는 동봉하지
 않고 런타임 downloader도 없습니다. 계획된 provider는 미리 준비한 로컬 경로만 받고,
 `HF_HUB_OFFLINE=1`에서 Hub ID를 조회하지 않고 즉시 실패하도록 구현합니다.
-약 1,030개 전체 특징 학습도 프로젝트 참조 구현과 parity test를 통과한 승인된 가속
+최대 1,036개 전체 특징 학습도 프로젝트 참조 구현과 parity test를 통과한 승인된 가속
 solver가 마련될 때까지 gate로 남깁니다. 임베딩 차원을 조용히 투영해 버리지 않습니다.
 
 SK텔레콤 대회 데이터도 라이선스와 재배포 조건을 서면 확인하기 전까지 포함하지 않습니다.

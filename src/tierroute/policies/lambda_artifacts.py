@@ -43,6 +43,9 @@ _POSITIVE_INTEGER_PATTERN = re.compile(r"[1-9][0-9]*")
 def predictor_artifact_sha256(artifact: BilinearPredictorArtifact) -> str:
     """Hash the predictor's canonical JSON bytes."""
 
+    # Provenance must bind validated fields, never a subclass-controlled serializer.
+    if type(artifact) is not BilinearPredictorArtifact:
+        raise TypeError("predictor artifact hashing requires the exact artifact type")
     try:
         document = artifact.to_json().encode("utf-8")
     except UnicodeEncodeError as error:
