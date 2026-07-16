@@ -6,6 +6,17 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+SURFACE_FEATURE_ALGORITHM_ID = "tierroute.surface-features-v1"
+SURFACE_DOMAIN_TAG_CATALOGUE = (
+    "code",
+    "finance",
+    "general",
+    "law",
+    "math",
+    "medicine",
+    "science",
+)
+
 _CODE_PATTERN = re.compile(
     r"```|(?:^|[\r\n])[^\S\r\n]*(?:def|class|function|import|from|SELECT|public static)\b|"
     r"(?:console\.log|System\.out|#include)",
@@ -135,3 +146,11 @@ def extract_surface_features(prompt: str) -> SurfaceFeatures:
         has_math=has_math,
         domain_tags=tuple(tags or ("general",)),
     )
+
+
+__all__ = [
+    "SURFACE_DOMAIN_TAG_CATALOGUE",
+    "SURFACE_FEATURE_ALGORITHM_ID",
+    "SurfaceFeatures",
+    "extract_surface_features",
+]

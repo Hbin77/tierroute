@@ -3,7 +3,12 @@
 
 import pytest
 
-from tierroute.features import LocalEmbeddingModel, extract_surface_features
+from tierroute.features import (
+    SURFACE_DOMAIN_TAG_CATALOGUE,
+    SURFACE_FEATURE_ALGORITHM_ID,
+    LocalEmbeddingModel,
+    extract_surface_features,
+)
 from tierroute.predictors import (
     BilinearQualityPredictor,
     CalibratedQualityPredictor,
@@ -21,6 +26,24 @@ def test_surface_features_detect_korean_math_and_code() -> None:
     assert features.has_code is True
     assert features.has_math is True
     assert set(features.domain_tags) >= {"code", "math"}
+
+
+def test_surface_feature_identity_publishes_a_complete_sorted_tag_catalogue() -> None:
+    prompts = (
+        "Debug this Python code.",
+        "Explain finance and accounting.",
+        "A plain greeting.",
+        "Interpret this legal contract.",
+        "Prove this math theorem.",
+        "Explain a clinical diagnosis.",
+        "Summarize biology and chemistry.",
+    )
+
+    observed = {tag for prompt in prompts for tag in extract_surface_features(prompt).domain_tags}
+
+    assert SURFACE_FEATURE_ALGORITHM_ID == "tierroute.surface-features-v1"
+    assert SURFACE_DOMAIN_TAG_CATALOGUE == tuple(sorted(SURFACE_DOMAIN_TAG_CATALOGUE))
+    assert observed == set(SURFACE_DOMAIN_TAG_CATALOGUE)
 
 
 @pytest.mark.parametrize(
