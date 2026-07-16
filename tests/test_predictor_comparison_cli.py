@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 import pytest
 
@@ -75,8 +76,7 @@ def test_compare_predictors_json_is_deterministic_shared_and_claim_safe(
             - paired_metrics["bilinear"]["tier_quality"][tier]
         )
     assert payload["deltas"]["overall"]["weighted_quality"] == (
-        paired_metrics["gbm"]["weighted_quality"]
-        - paired_metrics["bilinear"]["weighted_quality"]
+        paired_metrics["gbm"]["weighted_quality"] - paired_metrics["bilinear"]["weighted_quality"]
     )
     assert payload["deltas"]["overall"]["oracle_gap_recovery"] == (
         paired_metrics["gbm"]["oracle_gap_recovery"]
@@ -120,6 +120,39 @@ def test_compare_predictors_human_output_keeps_fixed_family_order(
     assert "Performance claim: prohibited" in output
     assert "Claim state: SYNTHETIC-ONLY" in output
     assert "Network: disabled" in output
+
+
+def test_compare_predictors_human_output_escapes_terminal_controls(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    payload = json.loads(bundled_synthetic_path().read_text(encoding="utf-8"))
+    payload["name"] = "visible\x1b[2J\nspoof\u202e"
+    replay_path = tmp_path / "terminal-controls.json"
+    replay_path.write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "compare-predictors",
+                "--budget-scope",
+                "per-query",
+                "--data",
+                str(replay_path),
+                "--gbm-estimators",
+                "1",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+
+    assert "visible\\u001b[2J\\u000aspoof\\u202e" in output
+    assert "\x1b" not in output
+    assert "\u202e" not in output
 
 
 def test_compare_predictors_explicit_data_remains_unverified_user_data(

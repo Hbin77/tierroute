@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import unicodedata
 from collections.abc import Mapping
 from fractions import Fraction
 from pathlib import Path
@@ -53,6 +54,25 @@ from tierroute.predictors import (
 from tierroute.showcase import RoutingStreamShowcase, build_routing_stream_showcase
 
 DEFAULT_MAX_LAMBDA_CANDIDATES = 257
+_TERMINAL_UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
+
+
+def _safe_terminal_text(value: str) -> str:
+    """Escape terminal controls while preserving ordinary Unicode display text."""
+
+    if not isinstance(value, str):
+        raise TypeError("terminal text must be a string")
+    escaped: list[str] = []
+    for character in value:
+        if unicodedata.category(character) not in _TERMINAL_UNSAFE_CATEGORIES:
+            escaped.append(character)
+            continue
+        codepoint = ord(character)
+        if codepoint <= 0xFFFF:
+            escaped.append(f"\\u{codepoint:04x}")
+        else:  # pragma: no cover - current unsafe categories are in the BMP
+            escaped.append(f"\\U{codepoint:08x}")
+    return "".join(escaped)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -333,21 +353,24 @@ def _print_route(decision: RouteDecision) -> None:
     print(f"  tier:              {decision.tier.value}")
     print(f"  budget limit:      {canonical_cost_text(decision.budget_limit)}")
     print(f"  remaining budget:  {canonical_cost_text(decision.remaining_budget)}")
-    print(f"  selected model:    {decision.model_id}")
+    print(f"  selected model:    {_safe_terminal_text(decision.model_id)}")
     print(f"  quoted cost:       {canonical_cost_text(decision.model_cost)}")
-    print(f"  predicted quality: {decision.predicted_quality:.3f} ({decision.quality_kind})")
+    print(
+        "  predicted quality: "
+        f"{decision.predicted_quality:.3f} ({_safe_terminal_text(decision.quality_kind)})"
+    )
     print(f"  policy:            one-shot lambda={_fraction_label(decision.lambda_cost)}")
-    print(f"  accounting scope:  {decision.accounting_scope}")
+    print(f"  accounting scope:  {_safe_terminal_text(decision.accounting_scope)}")
     if decision.lambda_candidates_exhaustive is not None:
         print(
             "  lambda search:     "
             f"retained={decision.lambda_candidates_retained}/"
             f"{_candidate_total_label(decision.lambda_candidates_derived)}, "
             f"exhaustive={str(decision.lambda_candidates_exhaustive).lower()}, "
-            f"strategy={decision.lambda_candidate_strategy}, "
+            f"strategy={_safe_terminal_text(decision.lambda_candidate_strategy)}, "
             f"observed_breakpoints={decision.lambda_observed_breakpoint_count}"
         )
-    print(f"  reason:            {decision.reason}")
+    print(f"  reason:            {_safe_terminal_text(decision.reason)}")
     print(
         "  features:          "
         f"chars={decision.features.character_count}, "
@@ -845,7 +868,7 @@ def _print_showcase(result: RoutingStreamShowcase) -> None:
     """Render the exact three-tier stream before the separate benchmark table."""
 
     print("tierroute offline routing stream showcase\n")
-    print(f"Dataset: {result.dataset.name}")
+    print(f"Dataset: {_safe_terminal_text(result.dataset.name)}")
     print("Claim: project-authored synthetic wiring evidence, not benchmark results")
     print("Budget scope: independent illustrative per-query limits")
     print("Running cost: mixed-tier reporting-only; not an official shared budget")
@@ -857,10 +880,10 @@ def _print_showcase(result: RoutingStreamShowcase) -> None:
     for step in result.steps:
         retention = step.cumulative_quality_retention
         retention_label = "N/A" if retention is None else f"{100 * float(retention):.1f}%"
-        print(f"Step {step.index} [{step.tier.value}] {step.example_id}")
-        print(f"  prompt:            {step.prompt}")
+        print(f"Step {step.index} [{step.tier.value}] {_safe_terminal_text(step.example_id)}")
+        print(f"  prompt:            {_safe_terminal_text(step.prompt)}")
         print(
-            f"  route:             {step.selected_model_id} "
+            f"  route:             {_safe_terminal_text(step.selected_model_id)} "
             f"(one-shot lambda={_fraction_label(step.lambda_cost)})"
         )
         print(
@@ -872,7 +895,8 @@ def _print_showcase(result: RoutingStreamShowcase) -> None:
         print(
             "  synthetic quality: "
             f"observed={step.observed_quality:.3f}, "
-            f"per-query oracle={step.oracle_quality:.3f} ({step.oracle_model_id})"
+            "per-query oracle="
+            f"{step.oracle_quality:.3f} ({_safe_terminal_text(step.oracle_model_id)})"
         )
         print(
             "  running display:   "
@@ -956,7 +980,7 @@ def _training_payload(
 def _print_scorecard(dataset_name: str, results: tuple[BaselineResult, ...]) -> None:
     if not results:
         raise ValueError("scorecard requires at least one baseline result")
-    print(f"Dataset: {dataset_name}")
+    print(f"Dataset: {_safe_terminal_text(dataset_name)}")
     print("Budget scope: illustrative per-query limits (official SKT scope unresolved)")
     print(
         f"Evaluation scope: {results[0].report.evaluation_scope_algorithm}:"
@@ -992,7 +1016,7 @@ def _print_benchmark(
     """Render judge-facing learned-versus-baseline evidence without hiding scope."""
 
     print("tierroute nested-LODO benchmark\n")
-    print(f"Dataset: {dataset_name}")
+    print(f"Dataset: {_safe_terminal_text(dataset_name)}")
     print("Budget scope: explicit per-query accounting")
     print("Validation: true nested LODO; outer predictions replay once in original order")
     print(
@@ -1045,7 +1069,7 @@ def _print_benchmark(
             f"{canonical_cost_text(tier_result.budget.effective_total_limit):>16} "
             f"{str(tier_result.feasible).lower():>10}"
         )
-    print("\nOuter folds: " + ", ".join(result.domains))
+    print("\nOuter folds: " + ", ".join(_safe_terminal_text(item) for item in result.domains))
     print(f"Outer prediction SHA-256: {result.learned.prediction_sha256}")
     print("Cost note: the cross-tier total is a diagnostic over independent tier ledgers.")
     if bundled_synthetic:
@@ -1067,7 +1091,7 @@ def _print_predictor_comparison(
     """Render fixed-order paired estimates without ranking the predictor families."""
 
     print("tierroute paired predictor estimation (wiring only)\n")
-    print(f"Dataset: {dataset_name}")
+    print(f"Dataset: {_safe_terminal_text(dataset_name)}")
     print(f"Claim state: {'SYNTHETIC-ONLY' if bundled_synthetic else 'UNVERIFIED-USER-DATA'}")
     print("Budget scope: explicit per-query accounting")
     print("Validation: both families use identical true nested-LODO outer evidence")
@@ -1308,15 +1332,21 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         else:
             print("tierroute predictor training")
-            print(f"  dataset:            {dataset.name}")
+            print(f"  dataset:            {_safe_terminal_text(dataset.name)}")
             print(f"  training examples:  {artifact.training_example_count}")
-            print(f"  training domains:   {', '.join(artifact.training_domains)}")
-            print(f"  candidate models:   {', '.join(artifact.model_ids)}")
+            print(
+                "  training domains:   "
+                + ", ".join(_safe_terminal_text(item) for item in artifact.training_domains)
+            )
+            print(
+                "  candidate models:   "
+                + ", ".join(_safe_terminal_text(item) for item in artifact.model_ids)
+            )
             print(f"  feature dimension:  {artifact.feature_schema.dimension}")
             print(f"  ridge solver:       {artifact.solver_id}")
-            print(f"  artifact:           {output}")
+            print(f"  artifact:           {_safe_terminal_text(str(output))}")
             if policy_output is not None and tuning is not None:
-                print(f"  policy artifact:    {policy_output}")
+                print(f"  policy artifact:    {_safe_terminal_text(str(policy_output))}")
                 print(f"  accounting scope:  {args.budget_scope}")
                 for selection in tuning.selections:
                     candidates = selection.candidates
