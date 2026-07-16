@@ -508,6 +508,33 @@ def test_private_snapshot_survives_source_mutation_and_close_lifetime(tmp_path: 
         _ = mapping[0]
 
 
+def test_private_snapshot_cleanup_can_retry_after_stream_close_failure(tmp_path: Path) -> None:
+    source = tmp_path / "store.bin"
+    _, receipt = _write_store(source)
+    authenticated = authenticate_prepared_store_file(source, receipt)
+    original_stream = authenticated._stream
+
+    class FailOnceClose:
+        def __init__(self) -> None:
+            self.failed = False
+
+        def close(self) -> None:
+            if not self.failed:
+                self.failed = True
+                raise OSError("injected stream-close failure")
+            original_stream.close()
+
+    authenticated._stream = FailOnceClose()
+    with pytest.raises(PreparedStoreFileError, match="injected stream-close failure"):
+        authenticated.close()
+    assert not authenticated.closed
+    with pytest.raises(ValueError, match="mapping is closed"):
+        _ = authenticated.mapping
+
+    authenticated.close()
+    assert authenticated.closed
+
+
 def test_official_shape_admission_matches_closed_form() -> None:
     counts = (4_969, 4_969, 4_969, 4_969, 4_969, 4_969, 4_964)
     row_count = sum(counts)

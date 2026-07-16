@@ -15,7 +15,8 @@ import os
 import stat
 import struct
 import tempfile
-from collections.abc import Iterable, Sequence
+import threading
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
@@ -30,6 +31,7 @@ from tierroute.predictors.prepared_graph import (
     MAX_PREPARED_TARGETS,
     PREPARED_GRAPH_ALGORITHM_ID,
     PreparedNestedLodoPlan,
+    build_prepared_nested_lodo_plan,
 )
 from tierroute.predictors.prepared_store import PreparedFeatureStore
 
@@ -919,6 +921,7 @@ class AuthenticatedPreparedStore:
 
     __slots__ = (
         "_closed",
+        "_lock",
         "_mapping",
         "_stream",
         "_temporary_directory",
@@ -941,56 +944,175 @@ class AuthenticatedPreparedStore:
         self._mapping = mapping
         self.metadata = metadata
         self._closed = False
+        self._lock = threading.RLock()
 
     @property
     def mapping(self) -> mmap.mmap:
         """Return the read-only mapping while this context remains open."""
 
-        if self._closed:
-            raise ValueError("authenticated prepared-store mapping is closed")
-        return self._mapping
+        with self._lock:
+            if self._mapping is None:
+                raise ValueError("authenticated prepared-store mapping is closed")
+            return self._mapping
+
+    def _read_bytes(self, offset: int, length: int) -> bytes:
+        """Copy one bounded byte range while excluding a concurrent close."""
+
+        if type(offset) is not int or type(length) is not int:
+            raise TypeError("prepared-store read offset and length must be exact integers")
+        if offset < 0 or length < 0 or offset > self.metadata.file_bytes - length:
+            raise PreparedStoreFileError("prepared-store read range is outside the mapping")
+        with self._lock:
+            if self._mapping is None:
+                raise PreparedStoreFileError("authenticated prepared-store mapping is closed")
+            return self._mapping[offset : offset + length]
+
+    def _unpack_from(self, layout: struct.Struct, offset: int) -> tuple[object, ...]:
+        """Unpack one fixed layout while excluding a concurrent close."""
+
+        if type(layout) is not struct.Struct:
+            raise TypeError("prepared-store layout must be an exact struct.Struct")
+        if type(offset) is not int:
+            raise TypeError("prepared-store unpack offset must be an exact integer")
+        if offset < 0 or offset > self.metadata.file_bytes - layout.size:
+            raise PreparedStoreFileError("prepared-store unpack range is outside the mapping")
+        with self._lock:
+            if self._mapping is None:
+                raise PreparedStoreFileError("authenticated prepared-store mapping is closed")
+            return layout.unpack_from(self._mapping, offset)
+
+    def iter_row_keys(self) -> Iterator[tuple[str, str]]:
+        """Yield authenticated ``(example_id, prompt_sha256)`` join keys once."""
+
+        offset = self.metadata.row_key_offset
+        section_end = offset + self.metadata.row_key_bytes
+        for row_index in range(self.metadata.row_count):
+            (identifier_bytes,) = self._unpack_from(_U16, offset)
+            if (
+                type(identifier_bytes) is not int
+                or not 1 <= identifier_bytes <= MAX_ROW_ID_UTF8_BYTES
+            ):
+                raise PreparedStoreFileError(
+                    f"prepared-store row {row_index} has an invalid ID length"
+                )
+            offset += _U16.size
+            try:
+                identifier = self._read_bytes(offset, identifier_bytes).decode(
+                    "utf-8",
+                    errors="strict",
+                )
+            except UnicodeDecodeError as error:
+                raise PreparedStoreFileError("prepared-store row ID is not strict UTF-8") from error
+            offset += identifier_bytes
+            prompt_sha256 = self._read_bytes(offset, 32).hex()
+            offset += 32
+            yield identifier, prompt_sha256
+        if offset != section_end:
+            raise PreparedStoreFileError("prepared-store row keys do not fill their section")
+
+    def row_keys(self) -> tuple[tuple[str, str], ...]:
+        """Materialize authenticated join keys for diagnostics and compatibility."""
+
+        return tuple(self.iter_row_keys())
+
+    def domain_indices(self) -> bytes:
+        """Return the authenticated one-byte canonical domain index per row."""
+
+        payload = self._read_bytes(
+            self.metadata.domain_index_offset,
+            self.metadata.domain_index_bytes,
+        )
+        if len(payload) != self.metadata.row_count:
+            raise PreparedStoreFileError("prepared-store domain section changed size")
+        return payload
+
+    def target_row(self, row_index: int) -> tuple[float, ...]:
+        """Return one authenticated target row in canonical model-column order."""
+
+        if type(row_index) is not int:
+            raise TypeError("prepared-store target row index must be an exact integer")
+        if not 0 <= row_index < self.metadata.row_count:
+            raise IndexError("prepared-store target row index is outside the mapping")
+        layout = struct.Struct(f"<{self.metadata.target_count}d")
+        offset = self.metadata.target_offset + row_index * layout.size
+        return tuple(float(value) for value in self._unpack_from(layout, offset))
+
+    def sha256_and_size(self) -> tuple[str, int]:
+        """Reauthenticate the complete private snapshot while excluding close."""
+
+        with self._lock:
+            if self._mapping is None:
+                raise PreparedStoreFileError("authenticated prepared-store mapping is closed")
+            digest = hashlib.sha256()
+            for offset in range(0, self.metadata.file_bytes, _COPY_CHUNK_BYTES):
+                digest.update(self._mapping[offset : offset + _COPY_CHUNK_BYTES])
+            return digest.hexdigest(), len(self._mapping)
 
     @property
     def closed(self) -> bool:
         """Whether the private mapping and workspace have been released."""
 
-        return self._closed
+        with self._lock:
+            return self._closed
 
     def close(self) -> None:
         """Release the mapping before deleting the private snapshot."""
 
-        if self._closed:
-            return
-        try:
-            self._mapping.close()
-        except BaseException as caught:
-            # In particular, an exported memoryview raises BufferError. Keep the
-            # object open so the caller can release the view and retry cleanup.
-            raise PreparedStoreFileError(
-                f"cannot close authenticated prepared-store mapping: {caught}"
-            ) from caught
-        error: BaseException | None = None
-        try:
-            self._stream.close()
-        except BaseException as caught:
-            error = error or caught
-        try:
-            self._temporary_directory.cleanup()
-        except BaseException as caught:
-            error = error or caught
-        if error is not None:
-            raise PreparedStoreFileError(
-                f"cannot close authenticated prepared-store snapshot: {error}"
-            ) from error
-        self._closed = True
+        with self._lock:
+            if self._closed:
+                return
+            if self._mapping is not None:
+                try:
+                    self._mapping.close()
+                except BaseException as caught:
+                    # In particular, an exported memoryview raises BufferError. Keep
+                    # every resource live so cleanup can be retried after release.
+                    raise PreparedStoreFileError(
+                        f"cannot close authenticated prepared-store mapping: {caught}"
+                    ) from caught
+                self._mapping = None
+            error: BaseException | None = None
+            if self._stream is not None:
+                try:
+                    self._stream.close()
+                except BaseException as caught:
+                    error = error or caught
+                else:
+                    self._stream = None
+            if self._temporary_directory is not None:
+                try:
+                    self._temporary_directory.cleanup()
+                except BaseException as caught:
+                    error = error or caught
+                else:
+                    self._temporary_directory = None
+            self._closed = (
+                self._mapping is None and self._stream is None and self._temporary_directory is None
+            )
+            if error is not None:
+                raise PreparedStoreFileError(
+                    f"cannot close authenticated prepared-store snapshot: {error}"
+                ) from error
 
     def __enter__(self) -> AuthenticatedPreparedStore:
-        if self._closed:
-            raise ValueError("authenticated prepared-store snapshot is closed")
-        return self
+        with self._lock:
+            if self._mapping is None:
+                raise ValueError("authenticated prepared-store snapshot is closed")
+            return self
 
-    def __exit__(self, *_: object) -> None:
-        self.close()
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        del exc_type, traceback
+        try:
+            self.close()
+        except BaseException:
+            if exc is None:
+                raise
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except BaseException:
+            pass
 
 
 def authenticate_prepared_store_file(
@@ -1033,11 +1155,22 @@ def authenticate_prepared_store_file(
             metadata=metadata,
         )
     except BaseException:
+        # Preserve the authentication/copy error; cleanup is best effort on this
+        # exceptional construction path and must not replace the primary diagnosis.
         if mapping is not None:
-            mapping.close()
+            try:
+                mapping.close()
+            except BaseException:
+                pass
         if stream is not None:
-            stream.close()
-        temporary.cleanup()
+            try:
+                stream.close()
+            except BaseException:
+                pass
+        try:
+            temporary.cleanup()
+        except BaseException:
+            pass
         raise
 
 
@@ -1183,6 +1316,74 @@ def _validate_section_identities(
         graph_digest,
         model_digest,
     )
+
+
+def validate_prepared_store_context(
+    metadata: PreparedStoreFileMetadata,
+    receipt: PreparedStoreFileReceipt,
+    plan: PreparedNestedLodoPlan,
+    model_ids: tuple[str, ...],
+    embedding_identity: EmbeddingIdentity | None,
+) -> None:
+    """Bind authenticated file metadata to caller-owned semantic identities.
+
+    ``authenticate_prepared_store_file`` proves that a private mmap is an exact copy
+    of the file pinned by ``receipt``.  The fixed store header intentionally records
+    hashes rather than variable-length domain, model, and embedding catalogues.  A
+    policy consumer must therefore prove those semantic catalogues separately before
+    it interprets domain indices, target columns, or native score columns.  Keeping
+    this check next to the store's canonical hash encoders prevents a second,
+    subtly-different identity implementation in policy code.
+
+    The hashes authenticate exact bytes and caller-supplied identities; they are not
+    signatures and do not establish dataset or model provenance.
+    """
+
+    if type(metadata) is not PreparedStoreFileMetadata:
+        raise TypeError("metadata must be an exact PreparedStoreFileMetadata")
+    if type(receipt) is not PreparedStoreFileReceipt:
+        raise TypeError("receipt must be an exact PreparedStoreFileReceipt")
+    if type(plan) is not PreparedNestedLodoPlan:
+        raise TypeError("plan must be an exact PreparedNestedLodoPlan")
+    canonical_plan = build_prepared_nested_lodo_plan(
+        plan.domains,
+        plan.domain_example_counts,
+        feature_count=plan.feature_count,
+        target_count=plan.target_count,
+    )
+    if canonical_plan != plan:
+        raise PreparedStoreFileError("prepared plan is not its exact canonical value")
+    models = _validated_model_ids(model_ids, plan.target_count)
+    _receipt_matches_header(receipt, metadata)
+    if (
+        metadata.domain_count != len(plan.domains)
+        or metadata.row_count != plan.work.example_count
+        or metadata.feature_count != plan.feature_count
+        or metadata.target_count != plan.target_count
+        or metadata.domain_row_counts != plan.domain_example_counts
+    ):
+        raise PreparedStoreFileError("prepared-store shape does not match the caller plan")
+    if metadata.graph_identity_sha256 != _graph_identity_sha256(plan):
+        raise PreparedStoreFileError("prepared-store graph identity does not match the plan")
+    if metadata.model_catalogue_sha256 != _model_catalogue_sha256(models):
+        raise PreparedStoreFileError(
+            "prepared-store model catalogue identity does not match model_ids"
+        )
+    embedding_width = plan.feature_count - UNIVERSAL_SURFACE_WIDTH
+    if embedding_width == 0:
+        if embedding_identity is not None:
+            raise PreparedStoreFileError(
+                "surface-only prepared stores cannot accept an embedding identity"
+            )
+        expected_embedding_identity_sha256 = None
+    else:
+        if type(embedding_identity) is not EmbeddingIdentity:
+            raise TypeError("embedded prepared stores require an exact EmbeddingIdentity")
+        expected_embedding_identity_sha256 = _embedding_identity_sha256(embedding_identity)
+    if metadata.embedding_identity_sha256 != expected_embedding_identity_sha256:
+        raise PreparedStoreFileError(
+            "prepared-store embedding identity does not match the caller identity"
+        )
 
 
 def _pack_store_header(
@@ -1581,10 +1782,12 @@ def write_prepared_store_file(
 
 
 __all__ = [
+    "COEFFICIENT_RECORD_HEADER_BYTES",
     "PREPARED_STORE_EMBEDDING_IDENTITY_ID",
     "PREPARED_STORE_FILE_ID",
     "PREPARED_STORE_GRAPH_IDENTITY_ID",
     "PREPARED_STORE_MODEL_CATALOGUE_ID",
+    "UNIVERSAL_SURFACE_WIDTH",
     "AuthenticatedPreparedStore",
     "PreparedSessionEstimate",
     "PreparedStoreFileError",
@@ -1593,6 +1796,7 @@ __all__ = [
     "authenticate_prepared_store_file",
     "copy_authenticated_prepared_store",
     "estimate_prepared_session",
+    "validate_prepared_store_context",
     "write_prepared_store_file",
     "write_prepared_store_file_from_sections",
 ]

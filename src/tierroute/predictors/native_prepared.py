@@ -391,6 +391,13 @@ class _MappedLifetime:
                 for position in range(start, stop, step)
             )
 
+    def header_sha256_and_size(self) -> tuple[bytes, str, int]:
+        """Snapshot the fixed header and rehash the mapping under one lock."""
+
+        with self._lock:
+            mapping = self._require_open_unlocked()
+            return bytes(mapping[:RESULT_HEADER_BYTES]), _mapping_sha256(mapping), len(mapping)
+
     def close(self) -> None:
         with self._lock:
             if self._closed:
@@ -489,11 +496,12 @@ class NativePreparedFloat64View(Sequence[float]):
     def at(self, row_index: int, column_index: int) -> float:
         """Read one matrix cell without materializing its row."""
 
-        if not isinstance(row_index, int) or not isinstance(column_index, int):
-            raise TypeError("row and column indices must be integers")
+        if type(row_index) is not int or type(column_index) is not int:
+            raise TypeError("row and column indices must be exact integers")
         if not 0 <= row_index < self.row_count or not 0 <= column_index < self.column_count:
             raise IndexError("native prepared matrix index is out of range")
-        return self[row_index * self.column_count + column_index]
+        position = row_index * self.column_count + column_index
+        return self._lifetime.read_f64(self._offset + position * 8)
 
 
 @dataclass(frozen=True, slots=True)
@@ -589,12 +597,270 @@ class NativePreparedSessionResult:
     def close(self) -> None:
         self._lifetime.close()
 
+    def verify_integrity(self) -> None:
+        """Rebind object metadata and every view to the authenticated mmap.
+
+        The adapter validates the protocol before constructing this object.  A later
+        policy stage can be separated from that call by arbitrary user code, so it
+        must not trust mutable private attributes or stale ``init=False``-style
+        evidence.  This method rehashes the private read-only result and verifies the
+        canonical record graph and exact view offsets without materializing numeric
+        payloads.  It deliberately does not claim provenance for the caller-pinned
+        executable or store.
+        """
+
+        if type(self._metadata) is not PreparedStoreFileMetadata:
+            raise NativePreparedIntegrityError("native result metadata must be exact")
+        metadata = self._metadata
+        expected = _derive_expected_graph(metadata)
+        preflight_native_prepared_session(metadata, ridge=self._ridge)
+        for name, value in (
+            ("store_sha256", self.store_sha256),
+            ("binary_sha256", self.binary_sha256),
+            ("result_sha256", self.result_sha256),
+        ):
+            _sha256_hex(value, name)
+        if type(self.request_nonce) is not bytes or len(self.request_nonce) != 32:
+            raise NativePreparedIntegrityError("native result request nonce must be 32 bytes")
+        if not any(self.request_nonce):
+            raise NativePreparedIntegrityError("native result request nonce must be nonzero")
+        ridge = _positive_f64(self._ridge, "native result ridge")
+        if struct.pack("<d", ridge) != struct.pack("<d", self._ridge):
+            raise NativePreparedIntegrityError("native result ridge is not canonical")
+        header, mapped_sha256, mapped_bytes = self._lifetime.header_sha256_and_size()
+        if not hmac.compare_digest(mapped_sha256, self.result_sha256):
+            raise NativePreparedIntegrityError("native result mapping SHA-256 changed")
+        if mapped_bytes != expected.result_bytes:
+            raise NativePreparedIntegrityError("native result mapping size changed")
+        (
+            magic,
+            version,
+            status_code,
+            response_nonce,
+            response_store_sha,
+            response_binary_sha,
+            domain_count,
+            row_count,
+            feature_count,
+            target_count,
+            coefficient_count,
+            score_count,
+            score_row_memberships,
+            coefficient_section_bytes,
+            score_section_bytes,
+            result_bytes,
+            ridge_echo,
+            statistics_work_units,
+            solve_work_units,
+            score_work_units,
+            modeled_c_heap_bytes,
+            store_payload_sha,
+            logical_store_sha,
+            source_fit_sha,
+            embedding_snapshot_sha,
+            model_catalogue_sha,
+            graph_identity_sha,
+            authentication_validation_bytes_scanned,
+            output_numeric_cells_validated,
+            file_backed_input_bytes,
+        ) = _RESULT_HEADER.unpack(header)
+        if magic != RESULT_MAGIC or version != PROTOCOL_VERSION or status_code != STATUS_SUCCESS:
+            raise NativePreparedIntegrityError("native result header is not canonical success")
+        exact_bytes = (
+            ("request nonce", response_nonce, self.request_nonce),
+            ("store SHA-256", response_store_sha, bytes.fromhex(self.store_sha256)),
+            ("binary SHA-256", response_binary_sha, bytes.fromhex(self.binary_sha256)),
+            (
+                "store payload SHA-256",
+                store_payload_sha,
+                bytes.fromhex(metadata.store_payload_sha256),
+            ),
+            (
+                "logical store SHA-256",
+                logical_store_sha,
+                bytes.fromhex(metadata.logical_store_sha256),
+            ),
+            ("source-fit SHA-256", source_fit_sha, bytes.fromhex(metadata.source_fit_sha256)),
+            (
+                "embedding snapshot SHA-256",
+                embedding_snapshot_sha,
+                _optional_digest_bytes(metadata.embedding_snapshot_sha256),
+            ),
+            (
+                "model catalogue SHA-256",
+                model_catalogue_sha,
+                bytes.fromhex(metadata.model_catalogue_sha256),
+            ),
+            (
+                "graph identity SHA-256",
+                graph_identity_sha,
+                bytes.fromhex(metadata.graph_identity_sha256),
+            ),
+        )
+        for name, actual, wanted in exact_bytes:
+            if not hmac.compare_digest(actual, wanted):
+                raise NativePreparedIntegrityError(f"native result header {name} changed")
+        expected_numbers = (
+            ("domain count", domain_count, metadata.domain_count),
+            ("row count", row_count, metadata.row_count),
+            ("feature count", feature_count, metadata.feature_count),
+            ("target count", target_count, metadata.target_count),
+            ("coefficient count", coefficient_count, len(expected.coefficients)),
+            ("score count", score_count, len(expected.scores)),
+            ("score row memberships", score_row_memberships, expected.score_row_memberships),
+            (
+                "coefficient section bytes",
+                coefficient_section_bytes,
+                expected.coefficient_section_bytes,
+            ),
+            ("score section bytes", score_section_bytes, expected.score_section_bytes),
+            ("result bytes", result_bytes, expected.result_bytes),
+            ("statistics work", statistics_work_units, expected.statistics_work_units),
+            ("solve work", solve_work_units, expected.solve_work_units),
+            ("score work", score_work_units, expected.score_work_units),
+            ("modeled C heap", modeled_c_heap_bytes, metadata.estimate.modeled_c_heap_bytes),
+            (
+                "authentication scan",
+                authentication_validation_bytes_scanned,
+                metadata.estimate.authentication_validation_bytes_scanned,
+            ),
+            (
+                "validated numeric cells",
+                output_numeric_cells_validated,
+                metadata.estimate.output_numeric_cells_validated,
+            ),
+            (
+                "file-backed input bytes",
+                file_backed_input_bytes,
+                metadata.estimate.file_backed_input_bytes,
+            ),
+        )
+        for name, actual, wanted in expected_numbers:
+            if actual != wanted:
+                raise NativePreparedIntegrityError(f"native result header {name} changed")
+        if struct.pack("<d", ridge_echo) != struct.pack("<d", self._ridge):
+            raise NativePreparedIntegrityError("native result header ridge changed")
+        if type(self._coefficients) is not tuple or len(self._coefficients) != len(
+            expected.coefficients
+        ):
+            raise NativePreparedIntegrityError(
+                "native result coefficient records have the wrong canonical length"
+            )
+        if type(self._scores) is not tuple or len(self._scores) != len(expected.scores):
+            raise NativePreparedIntegrityError(
+                "native result score records have the wrong canonical length"
+            )
+
+        offset = RESULT_HEADER_BYTES
+        for actual, wanted in zip(self._coefficients, expected.coefficients, strict=True):
+            if type(actual) is not NativePreparedCoefficientRecord:
+                raise NativePreparedIntegrityError(
+                    "native coefficient records must have exact types"
+                )
+            actual_header = (
+                actual.subset_index,
+                actual.subset_domain_mask,
+                actual.training_row_count,
+                actual.active_tag_mask,
+                actual.active_feature_count,
+                actual.record_payload_bytes,
+            )
+            wanted_header = (
+                wanted.subset_index,
+                wanted.domain_mask,
+                wanted.training_row_count,
+                wanted.active_tag_mask,
+                wanted.active_feature_count,
+                wanted.payload_bytes,
+            )
+            if actual_header != wanted_header:
+                raise NativePreparedIntegrityError(
+                    "native coefficient record metadata changed after parsing"
+                )
+            payload_offset = offset + COEFFICIENT_RECORD_HEADER_BYTES
+            intercept_offset = payload_offset + 48
+            weight_offset = intercept_offset + 8 * metadata.target_count
+            expected_views = (
+                (actual.continuous_means, payload_offset, 3, 1, 3),
+                (actual.continuous_scales, payload_offset + 24, 3, 1, 3),
+                (
+                    actual.intercepts,
+                    intercept_offset,
+                    metadata.target_count,
+                    1,
+                    metadata.target_count,
+                ),
+                (
+                    actual.weights,
+                    weight_offset,
+                    metadata.target_count * wanted.active_feature_count,
+                    metadata.target_count,
+                    wanted.active_feature_count,
+                ),
+            )
+            for view, view_offset, count, rows, columns in expected_views:
+                if (
+                    type(view) is not NativePreparedFloat64View
+                    or view._lifetime is not self._lifetime
+                    or view._offset != view_offset
+                    or view._count != count
+                    or view.row_count != rows
+                    or view.column_count != columns
+                ):
+                    raise NativePreparedIntegrityError(
+                        "native coefficient payload view changed after parsing"
+                    )
+            offset = payload_offset + wanted.payload_bytes
+
+        for actual, wanted in zip(self._scores, expected.scores, strict=True):
+            if type(actual) is not NativePreparedScoreRecord:
+                raise NativePreparedIntegrityError("native score records must have exact types")
+            actual_header = (
+                actual.block_index,
+                actual.training_subset_index,
+                actual.scored_domain_index,
+                actual.row_count,
+                actual.record_payload_bytes,
+            )
+            wanted_header = (
+                wanted.block_index,
+                wanted.training_subset_index,
+                wanted.scored_domain_index,
+                wanted.row_count,
+                wanted.payload_bytes,
+            )
+            if actual_header != wanted_header:
+                raise NativePreparedIntegrityError(
+                    "native score record metadata changed after parsing"
+                )
+            payload_offset = offset + SCORE_RECORD_HEADER_BYTES
+            view = actual.scores
+            if (
+                type(view) is not NativePreparedFloat64View
+                or view._lifetime is not self._lifetime
+                or view._offset != payload_offset
+                or view._count != wanted.row_count * metadata.target_count
+                or view.row_count != wanted.row_count
+                or view.column_count != metadata.target_count
+            ):
+                raise NativePreparedIntegrityError(
+                    "native score payload view changed after parsing"
+                )
+            offset = payload_offset + wanted.payload_bytes
+        if offset != expected.result_bytes:
+            raise NativePreparedIntegrityError("native result record graph changed size")
+
     def __enter__(self) -> NativePreparedSessionResult:
         self._lifetime.require_open()
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        self.close()
+        del exc_type, traceback
+        try:
+            self.close()
+        except BaseException:
+            if exc is None:
+                raise
 
 
 @dataclass(frozen=True, slots=True)
