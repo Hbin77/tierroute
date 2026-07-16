@@ -4,12 +4,18 @@
 import hashlib
 import json
 import os
+import shutil
+import subprocess
+import sys
+from collections.abc import Sequence
 from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
+import tierroute.cli as cli_module
+import tierroute.predictors.native_ridge as native_ridge_module
 from tierroute.adapters import bundled_synthetic_path, load_evaluation_dataset
 from tierroute.cli import (
     DEFAULT_MAX_LAMBDA_CANDIDATES,
@@ -20,10 +26,54 @@ from tierroute.cli import (
 )
 from tierroute.core import BudgetTier, atomic_io
 from tierroute.demo import evaluate_six_baselines, route_prompt
+from tierroute.eval import EvaluationExample
 from tierroute.policies import lambda_tuning
 from tierroute.policies.lambda_artifacts import LambdaPolicyArtifact
 from tierroute.policies.lambda_tuning import tune_tier_lambdas
-from tierroute.predictors import BilinearPredictorArtifact
+from tierroute.predictors import NATIVE_C11_RIDGE_SOLVER_ID, BilinearPredictorArtifact
+from tierroute.predictors._ridge import RidgeSolution, solve_centered_ridge
+
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+_NATIVE_BUILD_SCRIPT = _REPOSITORY_ROOT / "scripts" / "build_native_ridge.py"
+_NATIVE_SOURCE = _REPOSITORY_ROOT / "native" / "tierroute_ridge.c"
+
+
+def _available_native_compiler() -> Path | None:
+    if os.name == "nt":
+        candidate = shutil.which("cl")
+    else:
+        candidate = shutil.which("clang") or shutil.which("cc") or shutil.which("gcc")
+    return Path(candidate).resolve() if candidate else None
+
+
+@pytest.fixture(scope="module")
+def cli_compiled_native_ridge(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, str]:
+    compiler = _available_native_compiler()
+    if compiler is None or not _NATIVE_SOURCE.is_file():
+        pytest.skip("native C11 source or a platform compiler is unavailable")
+    output = tmp_path_factory.mktemp("cli-native-ridge") / (
+        "tierroute-ridge.exe" if os.name == "nt" else "tierroute-ridge"
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(_NATIVE_BUILD_SCRIPT),
+            "--output",
+            str(output),
+            "--compiler",
+            str(compiler),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=240,
+    )
+    if completed.returncode != 0:
+        pytest.fail(f"native build helper failed:\n{completed.stderr}")
+    manifest = json.loads(completed.stdout)
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert manifest["sha256"] == digest
+    return output, digest
 
 
 def test_route_command_shows_decision_cost_and_predicted_quality(capsys: object) -> None:
@@ -342,6 +392,7 @@ def test_train_then_route_with_canonical_artifact(
     assert training["training_domains"] == ["code", "general", "math", "science"]
     assert training["model_ids"] == ["expert", "steady", "swift"]
     assert training["solver_id"] == "tierroute.centered-ridge-cholesky-python-v1"
+    assert "native_ridge_sha256" not in training
 
     assert (
         main(
@@ -362,6 +413,449 @@ def test_train_then_route_with_canonical_artifact(
     assert route["network_used"] is False
     assert route["quality_kind"] == "calibrated bilinear artifact"
     assert route["model"] in training["model_ids"]
+
+
+def test_explicit_python_reference_selection_preserves_default_json_and_text(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    default_json_path = tmp_path / "default-json.json"
+    explicit_json_path = tmp_path / "explicit-json.json"
+
+    assert main(["train", "--output", str(default_json_path), "--json"]) == 0
+    default_json = json.loads(capsys.readouterr().out)
+    assert (
+        main(
+            [
+                "train",
+                "--output",
+                str(explicit_json_path),
+                "--ridge-solver",
+                "python-reference",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    explicit_json = json.loads(capsys.readouterr().out)
+
+    assert default_json.pop("artifact") == str(default_json_path)
+    assert explicit_json.pop("artifact") == str(explicit_json_path)
+    assert default_json == explicit_json
+    assert default_json_path.read_bytes() == explicit_json_path.read_bytes()
+
+    default_text_path = tmp_path / "default-text.json"
+    explicit_text_path = tmp_path / "explicit-text.json"
+    assert main(["train", "--output", str(default_text_path)]) == 0
+    default_text = capsys.readouterr().out.replace(str(default_text_path), "<artifact>")
+    assert (
+        main(
+            [
+                "train",
+                "--output",
+                str(explicit_text_path),
+                "--ridge-solver",
+                "python-reference",
+            ]
+        )
+        == 0
+    )
+    explicit_text = capsys.readouterr().out.replace(str(explicit_text_path), "<artifact>")
+
+    assert default_text == explicit_text
+    assert default_text == (
+        "tierroute predictor training\n"
+        "  dataset:            tierroute synthetic smoke dataset\n"
+        "  training examples:  8\n"
+        "  training domains:   code, general, math, science\n"
+        "  candidate models:   expert, steady, swift\n"
+        "  feature dimension:  7\n"
+        "  ridge solver:       tierroute.centered-ridge-cholesky-python-v1\n"
+        "  artifact:           <artifact>\n"
+        "  network:            disabled\n"
+        "  note: synthetic data is a wiring test, not benchmark evidence\n"
+    )
+
+
+def test_train_native_solver_credentials_fail_closed_at_parser_boundary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binary = tmp_path / "native-ridge"
+    digest = "0" * 64
+    cases = (
+        (["--ridge-solver", "native-c11"], "requires both"),
+        (
+            ["--ridge-solver", "native-c11", "--native-ridge-binary", str(binary)],
+            "requires both",
+        ),
+        (
+            ["--ridge-solver", "native-c11", "--native-ridge-sha256", digest],
+            "requires both",
+        ),
+        (["--native-ridge-binary", str(binary)], "require --ridge-solver native-c11"),
+        (["--native-ridge-sha256", digest], "require --ridge-solver native-c11"),
+        (
+            [
+                "--ridge-solver",
+                "python-reference",
+                "--native-ridge-binary",
+                str(binary),
+                "--native-ridge-sha256",
+                digest,
+            ],
+            "require --ridge-solver native-c11",
+        ),
+        (
+            [
+                "--ridge-solver",
+                "native-c11",
+                "--native-ridge-binary",
+                "relative-ridge",
+                "--native-ridge-sha256",
+                digest,
+            ],
+            "binary_path must be absolute",
+        ),
+        (
+            [
+                "--ridge-solver",
+                "native-c11",
+                "--native-ridge-binary",
+                str(binary),
+                "--native-ridge-sha256",
+                "A" * 64,
+            ],
+            "64 lowercase hexadecimal",
+        ),
+    )
+
+    for index, (options, expected_error) in enumerate(cases):
+        output = tmp_path / f"invalid-{index}.json"
+        with pytest.raises(SystemExit) as caught:
+            main(["train", "--output", str(output), *options])
+        assert caught.value.code == 2
+        assert expected_error in capsys.readouterr().err
+        assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("candidate_kind", "expected_error"),
+    (("missing", "cannot inspect"), ("wrong-digest", "SHA-256 does not match")),
+)
+def test_native_authentication_failure_is_controlled_and_writes_no_artifact(
+    candidate_kind: str,
+    expected_error: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binary = tmp_path / "wrong-native-ridge"
+    if candidate_kind == "wrong-digest":
+        binary.write_bytes(b"not-the-configured-digest")
+        binary.chmod(0o700)
+    predictor = tmp_path / "predictor.json"
+    policy = tmp_path / "policy.json"
+
+    with pytest.raises(SystemExit) as caught:
+        main(
+            [
+                "train",
+                "--output",
+                str(predictor),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--ridge-solver",
+                "native-c11",
+                "--native-ridge-binary",
+                str(binary),
+                "--native-ridge-sha256",
+                "0" * 64,
+            ]
+        )
+
+    assert caught.value.code == 2
+    error_output = capsys.readouterr().err
+    assert "native ridge training failed" in error_output
+    assert expected_error in error_output
+    assert "Traceback" not in error_output
+    assert not predictor.exists()
+    assert not policy.exists()
+
+
+def test_native_adapter_io_failure_is_cli_controlled_and_writes_no_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binary = tmp_path / "native-ridge"
+    binary.write_bytes(b"authenticated-but-I/O-fails-during-snapshot")
+    binary.chmod(0o700)
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    predictor = tmp_path / "predictor.json"
+    policy = tmp_path / "policy.json"
+
+    real_stream_binary = native_ridge_module._stream_binary
+    stream_calls = 0
+
+    def fail_snapshot_read(*args: object, **kwargs: object) -> int:
+        nonlocal stream_calls
+        stream_calls += 1
+        if stream_calls == 2:
+            raise OSError("injected snapshot read failure")
+        return real_stream_binary(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(native_ridge_module, "_stream_binary", fail_snapshot_read)
+
+    with pytest.raises(SystemExit) as caught:
+        main(
+            [
+                "train",
+                "--output",
+                str(predictor),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--ridge-solver",
+                "native-c11",
+                "--native-ridge-binary",
+                str(binary),
+                "--native-ridge-sha256",
+                digest,
+            ]
+        )
+
+    assert caught.value.code == 2
+    error_output = capsys.readouterr().err
+    assert "native ridge training failed" in error_output
+    assert "snapshot native ridge binary" in error_output
+    assert "Traceback" not in error_output
+    assert not predictor.exists()
+    assert not policy.exists()
+
+
+@pytest.mark.parametrize("alias_destination", ("predictor", "policy"))
+def test_train_rejects_output_aliasing_authenticated_native_binary(
+    alias_destination: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binary = tmp_path / "native-ridge"
+    original = b"project-owned-native-binary"
+    binary.write_bytes(original)
+    digest = hashlib.sha256(original).hexdigest()
+
+    predictor = binary if alias_destination == "predictor" else tmp_path / "predictor.json"
+    policy_options = (
+        []
+        if alias_destination == "predictor"
+        else ["--policy-output", str(binary), "--budget-scope", "per-query"]
+    )
+    arguments = [
+        "train",
+        "--output",
+        str(predictor),
+        *policy_options,
+        "--ridge-solver",
+        "native-c11",
+        "--native-ridge-binary",
+        str(binary),
+        "--native-ridge-sha256",
+        digest,
+    ]
+
+    with pytest.raises(SystemExit) as caught:
+        main(arguments)
+
+    assert caught.value.code == 2
+    assert "protected input path" in capsys.readouterr().err
+    assert binary.read_bytes() == original
+    if alias_destination == "policy":
+        assert not predictor.exists()
+
+
+def test_compiled_native_train_artifact_routes_without_binary_credentials(
+    cli_compiled_native_ridge: tuple[Path, str],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    executable, digest = cli_compiled_native_ridge
+    artifact_path = tmp_path / "native-predictor.json"
+
+    assert (
+        main(
+            [
+                "train",
+                "--output",
+                str(artifact_path),
+                "--ridge-solver",
+                "native-c11",
+                "--native-ridge-binary",
+                str(executable),
+                "--native-ridge-sha256",
+                digest,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    training_output = capsys.readouterr().out
+    training = json.loads(training_output)
+    artifact = BilinearPredictorArtifact.load(artifact_path)
+
+    assert training["solver_id"] == NATIVE_C11_RIDGE_SOLVER_ID
+    assert training["native_ridge_sha256"] == digest
+    assert training["network_used"] is None
+    assert training["python_orchestration_network_used"] is False
+    assert training["native_binary_audit"] == "caller-responsibility-unapproved"
+    assert str(executable) not in training_output
+    assert artifact.solver_id == NATIVE_C11_RIDGE_SOLVER_ID
+    assert artifact.training_example_count == 8
+
+    assert (
+        main(
+            [
+                "route",
+                "Prove a difficult theorem.",
+                "--artifact",
+                str(artifact_path),
+                "--tier",
+                "balanced",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    route = json.loads(capsys.readouterr().out)
+    assert route["quality_kind"] == "calibrated bilinear artifact"
+    assert route["model"] in artifact.model_ids
+
+    text_artifact_path = tmp_path / "native-predictor-text.json"
+    assert (
+        main(
+            [
+                "train",
+                "--output",
+                str(text_artifact_path),
+                "--ridge-solver",
+                "native-c11",
+                "--native-ridge-binary",
+                str(executable),
+                "--native-ridge-sha256",
+                digest,
+            ]
+        )
+        == 0
+    )
+    native_text = capsys.readouterr().out
+    assert "  Python network:     disabled\n" in native_text
+    assert "  native audit:       caller-responsibility-unapproved\n" in native_text
+    assert "  total network use:  not asserted\n" in native_text
+    assert "  network:            disabled\n" not in native_text
+
+
+def test_native_train_reuses_one_solver_for_artifact_and_policy_cross_fits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class RecordingNativeSolver:
+        solver_id = NATIVE_C11_RIDGE_SOLVER_ID
+
+        def __init__(self) -> None:
+            self.solve_calls = 0
+
+        def preflight(
+            self,
+            *,
+            sample_count: int,
+            feature_count: int,
+            target_count: int,
+        ) -> None:
+            assert sample_count > 0
+            assert feature_count > 0
+            assert target_count > 0
+
+        def solve(
+            self,
+            feature_rows: Sequence[Sequence[float]],
+            target_columns: Sequence[Sequence[float]],
+            *,
+            ridge: float,
+        ) -> RidgeSolution:
+            self.solve_calls += 1
+            return solve_centered_ridge(feature_rows, target_columns, ridge=ridge)
+
+    binary = tmp_path / "native-ridge"
+    binary.write_bytes(b"constructor-is-replaced-for-this-wiring-test")
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    solver = RecordingNativeSolver()
+    constructor_calls: list[tuple[object, object]] = []
+
+    def construct_solver(binary_path: object, expected_sha256: object) -> RecordingNativeSolver:
+        constructor_calls.append((binary_path, expected_sha256))
+        return solver
+
+    real_fit = cli_module.fit_calibrated_bilinear
+    fit_solvers: list[object] = []
+
+    def record_fit(
+        training_examples: Sequence[EvaluationExample],
+        *,
+        config: object = None,
+        embedding_provider: object = None,
+        solver: object = None,
+    ) -> BilinearPredictorArtifact:
+        fit_solvers.append(solver)
+        return real_fit(
+            training_examples,
+            config=config,  # type: ignore[arg-type]
+            embedding_provider=embedding_provider,  # type: ignore[arg-type]
+            solver=solver,  # type: ignore[arg-type]
+        )
+
+    monkeypatch.setattr(cli_module, "NativeRidgeAdapter", construct_solver)
+    monkeypatch.setattr(cli_module, "fit_calibrated_bilinear", record_fit)
+    predictor = tmp_path / "predictor.json"
+    policy = tmp_path / "policy.json"
+
+    assert (
+        main(
+            [
+                "train",
+                "--output",
+                str(predictor),
+                "--policy-output",
+                str(policy),
+                "--budget-scope",
+                "per-query",
+                "--max-lambda-candidates",
+                "2",
+                "--ridge-solver",
+                "native-c11",
+                "--native-ridge-binary",
+                str(binary),
+                "--native-ridge-sha256",
+                digest,
+                "--json",
+            ]
+        )
+        == 0
+    )
+    training = json.loads(capsys.readouterr().out)
+
+    assert constructor_calls == [(binary, digest)]
+    assert len(fit_solvers) == 5
+    assert all(item is solver for item in fit_solvers)
+    assert solver.solve_calls == 21
+    assert training["native_ridge_sha256"] == digest
+    assert training["network_used"] is None
+    assert training["python_orchestration_network_used"] is False
+    assert training["native_binary_audit"] == "caller-responsibility-unapproved"
+    assert BilinearPredictorArtifact.load(predictor).solver_id == NATIVE_C11_RIDGE_SOLVER_ID
+    LambdaPolicyArtifact.load(policy).validate_predictor(BilinearPredictorArtifact.load(predictor))
 
 
 def test_policy_output_requires_explicit_budget_scope(

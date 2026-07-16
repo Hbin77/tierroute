@@ -131,15 +131,34 @@ def fit_calibrated_bilinear(
     *,
     config: BilinearTrainingConfig | None = None,
     embedding_provider: EmbeddingProvider | None = None,
+    solver: RidgeSolver | None = None,
 ) -> BilinearPredictorArtifact:
     """Fit base weights on all training data and calibration on inner LODO predictions.
 
     Callers performing outer LODO must pass only the outer fold's ``training`` side.
     :func:`fit_calibrated_bilinear_for_fold` provides that safer orchestration path.
+    A credentialed solver must be injected explicitly, name the same reviewed ID as
+    ``config``, and is reused unchanged for every inner fit and the final refit.
     """
 
     config = config or BilinearTrainingConfig()
-    solver = resolve_ridge_solver(config.solver_id)
+    if solver is None:
+        solver = resolve_ridge_solver(config.solver_id)
+    else:
+        try:
+            injected_solver_id = solver.solver_id
+        except AttributeError as error:
+            raise TypeError("injected ridge solver must expose solver_id") from error
+        validate_ridge_solver_id(injected_solver_id)
+        if injected_solver_id != config.solver_id:
+            raise ValueError(
+                "injected ridge solver_id does not match training config: "
+                f"{injected_solver_id!r} != {config.solver_id!r}"
+            )
+        if not callable(getattr(solver, "preflight", None)) or not callable(
+            getattr(solver, "solve", None)
+        ):
+            raise TypeError("injected ridge solver must implement preflight() and solve()")
     ordered = _ordered_examples(training_examples)
     model_ids = _model_ids(ordered)
     folds = leave_one_domain_out(ordered)
@@ -182,7 +201,7 @@ def fit_calibrated_bilinear(
         training_domains=tuple(sorted({example.domain for example in ordered})),
         ridge=config.ridge,
         seed=config.seed,
-        solver_id=solver.solver_id,
+        solver_id=config.solver_id,
     )
 
 
@@ -191,6 +210,7 @@ def fit_calibrated_bilinear_for_fold(
     *,
     config: BilinearTrainingConfig | None = None,
     embedding_provider: EmbeddingProvider | None = None,
+    solver: RidgeSolver | None = None,
 ) -> BilinearPredictorArtifact:
     """Fit exclusively on an outer LODO fold's training side."""
 
@@ -198,4 +218,5 @@ def fit_calibrated_bilinear_for_fold(
         fold.training,
         config=config,
         embedding_provider=embedding_provider,
+        solver=solver,
     )

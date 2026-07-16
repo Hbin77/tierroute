@@ -30,6 +30,7 @@ from tierroute.predictors.gbm_training import (
 )
 from tierroute.predictors.solvers import (
     KNOWN_RIDGE_SOLVER_IDS,
+    NATIVE_C11_RIDGE_SOLVER_ID,
     RidgeSolver,
     resolve_ridge_solver,
 )
@@ -43,6 +44,7 @@ from tierroute.predictors.training import (
 __all__ = [
     "GBM_ALGORITHM_ID",
     "KNOWN_RIDGE_SOLVER_IDS",
+    "NATIVE_C11_RIDGE_SOLVER_ID",
     "PREDICTOR_ARTIFACT_VERSION",
     "BatchPromptQualityPredictor",
     "BatchQualityPredictor",

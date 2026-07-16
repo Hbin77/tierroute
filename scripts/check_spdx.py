@@ -8,7 +8,9 @@ import sys
 from pathlib import Path
 
 SPDX_IDENTIFIER = "SPDX-License-Identifier: Apache-2.0"
-COMMENTABLE_SUFFIXES = frozenset({".lock", ".md", ".py", ".sh", ".toml", ".yaml", ".yml"})
+COMMENTABLE_SUFFIXES = frozenset(
+    {".c", ".h", ".lock", ".md", ".py", ".sh", ".toml", ".yaml", ".yml"}
+)
 COMMENTABLE_NAMES = frozenset({".gitignore", "Makefile"})
 HEADER_LINE_LIMIT = 10
 

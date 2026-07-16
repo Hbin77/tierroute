@@ -19,6 +19,7 @@ import tierroute.predictors.resource_limits as predictor_limits
 from tierroute.adapters import load_evaluation_dataset
 from tierroute.policies import predictor_artifact_sha256
 from tierroute.predictors import (
+    NATIVE_C11_RIDGE_SOLVER_ID,
     BilinearPredictorArtifact,
     IsotonicCalibrator,
     fit_calibrated_bilinear,
@@ -115,6 +116,23 @@ def test_artifact_json_is_canonical_and_round_trips(
     prompt = "Prove a short math theorem."
     assert loaded.build_predictor().predict_many(prompt, loaded.model_ids) == (
         artifact.build_predictor().predict_many(prompt, artifact.model_ids)
+    )
+
+
+def test_artifact_accepts_reviewed_native_solver_id_without_resolving_it(
+    artifact: BilinearPredictorArtifact,
+) -> None:
+    native_artifact = replace(artifact, solver_id=NATIVE_C11_RIDGE_SOLVER_ID)
+
+    loaded = BilinearPredictorArtifact.from_json(native_artifact.to_json())
+
+    assert loaded.solver_id == NATIVE_C11_RIDGE_SOLVER_ID
+    assert loaded.build_predictor().predict_many(
+        "offline artifact inference",
+        loaded.model_ids,
+    ) == native_artifact.build_predictor().predict_many(
+        "offline artifact inference",
+        native_artifact.model_ids,
     )
 
 

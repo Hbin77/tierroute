@@ -266,17 +266,64 @@ or cost-savings claim. Selecting a family requires separately held-out evidence 
 additional family-selection-aware validation protocol.
 
 The built-in solver is an auditable reference backend for the surface schema and
-modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
+modest matrices, with complexity `O(n*d^2 + d^3)`. tierroute also contains an
+experimental project-owned C11 implementation of one bounded dense solve. Its
+versioned protocol, authenticated subprocess adapter, shared multi-target Cholesky,
+resource preflight, malformed-input corpus, and unprojected 1,024-feature parity tests
+are documented in [the native protocol](docs/native-ridge-protocol.md). Source is in
+the sdist only, and the wheel contains no executable or native dependency. The default
+trainer and CLI behavior remain on the Python reference solver; only an explicit
+`train --ridge-solver native-c11` opt-in selects a caller-chosen local executable and
+authenticates that exact byte sequence.
+
+From a source checkout, the helper can invoke an explicitly chosen system compiler to
+build a new local candidate. The helper performs no download or PATH discovery, but it
+does not sandbox the compiler or prove that the compiler/toolchain itself stayed
+offline. Both arguments must be absolute, the output must not already exist, and the
+command emits the source and executable SHA-256 values:
+
+```bash
+python scripts/build_native_ridge.py \
+  --compiler /absolute/path/to/clang \
+  --output /absolute/new/path/tierroute-ridge
+```
+
+Use the exact `sha256` emitted by that command. The helper and adapter reject executable
+candidates larger than 16 MiB. They also reject paths beginning with `//` or `\\`, which
+covers UNC and device-style spellings on every host; an already mapped drive or mounted
+network filesystem cannot be detected portably and remains the caller's responsibility.
+The CLI neither searches for nor builds the executable, records the digest but not the
+executable path in its JSON result, and does not need either credential when routing
+from the resulting predictor artifact:
+
+```bash
+tierroute train \
+  --output /absolute/new/path/predictor.json \
+  --ridge-solver native-c11 \
+  --native-ridge-binary /absolute/new/path/tierroute-ridge \
+  --native-ridge-sha256 SHA256_FROM_BUILD_OUTPUT \
+  --json
+```
+
+The digest authenticates the bytes the caller selected; it is not an approval, source-
+provenance attestation, import audit, or proof that those bytes cannot use a network.
+For native training JSON, `network_used` is therefore `null`,
+`python_orchestration_network_used` is `false`, and `native_binary_audit` is
+`caller-responsibility-unapproved`. Resource preflight authenticates the bounded binary
+before embedding materialization, and `solve` authenticates it again while creating the
+private snapshot to close the replacement window. The configured timeout begins only
+after the child process starts; pre-authentication filesystem I/O and request
+serialization are bounded by byte ceilings but are not covered by that child timeout.
+
+This dense sidecar alone does not make the reportable full RouterBench run feasible:
+the current nested path would still repeat feature work and 301 fits. Full training
 with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total features)
-requires a separately reviewed accelerated backend and numerical parity tests.
-tierroute will not silently reduce or discard embedding dimensions to make that
-experiment fit this reference solver. A conservative operation-count guard fails fast
-before an unaudited workload can enter the cubic reference path. Training resolves one
-static, reviewed solver ID and threads the same solver through every inner-LODO fit and
-the final refit. Its preflight runs before dense embeddings are materialized. Predictor
-loading remains free of optional numerical dependencies because inference uses stored
-coefficients; loading validates the solver ID but does not resolve or execute a training
-solver, and unknown IDs still fail closed.
+remains gated on a prepared training session that reuses domain sufficient statistics
+and batched scores, plus audited Linux-musl and Windows-MSVC artifacts. tierroute will
+not silently reduce or discard embedding dimensions. The reference path keeps its
+conservative operation guard, static reviewed solver ID, pre-embedding preflight, and
+unknown-ID rejection; inference remains dependency-free because it uses only stored
+coefficients.
 
 ## What is implemented
 
@@ -663,9 +710,10 @@ The embedding contract pins `BAAI/bge-m3` at revision
 `5617a9f61b028005a4858fdac845db406aefb181` (MIT). Weights are not bundled and no
 runtime downloader exists. The planned provider will accept only a prepared local path
 and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model ID.
-Full training at up to 1,036 total features also remains gated on an approved
-accelerated solver with parity tests against the project reference implementation;
-embedding dimensions will not be silently projected away.
+Full training at up to 1,036 total features remains gated on the prepared-session and
+three-platform release checks above. The experimental one-solve C11 candidate is not
+evidence that the complete nested experiment has run; embedding dimensions will not be
+silently projected away.
 
 SK Telecom challenge data is likewise excluded until its license and redistribution
 terms are confirmed in writing.

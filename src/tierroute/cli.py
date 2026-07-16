@@ -46,11 +46,15 @@ from tierroute.policies.predictor_comparison import (
 )
 from tierroute.predictors import (
     GBM_ALGORITHM_ID,
+    NATIVE_C11_RIDGE_SOLVER_ID,
     BilinearPredictorArtifact,
     BilinearTrainingConfig,
     GbmTrainingConfig,
+    RidgeSolver,
     fit_calibrated_bilinear,
 )
+from tierroute.predictors.native_ridge import NativeRidgeAdapter, NativeRidgeError
+from tierroute.predictors.solvers import CENTERED_RIDGE_SOLVER_ID
 from tierroute.showcase import RoutingStreamShowcase, build_routing_stream_showcase
 
 DEFAULT_MAX_LAMBDA_CANDIDATES = 257
@@ -254,6 +258,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     train_parser.add_argument("--ridge", type=float, default=1.0, help="positive ridge penalty")
     train_parser.add_argument("--seed", type=int, default=0, help="recorded reproducibility seed")
+    train_parser.add_argument(
+        "--ridge-solver",
+        choices=("python-reference", "native-c11"),
+        default="python-reference",
+        help="reviewed ridge implementation (default: python-reference)",
+    )
+    train_parser.add_argument(
+        "--native-ridge-binary",
+        type=Path,
+        help="absolute path to the authenticated C11 sidecar; native-c11 only",
+    )
+    train_parser.add_argument(
+        "--native-ridge-sha256",
+        help="exact lowercase SHA-256 of the C11 sidecar; native-c11 only",
+    )
     train_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
     demo_parser = subparsers.add_parser(
@@ -278,6 +297,7 @@ def _save_training_artifacts(
     policy: LambdaPolicyArtifact | None,
     policy_output: Path | None,
     data_source: Path,
+    native_ridge_binary: Path | None = None,
 ) -> tuple[Path, Path | None]:
     """Commit a predictor and optional bound policy as one rollback-safe bundle."""
 
@@ -298,7 +318,10 @@ def _save_training_artifacts(
 
         writes.append(AtomicTextWrite(policy_output, policy.to_json(), validate_bound_policy))
 
-    saved = replace_text_bundle(tuple(writes), protected_paths=(data_source,))
+    protected_paths = (
+        (data_source,) if native_ridge_binary is None else (data_source, native_ridge_binary)
+    )
+    saved = replace_text_bundle(tuple(writes), protected_paths=protected_paths)
     return saved[0], None if len(saved) == 1 else saved[1]
 
 
@@ -925,6 +948,7 @@ def _training_payload(
     policy_output: Path | None = None,
     tuning: TierLambdaTuningResult | None = None,
     accounting_scope: str | None = None,
+    native_ridge_sha256: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "artifact": str(output),
@@ -938,8 +962,18 @@ def _training_payload(
         "ridge": artifact.ridge,
         "seed": artifact.seed,
         "solver_id": artifact.solver_id,
-        "network_used": False,
     }
+    if native_ridge_sha256 is None:
+        payload["network_used"] = False
+    else:
+        payload.update(
+            {
+                "native_binary_audit": "caller-responsibility-unapproved",
+                "native_ridge_sha256": native_ridge_sha256,
+                "network_used": None,
+                "python_orchestration_network_used": False,
+            }
+        )
     if policy_output is None:
         return payload
     if tuning is None or accounting_scope is None:
@@ -1151,12 +1185,38 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = _build_parser()
     args = parser.parse_args(argv)
+    ridge_solver: RidgeSolver | None = None
+    ridge_solver_id = CENTERED_RIDGE_SOLVER_ID
+    native_ridge_binary: Path | None = None
+    native_ridge_sha256: str | None = None
     if args.command == "route" and args.policy_artifact is not None and args.artifact is None:
         parser.error("route --policy-artifact requires --artifact")
     if args.command == "route" and args.remaining_budget is not None:
         if args.policy_artifact is None:
             parser.error("route --remaining-budget requires --policy-artifact")
     if args.command == "train":
+        native_ridge_binary = args.native_ridge_binary
+        native_ridge_sha256 = args.native_ridge_sha256
+        if args.ridge_solver == "python-reference":
+            if native_ridge_binary is not None or native_ridge_sha256 is not None:
+                parser.error(
+                    "train --native-ridge-binary and --native-ridge-sha256 require "
+                    "--ridge-solver native-c11"
+                )
+        else:
+            if native_ridge_binary is None or native_ridge_sha256 is None:
+                parser.error(
+                    "train --ridge-solver native-c11 requires both "
+                    "--native-ridge-binary and --native-ridge-sha256"
+                )
+            try:
+                ridge_solver = NativeRidgeAdapter(
+                    native_ridge_binary,
+                    native_ridge_sha256,
+                )
+            except (TypeError, ValueError) as error:
+                parser.error(f"invalid native ridge configuration: {error}")
+            ridge_solver_id = NATIVE_C11_RIDGE_SOLVER_ID
         if args.policy_output is not None and args.budget_scope is None:
             parser.error("train --policy-output requires --budget-scope")
         if args.policy_output is None and args.budget_scope is not None:
@@ -1175,8 +1235,11 @@ def main(argv: list[str] | None = None) -> int:
         destinations = (
             (args.output,) if args.policy_output is None else (args.output, args.policy_output)
         )
+        protected_paths = (
+            (data_source,) if native_ridge_binary is None else (data_source, native_ridge_binary)
+        )
         try:
-            validate_write_paths(destinations, protected_paths=(data_source,))
+            validate_write_paths(destinations, protected_paths=protected_paths)
         except ValueError as error:
             parser.error(f"train artifact paths are unsafe: {error}")
     if args.command == "benchmark":
@@ -1280,38 +1343,49 @@ def main(argv: list[str] | None = None) -> int:
                 max_candidates_per_tier=candidate_cap,
                 allow_large_exhaustive=args.allow_large_exhaustive_search,
             )
-        config = BilinearTrainingConfig(ridge=args.ridge, seed=args.seed)
+        config = BilinearTrainingConfig(
+            ridge=args.ridge,
+            seed=args.seed,
+            solver_id=ridge_solver_id,
+        )
         tuning = None
         policy = None
-        artifact = fit_calibrated_bilinear(
-            dataset.examples,
-            config=config,
-        )
-        if args.policy_output is not None:
-            predictions = cross_fitted_prediction_table(
+        try:
+            artifact = fit_calibrated_bilinear(
                 dataset.examples,
-                lambda training: fit_calibrated_bilinear(
-                    training,
-                    config=config,
-                ).build_predictor(),
+                config=config,
+                solver=ridge_solver,
             )
-            ledger_factory = (
-                PerQueryBudgetLedger if args.budget_scope == "per-query" else CumulativeBudgetLedger
-            )
-            tuning = tune_tier_lambdas(
-                dataset.examples,
-                dataset.tier_specs,
-                predictions,
-                ledger_factory,
-                max_candidates_per_tier=candidate_cap,
-                allow_large_exhaustive=args.allow_large_exhaustive_search,
-            )
-            policy = LambdaPolicyArtifact.from_tuning(
-                artifact,
-                tuning,
-                dataset.tier_specs,
-                args.budget_scope,
-            )
+            if args.policy_output is not None:
+                predictions = cross_fitted_prediction_table(
+                    dataset.examples,
+                    lambda training: fit_calibrated_bilinear(
+                        training,
+                        config=config,
+                        solver=ridge_solver,
+                    ).build_predictor(),
+                )
+                ledger_factory = (
+                    PerQueryBudgetLedger
+                    if args.budget_scope == "per-query"
+                    else CumulativeBudgetLedger
+                )
+                tuning = tune_tier_lambdas(
+                    dataset.examples,
+                    dataset.tier_specs,
+                    predictions,
+                    ledger_factory,
+                    max_candidates_per_tier=candidate_cap,
+                    allow_large_exhaustive=args.allow_large_exhaustive_search,
+                )
+                policy = LambdaPolicyArtifact.from_tuning(
+                    artifact,
+                    tuning,
+                    dataset.tier_specs,
+                    args.budget_scope,
+                )
+        except NativeRidgeError as error:
+            parser.error(f"native ridge training failed: {_safe_terminal_text(str(error))}")
         data_source = args.data if args.data is not None else bundled_synthetic_path()
         output, policy_output = _save_training_artifacts(
             artifact,
@@ -1319,6 +1393,7 @@ def main(argv: list[str] | None = None) -> int:
             policy=policy,
             policy_output=args.policy_output,
             data_source=data_source,
+            native_ridge_binary=native_ridge_binary,
         )
         payload = _training_payload(
             artifact,
@@ -1327,6 +1402,7 @@ def main(argv: list[str] | None = None) -> int:
             policy_output=policy_output,
             tuning=tuning,
             accounting_scope=args.budget_scope,
+            native_ridge_sha256=native_ridge_sha256,
         )
         if args.json:
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
@@ -1344,6 +1420,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"  feature dimension:  {artifact.feature_schema.dimension}")
             print(f"  ridge solver:       {artifact.solver_id}")
+            if native_ridge_sha256 is not None:
+                print(f"  native SHA-256:     {native_ridge_sha256}")
             print(f"  artifact:           {_safe_terminal_text(str(output))}")
             if policy_output is not None and tuning is not None:
                 print(f"  policy artifact:    {_safe_terminal_text(str(policy_output))}")
@@ -1364,7 +1442,12 @@ def main(argv: list[str] | None = None) -> int:
                     f"{str(all(item.report.feasible for item in tuning.selections)).lower()}"
                 )
                 print(f"  weighted score:    {_format_score(tuning.score.weighted_quality)}")
-            print("  network:            disabled")
+            if native_ridge_sha256 is None:
+                print("  network:            disabled")
+            else:
+                print("  Python network:     disabled")
+                print("  native audit:       caller-responsibility-unapproved")
+                print("  total network use:  not asserted")
             print("  note: synthetic data is a wiring test, not benchmark evidence")
         return 0
 

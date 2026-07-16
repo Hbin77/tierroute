@@ -209,6 +209,8 @@ predictions fit calibration; the predictor is then refit on all outer training r
 Bilinear artifact v1 is strict schema-bound JSON, and unknown schema/model/solver
 identities fail closed. GBM state remains in-memory and has no artifact or deployment
 CLI contract; the no-selection paired-estimation command is its only shipped CLI path.
+The optional C11 ridge process is a training-only, explicitly authenticated solver; a
+known solver ID never substitutes for its absolute path and exact binary hash.
 
 - Core: [`features/encoding.py`](../src/tierroute/features/encoding.py),
   [`features/surface.py`](../src/tierroute/features/surface.py),
@@ -219,6 +221,8 @@ CLI contract; the no-selection paired-estimation command is its only shipped CLI
   [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py),
   [`predictors/_ridge.py`](../src/tierroute/predictors/_ridge.py),
   [`predictors/solvers.py`](../src/tierroute/predictors/solvers.py),
+  [`predictors/native_ridge.py`](../src/tierroute/predictors/native_ridge.py),
+  [`native/tierroute_ridge.c`](../native/tierroute_ridge.c),
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
   [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py), with limits in
   [`predictors/resource_limits.py`](../src/tierroute/predictors/resource_limits.py),
@@ -231,8 +235,10 @@ CLI contract; the no-selection paired-estimation command is its only shipped CLI
   [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py),
   [`test_predictor_comparison_cli.py`](../tests/test_predictor_comparison_cli.py),
   [`test_ridge_solver.py`](../tests/test_ridge_solver.py), and
-  [`test_predictor_artifacts.py`](../tests/test_predictor_artifacts.py)
-- Design context: [lambda/training design](lambda-tuning.md)
+  [`test_predictor_artifacts.py`](../tests/test_predictor_artifacts.py), plus
+  [`test_native_ridge.py`](../tests/test_native_ridge.py)
+- Design context: [lambda/training design](lambda-tuning.md) and
+  [native ridge protocol](native-ridge-protocol.md)
 
 Owner questions:
 
@@ -253,6 +259,13 @@ Owner questions:
 7. Enumerate the complete paired nested-LODO GBM call graph. Why are the six baselines
    computed once, why are deltas `GBM - bilinear`, and why can the same outer evidence
    estimate a difference but not select a winning family without bias?
+8. Trace a native request from Python count/allocation/work preflight through binary
+   authentication, little-endian parsing, centered Gram/RHS construction, one shared
+   Cholesky factor, residual verification, and the exit/status cross-check.
+9. Why are the C11 solver ID and executable SHA-256 separate identities? Explain why
+   loading a predictor needs only the former while training must authenticate both.
+10. Derive why a single 1,024-feature solve does not make 301-fit nested LODO feasible.
+    What do the 63 unique training subsets and `22N` unique score rows change?
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -393,7 +406,8 @@ Owner questions:
 | Cascade/sequential escalation | Interface can represent it; shipped policy remains one-shot | Written simulator semantics for sequential calls, budget accumulation, history schema, and final output selection |
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
-| Full-dimensional accelerated ridge | Reference solver rejects unaudited large work | Approved non-GPL backend, numerical parity, deterministic solver identity, SBOM, and issue #9 completion |
+| Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity and macOS link evidence; no binary in the wheel | Explicit local opt-in only; Linux-musl and Windows-MSVC release artifacts still need link/import approval |
+| Full-dimensional nested ridge | Dense sidecar still repeats feature work and 301 fits | Prepared raw-feature session, 63-subset reuse, batched `22N` scores, leakage/noninterference parity, three-platform audits, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |

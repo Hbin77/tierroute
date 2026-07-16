@@ -9,6 +9,20 @@ the public API is pre-1.0.
 
 ### Added
 
+- An experimental project-owned Apache-2.0 C11 centered-ridge sidecar, fixed
+  little-endian protocol, no-download/PATH-discovery build helper, and authenticated
+  Python process adapter. Count/byte/allocation/work preflight and bounded 16-MiB
+  executable authentication precede dense serialization; the
+  process shares one Cholesky factor across targets and checks finite arithmetic and a
+  scale-aware residual. Tests cover analytic and collinear parity, 1,024 untruncated
+  features, malformed/truncated/overlong input and output, hash/path races, timeouts,
+  and bounded diagnostics. Source is in the sdist only; no executable, dependency, or
+  default CLI/training behavior is changed. An explicit `train --ridge-solver
+  native-c11` path requires an absolute executable and exact lowercase SHA-256, reuses
+  the same authenticated adapter for all nested fits, and leaves artifact-only routing
+  independent of the executable. Because a caller-selected digest is not binary
+  approval or a no-network attestation, native CLI output marks total network use
+  unknown while separately reporting that Python orchestration used no network.
 - A `tierroute compare-predictors --budget-scope per-query [--data ...] [--json]`
   paired-estimation path for the fixed surface-only calibrated bilinear and GBM
   families. It preflights the complete nested GBM call graph before either family
@@ -174,8 +188,10 @@ the public API is pre-1.0.
 
 - Add a sequence-level oracle before reporting oracle-gap recovery under cumulative
   accounting, after the organizer confirms the official budget semantics.
-- Add a GPL-family-free accelerated ridge backend with numerical parity and resource
-  evidence before the full-dimensional bge-m3 experiment.
+- Extend the reviewed dense C11 ridge candidate into one authenticated prepared
+  training session that computes raw features once, reuses the unique domain-subset
+  graph, batches scores, and passes three-platform artifact/link audits before the
+  full-dimensional bge-m3 experiment is reportable.
 - Add a separately versioned GBM artifact and explicit `train`/`route` integration.
 - Run a preregistered family-selection-aware experiment on licensed data; the current
   paired runner estimates fixed families but cannot select a winner on the same outer

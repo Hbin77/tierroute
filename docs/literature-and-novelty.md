@@ -351,6 +351,9 @@ invented cost-aware model routing:
 - A local bge-m3 inference provider, full-dimensional bge-m3 training run, reportable
   licensed-data family-selection experiment, OOD fallback, and online remaining-budget
   adaptation are not complete.
+- The project-owned C11 sidecar implements one bounded dense ridge solve; it does not
+  remove repeated feature work, nested-fold factorizations, or scoring from the complete
+  validation graph and is not evidence that a full-dimensional run has completed.
 - The GBM core has no versioned artifact or deployment CLI integration. Its paired
   estimation CLI deliberately cannot select a winner from the same outer evidence and
   supplies no evidence of predictive gain or superiority over the bilinear family.
@@ -443,8 +446,10 @@ The following remain official-answer or compliance gates:
 5. The SK Telecom dataset license and redistribution permission.
 6. Whether randomized expected-cost mixtures are legal, which determines whether the
    RouterBench Zero router is a valid additional baseline.
-7. A GPL-family-free accelerated solver with reviewed numerical parity for a
-   full-dimensional bge-m3 experiment.
+7. A leakage-tested prepared training session that reuses domain statistics and
+   factorizations, plus audited GPL-family-free Linux-musl and Windows-MSVC artifacts,
+   before the parity-tested C11 dense solver can support a reportable full-dimensional
+   bge-m3 experiment.
 
 Until those gates close, new semantics remain in `adapters/`, cascade remains disabled,
 SK Telecom data remains outside the repository, and synthetic results remain labeled

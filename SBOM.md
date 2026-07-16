@@ -8,7 +8,20 @@ model, dataset, font, media asset, or CI action is added or upgraded.
 The core `tierroute` runtime has no third-party Python dependency. The pinned
 RouterBench artifact is decoded with the Python standard library; development tools are
 isolated from the offline routing path. Predictor training uses the project-owned
-standard-library centered-ridge solver and adds no distribution dependency.
+standard-library centered-ridge solver and adds no distribution dependency. An
+experimental project-owned C11 training sidecar is source-only and optional; no native
+binary or compiler is part of the base wheel or routing runtime.
+
+## Project-owned optional native source
+
+| Component | Version / checksum | License | Source | Purpose | Distribution |
+|---|---|---|---|---|---|
+| `native/tierroute_ridge.c` | protocol v1; SHA-256 `65ed92c3e0f6e4a0504110e41258268a68f127b0ed7401b301696d3d18a77261` | Apache-2.0 | https://github.com/Hbin77/tierroute | Experimental bounded dense centered-ridge training sidecar | Source distribution only; no executable in wheel or repository |
+
+The locally audited macOS executable is not distributed. Linux-musl and Windows-MSVC
+artifacts remain unapproved until their actual link/import evidence is recorded. System
+compilers are build-environment tools; an explicitly selected toolchain archive or a
+distributed executable would require a new SBOM and license-audit entry.
 
 ## Build dependency
 
