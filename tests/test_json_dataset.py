@@ -576,6 +576,7 @@ def test_optional_quote_fallback_and_explicit_domain_visibility_are_stable(
         ("MAX_REPLAY_LODO_MEMBERSHIPS", 32, "LODO"),
         ("MAX_REPLAY_TRAINING_OUTCOME_SCANS", 288, "outcome-scan"),
         ("MAX_REPLAY_NESTED_LODO_MEMBERSHIPS", 72, "nested-LODO"),
+        ("MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS", 648, "nested-training"),
     ],
 )
 def test_collection_and_lodo_limits_have_exact_boundaries(
@@ -655,6 +656,7 @@ def test_limits_cover_measured_planned_routerbench_shape() -> None:
     assert replay_limits.MAX_REPLAY_LODO_MEMBERSHIPS >= 34_778 * 7
     assert replay_limits.MAX_REPLAY_TRAINING_OUTCOME_SCANS >= 34_778 * 7 * 11**2
     assert replay_limits.MAX_REPLAY_NESTED_LODO_MEMBERSHIPS >= 34_778 * 6**2
+    assert replay_limits.MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS >= 34_778 * 6**2 * 11**2
     assert replay_limits.MAX_REPLAY_PROMPT_TEXT_BYTES >= 5_052
     assert replay_limits.MAX_REPLAY_OUTPUT_TEXT_BYTES >= 16_101
 

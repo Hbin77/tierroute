@@ -28,6 +28,7 @@ from tierroute.adapters.resource_limits import (
     MAX_REPLAY_LODO_MEMBERSHIPS,
     MAX_REPLAY_METADATA_TEXT_BYTES,
     MAX_REPLAY_NESTED_LODO_MEMBERSHIPS,
+    MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS,
     MAX_REPLAY_OUTCOMES_PER_EXAMPLE,
     MAX_REPLAY_OUTPUT_TEXT_BYTES,
     MAX_REPLAY_PROMPT_TEXT_BYTES,
@@ -398,6 +399,12 @@ def load_evaluation_dataset(path: str | Path | None = None) -> EvaluationDataset
         raise ValueError(
             "dataset exceeds the nested-LODO membership limit "
             f"({MAX_REPLAY_NESTED_LODO_MEMBERSHIPS:,})"
+        )
+    nested_training_outcome_scans = nested_lodo_memberships * max_outcomes_per_example**2
+    if nested_training_outcome_scans > MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS:
+        raise ValueError(
+            "dataset exceeds the nested-training outcome-scan limit "
+            f"({MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS:,})"
         )
 
     tier_specs = tuple(

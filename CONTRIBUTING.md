@@ -72,9 +72,9 @@ Replay JSON has a separate adapter-owned resource contract documented in
 `docs/replay-json.md`. Preserve its descriptor-stable regular-file read, pre-parser
 lexical limits, duplicate/nonstandard-number rejection, exact version-1 fields and
 types, collection/text bounds, outer/nested LODO amplification checks, and the reference
-trainer's compound outcome-scan bound. Do not add an environment or CLI bypass. If
-official data exceeds the contract, record authenticated shape measurements and use a
-reviewed constant change or a separate schema adapter with exact-limit and
+trainer's plain/nested compound outcome-scan bounds. Do not add an environment or CLI
+bypass. If official data exceeds the contract, record authenticated shape measurements
+and use a reviewed constant change or a separate schema adapter with exact-limit and
 limit-plus-one tests.
 
 Runtime and tuning must share `route_from_predictions`, including its exact utility and

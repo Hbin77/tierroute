@@ -20,6 +20,9 @@ MAX_REPLAY_NESTED_LODO_MEMBERSHIPS = 2_000_000
 # The reference trainer currently extracts M targets with a linear outcome lookup for
 # each of M models across N*D inner-LODO/final-fit example memberships.
 MAX_REPLAY_TRAINING_OUTCOME_SCANS = 100_000_000
+# Policy cross-fitting repeats the same M-by-M target extraction inside every outer
+# fold, using the nested membership count above.
+MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS = 256_000_000
 
 MAX_REPLAY_METADATA_TEXT_BYTES = 16 * 1024
 MAX_REPLAY_PROMPT_TEXT_BYTES = 1024 * 1024
