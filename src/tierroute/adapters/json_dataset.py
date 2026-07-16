@@ -388,19 +388,21 @@ def load_evaluation_dataset(path: str | Path | None = None) -> EvaluationDataset
         raise ValueError(
             f"dataset exceeds the LODO membership limit ({MAX_REPLAY_LODO_MEMBERSHIPS:,})"
         )
-    training_outcome_scans = lodo_memberships * max_outcomes_per_example**2
+    training_outcome_scans = lodo_memberships * max_outcomes_per_example
     if training_outcome_scans > MAX_REPLAY_TRAINING_OUTCOME_SCANS:
         raise ValueError(
             "dataset exceeds the training outcome-scan limit "
             f"({MAX_REPLAY_TRAINING_OUTCOME_SCANS:,})"
         )
-    nested_lodo_memberships = len(example_items) * max(len(domains) - 1, 0) ** 2
+    domain_count = len(domains)
+    nested_membership_multiplier = (domain_count - 1) * (domain_count**2 - 3 * domain_count + 3)
+    nested_lodo_memberships = len(example_items) * nested_membership_multiplier
     if nested_lodo_memberships > MAX_REPLAY_NESTED_LODO_MEMBERSHIPS:
         raise ValueError(
             "dataset exceeds the nested-LODO membership limit "
             f"({MAX_REPLAY_NESTED_LODO_MEMBERSHIPS:,})"
         )
-    nested_training_outcome_scans = nested_lodo_memberships * max_outcomes_per_example**2
+    nested_training_outcome_scans = nested_lodo_memberships * max_outcomes_per_example
     if nested_training_outcome_scans > MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS:
         raise ValueError(
             "dataset exceeds the nested-training outcome-scan limit "

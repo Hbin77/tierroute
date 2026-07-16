@@ -15,8 +15,9 @@ The project is being developed for the student division of the 2026 Open Source
 Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge.”**
 It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
 quality and exact quote-error metrics, leakage-aware calibrated bilinear training,
-an in-memory deterministic GBM reference trainer, exact tier-lambda tuning, strict v1
-bilinear-predictor/policy artifacts, and an external-data-free demo are implemented.
+an in-memory deterministic GBM reference trainer, paired descriptive family estimation,
+exact tier-lambda tuning, strict v1 bilinear-predictor/policy artifacts, and an
+external-data-free demo are implemented.
 The CLI selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
@@ -36,17 +37,20 @@ python -m pip install -e .
 ```
 
 Run one routing decision, all six replay baselines, the learned-versus-baseline
-benchmark, and the training-backed three-step showcase:
+benchmark, paired predictor estimation, and the training-backed three-step
+showcase:
 
 ```bash
 tierroute route "Prove that sqrt(2) is irrational." --tier fast
 tierroute evaluate
 tierroute benchmark --budget-scope per-query
+tierroute compare-predictors --budget-scope per-query
 tierroute demo
 ```
 
 The equivalent module entry point is `python -m tierroute`. Machine-readable output
-is available for `route`, `evaluate`, `benchmark`, `demo`, and `train` with `--json`;
+is available for `route`, `evaluate`, `benchmark`, `compare-predictors`, `demo`, and
+`train` with `--json`;
 a compatible versioned replay JSON can be supplied to evaluation and benchmarking:
 
 ```bash
@@ -54,6 +58,7 @@ tierroute route "Debug this Python function" --tier balanced --json
 tierroute evaluate --data src/tierroute/data/synthetic.json --json
 tierroute benchmark --budget-scope per-query \
   --data src/tierroute/data/synthetic.json --json
+tierroute compare-predictors --budget-scope per-query --json
 HF_HUB_OFFLINE=1 tierroute demo --json
 ```
 
@@ -125,9 +130,10 @@ deterministic centered-ridge Cholesky solver fits every model target against one
 factorization and leaves the intercept unregularized. The resulting surface-feature
 artifact is strict canonical JSON and records the solver ID used to produce it:
 
-The commands below remain bilinear-only. The phase-1 GBM API is in-memory only: it has
-no versioned artifact, train/route/benchmark CLI integration, matched comparison, or
-performance result.
+The deployment commands below remain bilinear-only. GBM state is still in-memory only:
+it has no versioned artifact or `train`/`route`/showcase integration. The separate
+`compare-predictors` command evaluates both fixed families but never selects one and
+does not authorize a performance claim.
 
 ```python
 from tierroute.adapters import load_evaluation_dataset
@@ -235,6 +241,30 @@ is not empirical evidence. With `--data`, the caller is responsible for the repl
 data's license and for the validity of any benchmark or competition claim derived from
 the output.
 
+Use the separate paired-estimation runner to inspect the two fixed surface-only
+predictor families on the same outer evidence:
+
+```bash
+tierroute compare-predictors --budget-scope per-query
+tierroute compare-predictors --budget-scope per-query \
+  --data path/to/replay.json --json
+```
+
+Before either family fits or embeds, this command enumerates the complete outer LODO,
+lambda-tuning LODO, and calibration LODO GBM call graph and applies the reviewed
+aggregate split-scan limit. It computes the six baselines once, requires both family
+results to share the exact replay, scope, tier, fold, catalogue, search, and baseline
+evidence. With `--json`, it reports raw binary64 `GBM - bilinear` tier, weighted,
+oracle-gap, and held-out-domain deltas; the human view rounds its displayed global
+weighted/oracle-gap deltas and omits the domain table. Missing operands produce JSON
+`null`; weights are never redistributed. The schema fixes `selection_protocol` to
+`none-paired-estimation`,
+`selected_family` to `null`, and `performance_claim_allowed` to `false`, and has no
+`winner` field. Bundled output is `SYNTHETIC-ONLY`; `--data` output is
+`UNVERIFIED-USER-DATA`. Neither state supports a superiority, deployment, quality-gain,
+or cost-savings claim. Selecting a family requires separately held-out evidence or an
+additional family-selection-aware validation protocol.
+
 The built-in solver is an auditable reference backend for the surface schema and
 modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
 with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total features)
@@ -276,7 +306,8 @@ solver, and unknown IDs still fail closed.
 - Dependency-free squared-error gradient boosting with deterministic regression
   stumps, one ensemble per model, stable ordering and tie-breaking, conservative
   pre-embedding resource guards, inner-LODO out-of-fold prediction, and per-model
-  isotonic calibration. Synthetic tests establish algorithm wiring only.
+  isotonic calibration. A complete nested-work preflight and paired descriptive runner
+  cover modest surface-only replays; synthetic tests establish algorithm wiring only.
 - Canonical, strictly validated JSON bilinear predictor artifacts v1; pickle is never
   accepted for predictor loading. Reads, parsing, serialization, saving, and policy hashing share a
   32 MiB UTF-8 limit. Version-1 structure is capped at 4,096 models, training domains,
@@ -309,6 +340,10 @@ solver, and unknown IDs still fail closed.
 - A report-shaped per-query benchmark CLI compares that nested-LODO learned router
   against all six baselines on one identical evaluation scope and publishes compact,
   versioned outer-fold membership digests.
+- A separate paired-estimation CLI runs calibrated bilinear and GBM predictors over
+  identical nested-LODO evidence, shares one six-baseline evaluation, emits
+  full-precision descriptive deltas in machine-readable JSON, and hard-codes
+  no-selection/no-performance-claim metadata.
 - A three-step Fast/Balanced/Premium showcase directly replays the corresponding
   outer-fold learned policies through `OfflineSimulator`, checks agreement with the
   nested result, and labels its mixed-tier running cost and unweighted retention as
@@ -323,9 +358,10 @@ solver, and unknown IDs still fail closed.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
 
 Without `--artifact`, the no-download CLI uses a transparent synthetic demo predictor.
-The deterministic GBM core is library-only. A local `bge-m3` embedding backend, GBM
-artifacts/CLI integration, and a matched GBM-versus-bilinear experiment remain planned.
-No predictor-family superiority claim is made.
+The deterministic GBM state remains in-memory; the paired-estimation runner is the only
+shipped CLI path that fits it. A local `bge-m3` embedding backend, GBM
+artifacts and deployment CLI integration, and a licensed reportable family-selection
+experiment remain planned. No predictor-family superiority claim is made.
 
 ## Router contract and architecture
 
@@ -365,7 +401,7 @@ prompt ─> fitted feature encoder ─> calibrated predictor ─> policy <─ bu
 core/        stable state, action, model, and validation contracts
 features/    offline surface features, fitted schema, local embedding contract
 predictors/  bilinear training/artifacts, in-memory deterministic GBM, calibration
-policies/    exact one-shot lambda policy, tuning/artifacts, required baselines
+policies/    exact one-shot lambda policy, tuning/artifacts, baselines, paired estimation
 eval/        replay, accounting protocol, metrics, planning, and LODO
 adapters/    budget-scope and external-dataset uncertainty boundaries
 ```
@@ -455,6 +491,13 @@ outer fold records training/test counts and a
 memberships; the CLI does not expose the underlying example IDs. This digest is compact
 reproducibility evidence, not an authenticated signature. Cumulative and cascade
 evaluation remain gated as described above.
+
+`tierroute compare-predictors --budget-scope per-query` keeps that existing bilinear
+benchmark contract intact and adds an independently tuned calibrated GBM result over
+the identical outer folds. The six baselines are evaluated once and shared. Deltas are
+descriptive `GBM - bilinear` estimates; using the same outer evidence to choose a family
+would introduce family-selection bias, so the result deliberately contains no winner
+or deployment recommendation.
 
 `tierroute demo [--json]` is intentionally narrower than that benchmark. It selects
 three bundled rows, one per tier, and directly replays each row with the same
@@ -637,6 +680,7 @@ HF_HUB_OFFLINE=1 pytest
 tierroute route "offline smoke" --tier fast
 tierroute evaluate
 tierroute benchmark --budget-scope per-query
+tierroute compare-predictors --budget-scope per-query
 tierroute demo
 tierroute train --output artifacts/synthetic-bilinear.json --json
 tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --json
@@ -654,18 +698,19 @@ Two locked, no-external-data reproduction lanes are available:
 
 ```bash
 make reproduce-inference PYTHON=python  # fast: installed routing and evaluation
-make reproduce-training PYTHON=python   # complete: checks, fitting, benchmark, and demo
+make reproduce-training PYTHON=python   # complete: fitting, benchmark, comparison, demo
 ```
 
 Both create an empty temporary Hugging Face cache and force offline mode. The fast lane
-skips `tierroute train`, `tierroute benchmark`, `tierroute demo`, and all
-bilinear/lambda-policy fitting. It exercises installed synthetic prediction, artifact
-loading, routing, and the six-baseline evaluation; evaluation fits only the required
-outer-training domain table, not the learned predictor. The complete lane additionally
-runs lint, SPDX, tests, license and install checks, then its training smoke fits and
-consumes synthetic predictor/policy artifacts, executes the nested-LODO benchmark, and
-runs the training-backed three-step demo. Thus benchmark and showcase fitting run only
-in `training-smoke`/`reproduce-training`, not the inference lane. `make reproduce`
+skips `tierroute train`, `tierroute benchmark`, `tierroute compare-predictors`,
+`tierroute demo`, and all bilinear/lambda-policy fitting. It exercises installed
+synthetic prediction, artifact loading, routing, and the six-baseline evaluation;
+evaluation fits only the required outer-training domain table, not the learned
+predictor. The complete lane additionally runs lint, SPDX, tests, license and install
+checks, then its training smoke fits and consumes synthetic predictor/policy artifacts,
+executes the nested-LODO benchmark and paired predictor estimation, and runs the
+training-backed three-step demo. Thus benchmark, comparison, and showcase fitting run
+only in `training-smoke`/`reproduce-training`, not the inference lane. `make reproduce`
 remains an alias for the complete lane. These targets install the pinned reviewed
 development packages but do not remove every unrelated distribution. Start from a
 fresh dedicated virtual environment so unrelated packages cannot contaminate the

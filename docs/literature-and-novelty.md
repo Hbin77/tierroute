@@ -288,8 +288,8 @@ does not assert that no external implementation could add it.
 | Primary role | Learned binary strong/weak router | Multi-model benchmark and reference routers | Cost-saving framework and learned API cascade | Theory and algorithms unifying routing and cascading | Challenge-facing, offline-first multi-model router library |
 | Decision timing | One model call | Logged single-choice routing is central | Sequential calls with response-based stopping | One-shot, cascade, or dynamically ordered cascade routing | **Implemented:** one call, then select it; adaptive reuse of history is **planned** |
 | Cost control | Win-probability threshold controls strong-model call share; no hard dollar budget or named tier | Willingness-to-pay and cost-quality frontier | Explicit expected-budget service selection | Lambda for an expected-cost budget | **Implemented:** deterministically tuned per-tier lambda under the configured replay plus per-query/cumulative ledgers |
-| Quality signal | Preference win probability; several router models including MF | Logged scores and learned performance estimates | Query/response reliability score | Ex-ante and post-hoc estimators with uncertainty | **Implemented:** surface-feature bilinear scores and a library-only deterministic stump-GBM core, each with per-model isotonic calibration. **Planned:** local bge-m3 and a matched empirical family comparison |
-| Distribution-shift evidence | Conditional MMLU/GSM8K OOD weakness and in-domain recovery | Main predictive setup uses within-task 70/30 splits and also reports held-out-task plots | Main setup uses random 50/50 splits, calls out same/similar distributions, and studies synthetic label shift | Multiple benchmarks and estimator-noise studies; no tierroute-style nested LODO reported | **Implemented for the bilinear benchmark:** nested LODO covers predictor fit, calibration, lambda selection, and outer scoring. The GBM core has inner-LODO calibration only; its matched outer comparison is **planned** |
+| Quality signal | Preference win probability; several router models including MF | Logged scores and learned performance estimates | Query/response reliability score | Ex-ante and post-hoc estimators with uncertainty | **Implemented:** surface-feature bilinear scores and an in-memory deterministic stump-GBM core, each with per-model isotonic calibration, plus a paired descriptive runner. **Planned:** local bge-m3 and a licensed family-selection-aware experiment |
+| Distribution-shift evidence | Conditional MMLU/GSM8K OOD weakness and in-domain recovery | Main predictive setup uses within-task 70/30 splits and also reports held-out-task plots | Main setup uses random 50/50 splits, calls out same/similar distributions, and studies synthetic label shift | Multiple benchmarks and estimator-noise studies; no tierroute-style nested LODO reported | **Implemented for both fixed surface-only families:** nested LODO covers predictor fit, calibration, lambda selection, and outer scoring on identical folds. **Not implemented:** a reportable licensed-data result or unbiased family selection |
 | Primary reporting | Call-share/performance curves, PGR/APGR/CPT | AIQ over a shared cost-quality frontier and oracle | Quality under budget and cost savings | Area under cost-quality curve | **Implemented:** configured tier-weighted quality, per-query oracle-gap formula, same-outer-fold six-baseline report, and exact quote-error evidence. **Planned:** cumulative sequence oracle. |
 | Offline replay | Can evaluate learned routes, but live provider integration is in scope | Core benefit of pre-generated outcomes | Built around commercial API calls in the paper | Mix of logged and real benchmark experiments | **Implemented:** no-network runtime, labels isolated from router state, executed-call cost evidence, synthetic clone-first demo |
 | Budget-tier awareness | User-selected win-probability threshold and call share, not named challenge tiers | Continuous cost-quality evaluation | Budget is explicit, not the challenge's three-tier contract | Expected budget parameter | **Implemented:** Fast/Balanced/Premium are first-class state and policy keys; official weights remain **gated** |
@@ -348,10 +348,12 @@ invented cost-aware model routing:
   not evidence of a history-adaptive policy.
 - The local tier weights are not official, and current optimization must be described
   as challenge-aligned rather than the final official scoring function.
-- A local bge-m3 inference provider, full-dimensional bge-m3 training run, matched GBM
-  comparison, OOD fallback, and online remaining-budget adaptation are not complete.
-- The GBM core has no versioned artifact or CLI integration and supplies no evidence of
-  predictive gain or superiority over the bilinear family.
+- A local bge-m3 inference provider, full-dimensional bge-m3 training run, reportable
+  licensed-data family-selection experiment, OOD fallback, and online remaining-budget
+  adaptation are not complete.
+- The GBM core has no versioned artifact or deployment CLI integration. Its paired
+  estimation CLI deliberately cannot select a winner from the same outer evidence and
+  supplies no evidence of predictive gain or superiority over the bilinear family.
 - bge-m3 is a planned controlled feature ablation, not the core novelty or an assured
   performance gain. More candidate models likewise do not guarantee a better frontier;
   model-subset curation must be measured.
@@ -411,6 +413,7 @@ pool, data split, cost model, and metric.
 | Complete evaluation-scope identity and immutable metadata snapshot | [`evaluation-scope.md`](evaluation-scope.md), [`eval/provenance.py`](../src/tierroute/eval/provenance.py), [`eval/simulator.py`](../src/tierroute/eval/simulator.py) |
 | Bilinear fit and isotonic calibration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py) |
 | In-memory deterministic GBM and inner-LODO calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) |
+| Paired bilinear/GBM nested-LODO estimation with no family selection | [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py), [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py) |
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
 | Optional RouterBench boundary | [`adapters/routerbench.py`](../src/tierroute/adapters/routerbench.py), [`download_routerbench.py`](../scripts/download_routerbench.py) |
 | Reproducibility and license inventory | [`SBOM.md`](../SBOM.md), [`dependency-license-audit.md`](dependency-license-audit.md) |

@@ -27,6 +27,7 @@ from tierroute.policies import (
     evaluate_per_query_bilinear_benchmark,
     evaluate_per_query_lodo_baselines,
 )
+from tierroute.predictors import BilinearTrainingConfig
 
 
 @pytest.fixture(scope="module")
@@ -295,6 +296,25 @@ def test_calibrated_bilinear_benchmark_requires_four_domains() -> None:
             max_candidates_per_tier=2,
             allow_large_exhaustive=True,
         )
+
+
+def test_bilinear_benchmark_snapshots_compatible_config_subclasses(
+    synthetic_benchmark: PerQueryNestedLodoBenchmark,
+) -> None:
+    class CompatibleBilinearConfig(BilinearTrainingConfig):
+        pass
+
+    dataset = load_evaluation_dataset()
+    result = evaluate_per_query_bilinear_benchmark(
+        dataset.examples,
+        dataset.tier_specs,
+        config=CompatibleBilinearConfig(),
+        max_candidates_per_tier=257,
+    )
+
+    assert type(result.training_config) is BilinearTrainingConfig
+    assert result.training_config == BilinearTrainingConfig()
+    assert result.learned.prediction_sha256 == synthetic_benchmark.learned.prediction_sha256
 
 
 def test_benchmark_json_is_deterministic_versioned_and_explicitly_synthetic(

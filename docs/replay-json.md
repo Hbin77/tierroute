@@ -67,9 +67,9 @@ fail-closed contract, not targets or evidence that a dataset is licensed.
 | outcomes across the dataset | 1,000,000 |
 | unique domains | 4,096 |
 | outer-LODO memberships, `examples × domains` | 1,000,000 |
-| nested-LODO memberships, `examples × (domains − 1)²` | 2,000,000 |
-| reference-training outcome scans, `examples × domains × max_outcomes²` | 100,000,000 |
-| nested-training outcome scans, `examples × (domains − 1)² × max_outcomes²` | 256,000,000 |
+| nested-LODO row visits, `N × (D − 1) × (D² − 3D + 3)` | 8,000,000 |
+| reference-training target visits, `N × D × max_outcomes` | 100,000,000 |
+| nested-training target visits, `N × (D − 1) × (D² − 3D + 3) × max_outcomes` | 256,000,000 |
 | ordinary metadata or ID text | 16,384 UTF-8 bytes |
 | one prompt | 1,048,576 UTF-8 bytes |
 | one output | 1,048,576 UTF-8 bytes |
@@ -84,9 +84,12 @@ fail-closed contract, not targets or evidence that a dataset is licensed.
 
 The file and token limits are also the aggregate lexical bounds; there is no
 environment variable or CLI option that disables them. LODO limits cover downstream
-fold-reference amplification before typed replay objects or predictor fits are built.
-The two outcome-scan bounds additionally cover the reference trainer's current linear
-target lookup for every model across ordinary training and policy cross-fitting.
+fold-reference amplification before typed replay objects or predictor fits are built;
+`N` is the example count and `D` is the unique-domain count. The nested row-visit
+formula remains exact when domain sizes differ.
+The two target-visit bounds additionally cover the trainers' single-pass linear target
+transpose across ordinary training and the complete policy/calibration cross-fitting
+graph.
 
 The planned RouterBench mapping used to choose headroom has 34,778 examples, 11 models,
 7 domains, and 382,558 outcomes. A measured conversion was about 130.69 MiB compact or

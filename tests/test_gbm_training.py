@@ -7,7 +7,7 @@ import math
 import socket
 import urllib.request
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, dataclass, replace
 
 import pytest
 
@@ -21,10 +21,13 @@ from tierroute.predictors.calibration import (
 )
 from tierroute.predictors.gbm import GbmQualityPredictor
 from tierroute.predictors.gbm_training import (
+    GbmNestedLodoWorkEstimate,
     GbmTrainingConfig,
+    estimate_nested_lodo_gbm_work,
     fit_calibrated_gbm,
     fit_calibrated_gbm_for_fold,
     preflight_gbm_fit,
+    preflight_nested_lodo_gbm,
 )
 
 
@@ -272,6 +275,219 @@ def test_gbm_calibrated_work_is_aggregated_before_any_embedding(
         fit_calibrated_gbm(
             load_evaluation_dataset().examples,
             config=GbmTrainingConfig(n_estimators=1, min_samples_leaf=1),
+            embedding_provider=provider,
+        )
+
+    assert provider.calls == []
+
+
+def test_nested_lodo_gbm_estimate_enumerates_the_complete_call_graph() -> None:
+    examples = load_evaluation_dataset().examples
+    config = GbmTrainingConfig(n_estimators=1, min_samples_leaf=1)
+
+    estimate = estimate_nested_lodo_gbm_work(examples, config=config)
+
+    domain_count = len({example.domain for example in examples})
+    assert isinstance(estimate, GbmNestedLodoWorkEstimate)
+    assert estimate.domain_count == domain_count == 4
+    assert estimate.outer_fold_count == domain_count
+    assert estimate.calibrated_fit_count == domain_count**2
+    assert estimate.base_fit_count == domain_count * ((domain_count - 1) ** 2 + domain_count)
+    assert estimate.model_count == len(examples[0].candidate_models)
+    assert estimate.estimator_count == config.n_estimators
+    assert estimate.training_row_visits == 168
+    assert estimate.training_row_visits == sum(estimate.base_fit_sample_counts)
+    assert estimate.minimum_split_scans == 2_088
+    assert estimate.prompt_byte_visits > 0
+    assert estimate.split_scans == sum(estimate.base_fit_split_scans) == 2_241
+    assert len(estimate.base_fit_sample_counts) == estimate.base_fit_count
+    assert len(estimate.base_fit_feature_counts) == estimate.base_fit_count
+    with pytest.raises(FrozenInstanceError):
+        estimate.split_scans = 0  # type: ignore[misc]
+
+
+def test_nested_lodo_gbm_estimate_derives_each_schema_width_without_embedding() -> None:
+    examples = load_evaluation_dataset().examples
+    provider = RecordingEmbeddingProvider()
+
+    surface = estimate_nested_lodo_gbm_work(
+        examples,
+        config=GbmTrainingConfig(n_estimators=1, min_samples_leaf=1),
+    )
+    embedded = estimate_nested_lodo_gbm_work(
+        examples,
+        config=GbmTrainingConfig(n_estimators=1, min_samples_leaf=1),
+        embedding_provider=provider,
+    )
+
+    assert len(set(surface.base_fit_feature_counts)) > 1
+    assert embedded.base_fit_feature_counts == tuple(
+        feature_count + provider.dimension for feature_count in surface.base_fit_feature_counts
+    )
+    assert embedded.split_scans > surface.split_scans
+    assert provider.calls == []
+
+
+def test_nested_lodo_gbm_cheap_guards_run_before_folds_or_surface_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    examples = load_evaluation_dataset().examples
+
+    def unexpected_work(*args: object, **kwargs: object) -> object:
+        raise AssertionError(f"expanded work ran before the cheap guard: {args!r} {kwargs!r}")
+
+    monkeypatch.setattr(gbm_training_module, "MAX_GBM_NESTED_BASE_FITS", 51)
+    monkeypatch.setattr(gbm_training_module, "leave_one_domain_out", unexpected_work)
+    monkeypatch.setattr(gbm_training_module, "extract_surface_features", unexpected_work)
+
+    with pytest.raises(ValueError, match="base-fit graph"):
+        preflight_nested_lodo_gbm(
+            examples,
+            config=GbmTrainingConfig(n_estimators=1, min_samples_leaf=1),
+        )
+
+
+def test_nested_lodo_gbm_prompt_and_minimum_scan_guards_precede_surface_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    examples = load_evaluation_dataset().examples
+
+    def unexpected_surface(prompt: str) -> object:
+        raise AssertionError(f"surface extraction must not run: {prompt!r}")
+
+    monkeypatch.setattr(gbm_training_module, "extract_surface_features", unexpected_surface)
+    monkeypatch.setattr(gbm_training_module, "MAX_GBM_SPLIT_SCANS", 1)
+    with pytest.raises(ValueError, match="minimum split scan"):
+        preflight_nested_lodo_gbm(
+            examples,
+            config=GbmTrainingConfig(n_estimators=1, min_samples_leaf=1),
+        )
+
+    monkeypatch.setattr(gbm_training_module, "MAX_GBM_SPLIT_SCANS", 100_000_000)
+    monkeypatch.setattr(gbm_training_module, "MAX_GBM_NESTED_PROMPT_BYTE_VISITS", 1)
+    with pytest.raises(ValueError, match="prompt scan"):
+        preflight_nested_lodo_gbm(
+            examples,
+            config=GbmTrainingConfig(n_estimators=1, min_samples_leaf=1),
+        )
+
+
+def test_nested_lodo_gbm_extracts_each_prompt_once_and_aborts_running_total(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    examples = load_evaluation_dataset().examples
+    original_extract = gbm_training_module.extract_surface_features
+    observed_prompts: list[str] = []
+    base_checks = 0
+    original_preflight = gbm_training_module.preflight_gbm_fit
+
+    def recording_extract(prompt: str) -> object:
+        observed_prompts.append(prompt)
+        return original_extract(prompt)
+
+    def recording_preflight(*args: object, **kwargs: object) -> None:
+        nonlocal base_checks
+        base_checks += 1
+        original_preflight(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(gbm_training_module, "extract_surface_features", recording_extract)
+    monkeypatch.setattr(gbm_training_module, "preflight_gbm_fit", recording_preflight)
+    # Above the 2,088 analytic lower bound but below the 2,241 exact estimate,
+    # forcing the enumerator's running-total guard rather than the cheap guard.
+    monkeypatch.setattr(gbm_training_module, "MAX_GBM_SPLIT_SCANS", 2_100)
+
+    with pytest.raises(ValueError, match=r"nested-LODO.*split scan"):
+        preflight_nested_lodo_gbm(
+            examples,
+            config=GbmTrainingConfig(n_estimators=1, min_samples_leaf=1),
+        )
+
+    assert observed_prompts == [
+        example.prompt for example in sorted(examples, key=lambda example: example.example_id)
+    ]
+    assert base_checks < 52
+
+
+def test_nested_lodo_gbm_preflight_rejects_aggregate_before_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = RecordingEmbeddingProvider()
+    examples = load_evaluation_dataset().examples
+    config = GbmTrainingConfig(n_estimators=1, min_samples_leaf=1)
+    estimate = estimate_nested_lodo_gbm_work(
+        examples,
+        config=config,
+        embedding_provider=provider,
+    )
+    monkeypatch.setattr(gbm_training_module, "MAX_GBM_SPLIT_SCANS", estimate.split_scans)
+
+    assert (
+        preflight_nested_lodo_gbm(
+            examples,
+            config=config,
+            embedding_provider=provider,
+        )
+        == estimate
+    )
+    monkeypatch.setattr(gbm_training_module, "MAX_GBM_SPLIT_SCANS", estimate.split_scans - 1)
+
+    with pytest.raises(ValueError, match=r"nested-LODO.*split scan"):
+        preflight_nested_lodo_gbm(
+            examples,
+            config=config,
+            embedding_provider=provider,
+        )
+
+    assert provider.calls == []
+
+
+def test_nested_lodo_gbm_preflight_requires_four_domains_and_stable_catalogue() -> None:
+    examples = load_evaluation_dataset().examples
+    three_domains = tuple(example for example in examples if example.domain != "science")
+    provider = RecordingEmbeddingProvider()
+
+    with pytest.raises(ValueError, match="at least four domains"):
+        preflight_nested_lodo_gbm(three_domains, embedding_provider=provider)
+
+    changed = replace(
+        examples[0],
+        outcomes=examples[0].outcomes[:-1],
+        candidate_models=examples[0].candidate_models[:-1],
+    )
+    with pytest.raises(ValueError, match="same model catalogue"):
+        preflight_nested_lodo_gbm((changed, *examples[1:]), embedding_provider=provider)
+
+    assert provider.calls == []
+
+
+def test_nested_lodo_gbm_preflight_rejects_config_subclasses_before_embedding() -> None:
+    @dataclass(frozen=True, slots=True)
+    class GbmTrainingConfigSubclass(GbmTrainingConfig):
+        pass
+
+    provider = RecordingEmbeddingProvider()
+
+    with pytest.raises(TypeError, match="exact GbmTrainingConfig"):
+        preflight_nested_lodo_gbm(
+            load_evaluation_dataset().examples,
+            config=GbmTrainingConfigSubclass(),
+            embedding_provider=provider,
+        )
+
+    assert provider.calls == []
+
+
+def test_public_gbm_fit_rejects_config_subclasses_before_embedding() -> None:
+    @dataclass(frozen=True, slots=True)
+    class GbmTrainingConfigSubclass(GbmTrainingConfig):
+        pass
+
+    provider = RecordingEmbeddingProvider()
+
+    with pytest.raises(TypeError, match="exact GbmTrainingConfig"):
+        fit_calibrated_gbm(
+            load_evaluation_dataset().examples,
+            config=GbmTrainingConfigSubclass(),
             embedding_provider=provider,
         )
 

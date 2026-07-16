@@ -31,14 +31,17 @@ from tierroute.eval.schemas import (
 from tierroute.eval.simulator import OfflineSimulator
 from tierroute.eval.validation import DomainFold, leave_one_domain_out
 from tierroute.policies.baselines import OracleRouter
-from tierroute.policies.benchmark import PerQueryNestedLodoBenchmark
+from tierroute.policies.benchmark import (
+    BILINEAR_PREDICTOR_KIND,
+    PerQueryNestedLodoBenchmark,
+)
 from tierroute.policies.lambda_tuning import (
     OuterFoldLambdaResult,
     TunedLambdaRouterForFold,
     fit_tiered_lambda_router_for_fold,
 )
 from tierroute.predictors.base import QualityPredictor
-from tierroute.predictors.training import fit_calibrated_bilinear
+from tierroute.predictors.training import BilinearTrainingConfig, fit_calibrated_bilinear
 
 STREAM_ID = "tierroute-bundled-three-tier-stream-v1"
 
@@ -198,6 +201,11 @@ def _validate_dataset_binding(
         raise TypeError("dataset must be an EvaluationDataset")
     if not isinstance(benchmark, PerQueryNestedLodoBenchmark):
         raise TypeError("benchmark must be a PerQueryNestedLodoBenchmark")
+    if (
+        benchmark.predictor_kind != BILINEAR_PREDICTOR_KIND
+        or type(benchmark.training_config) is not BilinearTrainingConfig
+    ):
+        raise ValueError("showcase reconstruction supports only the calibrated bilinear family")
 
     examples = tuple(dataset.examples)
     specs = tuple(dataset.tier_specs)

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import unicodedata
+from collections.abc import Mapping
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -38,14 +40,39 @@ from tierroute.policies.lambda_tuning import (
     preflight_lambda_search,
     tune_tier_lambdas,
 )
+from tierroute.policies.predictor_comparison import (
+    PairedPredictorComparison,
+    evaluate_per_query_paired_predictor_comparison,
+)
 from tierroute.predictors import (
+    GBM_ALGORITHM_ID,
     BilinearPredictorArtifact,
     BilinearTrainingConfig,
+    GbmTrainingConfig,
     fit_calibrated_bilinear,
 )
 from tierroute.showcase import RoutingStreamShowcase, build_routing_stream_showcase
 
 DEFAULT_MAX_LAMBDA_CANDIDATES = 257
+_TERMINAL_UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
+
+
+def _safe_terminal_text(value: str) -> str:
+    """Escape terminal controls while preserving ordinary Unicode display text."""
+
+    if not isinstance(value, str):
+        raise TypeError("terminal text must be a string")
+    escaped: list[str] = []
+    for character in value:
+        if unicodedata.category(character) not in _TERMINAL_UNSAFE_CATEGORIES:
+            escaped.append(character)
+            continue
+        codepoint = ord(character)
+        if codepoint <= 0xFFFF:
+            escaped.append(f"\\u{codepoint:04x}")
+        else:  # pragma: no cover - current unsafe categories are in the BMP
+            escaped.append(f"\\U{codepoint:08x}")
+    return "".join(escaped)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -136,6 +163,49 @@ def _build_parser() -> argparse.ArgumentParser:
         help="recorded reproducibility seed",
     )
     benchmark_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable JSON",
+    )
+
+    comparison_parser = subparsers.add_parser(
+        "compare-predictors",
+        help="estimate bilinear and GBM routing on identical nested-LODO evidence",
+    )
+    comparison_parser.add_argument(
+        "--data",
+        type=Path,
+        help="versioned JSON replay data (default: bundled synthetic data)",
+    )
+    comparison_parser.add_argument(
+        "--budget-scope",
+        choices=("per-query",),
+        required=True,
+        help="explicit accounting semantics; cumulative comparison remains gated",
+    )
+    comparison_lambda_search = comparison_parser.add_mutually_exclusive_group()
+    comparison_lambda_search.add_argument(
+        "--max-lambda-candidates",
+        type=int,
+        help=(f"deterministic per-tier candidate cap (default: {DEFAULT_MAX_LAMBDA_CANDIDATES})"),
+    )
+    comparison_lambda_search.add_argument(
+        "--exhaustive-lambda-search",
+        action="store_true",
+        help="retain every exact breakpoint candidate instead of applying the cap",
+    )
+    comparison_parser.add_argument(
+        "--allow-large-exhaustive-search",
+        action="store_true",
+        help="acknowledge and bypass the exhaustive-search resource preflight",
+    )
+    comparison_parser.add_argument("--ridge", type=float, default=1.0)
+    comparison_parser.add_argument("--seed", type=int, default=0)
+    comparison_parser.add_argument("--gbm-estimators", type=int, default=32)
+    comparison_parser.add_argument("--gbm-learning-rate", type=float, default=0.1)
+    comparison_parser.add_argument("--gbm-min-samples-leaf", type=int, default=2)
+    comparison_parser.add_argument("--gbm-min-gain", type=float, default=0.0)
+    comparison_parser.add_argument(
         "--json",
         action="store_true",
         help="emit machine-readable JSON",
@@ -283,21 +353,24 @@ def _print_route(decision: RouteDecision) -> None:
     print(f"  tier:              {decision.tier.value}")
     print(f"  budget limit:      {canonical_cost_text(decision.budget_limit)}")
     print(f"  remaining budget:  {canonical_cost_text(decision.remaining_budget)}")
-    print(f"  selected model:    {decision.model_id}")
+    print(f"  selected model:    {_safe_terminal_text(decision.model_id)}")
     print(f"  quoted cost:       {canonical_cost_text(decision.model_cost)}")
-    print(f"  predicted quality: {decision.predicted_quality:.3f} ({decision.quality_kind})")
+    print(
+        "  predicted quality: "
+        f"{decision.predicted_quality:.3f} ({_safe_terminal_text(decision.quality_kind)})"
+    )
     print(f"  policy:            one-shot lambda={_fraction_label(decision.lambda_cost)}")
-    print(f"  accounting scope:  {decision.accounting_scope}")
+    print(f"  accounting scope:  {_safe_terminal_text(decision.accounting_scope)}")
     if decision.lambda_candidates_exhaustive is not None:
         print(
             "  lambda search:     "
             f"retained={decision.lambda_candidates_retained}/"
             f"{_candidate_total_label(decision.lambda_candidates_derived)}, "
             f"exhaustive={str(decision.lambda_candidates_exhaustive).lower()}, "
-            f"strategy={decision.lambda_candidate_strategy}, "
+            f"strategy={_safe_terminal_text(decision.lambda_candidate_strategy)}, "
             f"observed_breakpoints={decision.lambda_observed_breakpoint_count}"
         )
-    print(f"  reason:            {decision.reason}")
+    print(f"  reason:            {_safe_terminal_text(decision.reason)}")
     print(
         "  features:          "
         f"chars={decision.features.character_count}, "
@@ -400,6 +473,31 @@ def _lambda_search_payload(selection: TierLambdaSelection) -> dict[str, Any]:
     }
 
 
+def _benchmark_predictor_payload(result: PerQueryNestedLodoBenchmark) -> dict[str, Any]:
+    """Serialize one exact supported in-memory family without weakening artifact v1."""
+
+    config = result.training_config
+    if type(config) is BilinearTrainingConfig:
+        return {
+            "kind": result.predictor_kind,
+            "feature_set": "surface-only",
+            "ridge": config.ridge,
+            "seed": config.seed,
+            "solver_id": config.solver_id,
+        }
+    if type(config) is GbmTrainingConfig:
+        return {
+            "kind": result.predictor_kind,
+            "feature_set": "surface-only",
+            "algorithm_id": GBM_ALGORITHM_ID,
+            "n_estimators": config.n_estimators,
+            "learning_rate": config.learning_rate,
+            "min_samples_leaf": config.min_samples_leaf,
+            "min_gain": config.min_gain,
+        }
+    raise TypeError("benchmark uses an unsupported training configuration")
+
+
 def _benchmark_payload(
     result: PerQueryNestedLodoBenchmark,
     *,
@@ -492,13 +590,7 @@ def _benchmark_payload(
             "sha256": scope.sha256,
             "max_calls_per_query": scope.max_calls_per_query,
         },
-        "predictor": {
-            "kind": result.predictor_kind,
-            "feature_set": "surface-only",
-            "ridge": result.training_config.ridge,
-            "seed": result.training_config.seed,
-            "solver_id": result.training_config.solver_id,
-        },
+        "predictor": _benchmark_predictor_payload(result),
         "lambda_search_config": {
             "requested_mode": lambda_search_config.requested_mode,
             "max_candidates_per_tier": lambda_search_config.max_candidates_per_tier,
@@ -538,6 +630,119 @@ def _benchmark_payload(
         },
         "learned_router": learned,
         "baselines": [_baseline_payload(row) for row in result.baselines.baselines],
+    }
+
+
+def _comparison_delta_payload(
+    *,
+    tier_quality: Mapping[BudgetTier, float | None],
+    weighted_quality: float | None,
+    oracle_gap_recovery: float | None,
+) -> dict[str, Any]:
+    """Preserve binary64 subtraction results without presentation rounding."""
+
+    return {
+        "tier_quality": {
+            tier.value: tier_quality[tier]
+            for tier in (BudgetTier.FAST, BudgetTier.BALANCED, BudgetTier.PREMIUM)
+            if tier in tier_quality
+        },
+        "weighted_quality": weighted_quality,
+        "oracle_gap_recovery": oracle_gap_recovery,
+    }
+
+
+def _predictor_comparison_payload(
+    result: PairedPredictorComparison,
+    *,
+    dataset_name: str,
+    dataset_license: str,
+    provenance: str,
+    bundled_synthetic: bool,
+) -> dict[str, Any]:
+    """Serialize paired estimation once, without creating a family-selection claim."""
+
+    bilinear = _benchmark_payload(
+        result.bilinear,
+        dataset_name=dataset_name,
+        dataset_license=dataset_license,
+        provenance=provenance,
+        bundled_synthetic=bundled_synthetic,
+    )
+    gbm = _benchmark_payload(
+        result.gbm,
+        dataset_name=dataset_name,
+        dataset_license=dataset_license,
+        provenance=provenance,
+        bundled_synthetic=bundled_synthetic,
+    )
+    if bilinear["baselines"] != gbm["baselines"]:
+        raise ValueError("paired predictor payload requires one shared baseline evaluation")
+    return {
+        "schema": "tierroute-predictor-comparison",
+        "schema_version": 1,
+        "command": "compare-predictors",
+        "dataset": dataset_name,
+        "dataset_license": dataset_license,
+        "provenance": provenance,
+        "claim_state": "SYNTHETIC-ONLY" if bundled_synthetic else "UNVERIFIED-USER-DATA",
+        "network_used": False,
+        "budget_scope": result.bilinear.accounting_scope,
+        "validation_scope": "true-nested-lodo-original-order",
+        "evidence_role": "descriptive-paired-estimation-only",
+        "comparison_direction": result.comparison_direction,
+        "selection_protocol": result.selection_protocol,
+        "selected_family": result.selected_family,
+        "performance_claim_allowed": result.performance_claim_allowed,
+        "data_sha256": result.bilinear.data_sha256,
+        "replay_sha256": result.bilinear.replay_sha256,
+        "example_count": result.bilinear.example_count,
+        "domains": list(result.bilinear.domains),
+        "model_ids": list(result.bilinear.model_ids),
+        "tier_specs": bilinear["tier_specs"],
+        "evaluation_scope": bilinear["evaluation_scope"],
+        "lambda_search_config": bilinear["lambda_search_config"],
+        "baseline_config": bilinear["baseline_config"],
+        "predictor_families": {
+            "bilinear": {
+                "predictor": bilinear["predictor"],
+                "learned_router": bilinear["learned_router"],
+                "paired_metrics_full_precision": _comparison_delta_payload(
+                    tier_quality=result.bilinear.learned.score.tier_quality,
+                    weighted_quality=result.bilinear.learned.score.weighted_quality,
+                    oracle_gap_recovery=result.bilinear.learned_gap_recovery,
+                ),
+            },
+            "gbm": {
+                "predictor": gbm["predictor"],
+                "learned_router": gbm["learned_router"],
+                "paired_metrics_full_precision": _comparison_delta_payload(
+                    tier_quality=result.gbm.learned.score.tier_quality,
+                    weighted_quality=result.gbm.learned.score.weighted_quality,
+                    oracle_gap_recovery=result.gbm.learned_gap_recovery,
+                ),
+            },
+        },
+        "deltas": {
+            "direction": result.comparison_direction,
+            "overall": _comparison_delta_payload(
+                tier_quality=result.tier_quality_delta,
+                weighted_quality=result.weighted_quality_delta,
+                oracle_gap_recovery=result.oracle_gap_recovery_delta,
+            ),
+            "held_out_domains": [
+                {
+                    "held_out_domain": row.held_out_domain,
+                    **_comparison_delta_payload(
+                        tier_quality=row.tier_quality_delta,
+                        weighted_quality=row.weighted_quality_delta,
+                        oracle_gap_recovery=row.oracle_gap_recovery_delta,
+                    ),
+                }
+                for row in result.held_out_domain_deltas
+            ],
+        },
+        "baselines": bilinear["baselines"],
     }
 
 
@@ -663,7 +868,7 @@ def _print_showcase(result: RoutingStreamShowcase) -> None:
     """Render the exact three-tier stream before the separate benchmark table."""
 
     print("tierroute offline routing stream showcase\n")
-    print(f"Dataset: {result.dataset.name}")
+    print(f"Dataset: {_safe_terminal_text(result.dataset.name)}")
     print("Claim: project-authored synthetic wiring evidence, not benchmark results")
     print("Budget scope: independent illustrative per-query limits")
     print("Running cost: mixed-tier reporting-only; not an official shared budget")
@@ -675,10 +880,10 @@ def _print_showcase(result: RoutingStreamShowcase) -> None:
     for step in result.steps:
         retention = step.cumulative_quality_retention
         retention_label = "N/A" if retention is None else f"{100 * float(retention):.1f}%"
-        print(f"Step {step.index} [{step.tier.value}] {step.example_id}")
-        print(f"  prompt:            {step.prompt}")
+        print(f"Step {step.index} [{step.tier.value}] {_safe_terminal_text(step.example_id)}")
+        print(f"  prompt:            {_safe_terminal_text(step.prompt)}")
         print(
-            f"  route:             {step.selected_model_id} "
+            f"  route:             {_safe_terminal_text(step.selected_model_id)} "
             f"(one-shot lambda={_fraction_label(step.lambda_cost)})"
         )
         print(
@@ -690,7 +895,8 @@ def _print_showcase(result: RoutingStreamShowcase) -> None:
         print(
             "  synthetic quality: "
             f"observed={step.observed_quality:.3f}, "
-            f"per-query oracle={step.oracle_quality:.3f} ({step.oracle_model_id})"
+            "per-query oracle="
+            f"{step.oracle_quality:.3f} ({_safe_terminal_text(step.oracle_model_id)})"
         )
         print(
             "  running display:   "
@@ -774,7 +980,7 @@ def _training_payload(
 def _print_scorecard(dataset_name: str, results: tuple[BaselineResult, ...]) -> None:
     if not results:
         raise ValueError("scorecard requires at least one baseline result")
-    print(f"Dataset: {dataset_name}")
+    print(f"Dataset: {_safe_terminal_text(dataset_name)}")
     print("Budget scope: illustrative per-query limits (official SKT scope unresolved)")
     print(
         f"Evaluation scope: {results[0].report.evaluation_scope_algorithm}:"
@@ -810,7 +1016,7 @@ def _print_benchmark(
     """Render judge-facing learned-versus-baseline evidence without hiding scope."""
 
     print("tierroute nested-LODO benchmark\n")
-    print(f"Dataset: {dataset_name}")
+    print(f"Dataset: {_safe_terminal_text(dataset_name)}")
     print("Budget scope: explicit per-query accounting")
     print("Validation: true nested LODO; outer predictions replay once in original order")
     print(
@@ -863,7 +1069,7 @@ def _print_benchmark(
             f"{canonical_cost_text(tier_result.budget.effective_total_limit):>16} "
             f"{str(tier_result.feasible).lower():>10}"
         )
-    print("\nOuter folds: " + ", ".join(result.domains))
+    print("\nOuter folds: " + ", ".join(_safe_terminal_text(item) for item in result.domains))
     print(f"Outer prediction SHA-256: {result.learned.prediction_sha256}")
     print("Cost note: the cross-tier total is a diagnostic over independent tier ledgers.")
     if bundled_synthetic:
@@ -873,6 +1079,70 @@ def _print_benchmark(
             "Claim note: user-supplied replay; claim and license validity are caller "
             "responsibilities."
         )
+    print("Network: disabled")
+
+
+def _print_predictor_comparison(
+    result: PairedPredictorComparison,
+    dataset_name: str,
+    *,
+    bundled_synthetic: bool,
+) -> None:
+    """Render fixed-order paired estimates without ranking the predictor families."""
+
+    print("tierroute paired predictor estimation (wiring only)\n")
+    print(f"Dataset: {_safe_terminal_text(dataset_name)}")
+    print(f"Claim state: {'SYNTHETIC-ONLY' if bundled_synthetic else 'UNVERIFIED-USER-DATA'}")
+    print("Budget scope: explicit per-query accounting")
+    print("Validation: both families use identical true nested-LODO outer evidence")
+    header = (
+        f"{'method':<26} {'fast':>7} {'balanced':>9} {'premium':>8} "
+        f"{'weighted':>9} {'gap':>7} {'cost':>8}"
+    )
+    print(header)
+    print("-" * len(header))
+
+    def print_row(
+        name: str,
+        score: ScoreSummary,
+        gap: float | None,
+        total_cost: Cost,
+    ) -> None:
+        quality = score.tier_quality
+        print(
+            f"{name:<26} "
+            f"{_format_score(quality.get(BudgetTier.FAST)):>7} "
+            f"{_format_score(quality.get(BudgetTier.BALANCED)):>9} "
+            f"{_format_score(quality.get(BudgetTier.PREMIUM)):>8} "
+            f"{_format_score(score.weighted_quality):>9} "
+            f"{_format_score(gap):>7} "
+            f"{canonical_cost_text(total_cost):>8}"
+        )
+
+    print_row(
+        "bilinear",
+        result.bilinear.learned.score,
+        result.bilinear.learned_gap_recovery,
+        result.bilinear.learned_total_cost,
+    )
+    print_row(
+        "gbm",
+        result.gbm.learned.score,
+        result.gbm.learned_gap_recovery,
+        result.gbm.learned_total_cost,
+    )
+    for row in result.bilinear.baselines.baselines:
+        print_row(row.name, row.score, row.gap_recovery, row.total_cost)
+
+    print("\nDelta direction: GBM - bilinear (descriptive paired estimate)")
+    print(
+        "Weighted-quality delta: "
+        f"{_format_score(result.weighted_quality_delta)}; "
+        "oracle-gap delta: "
+        f"{_format_score(result.oracle_gap_recovery_delta)}"
+    )
+    print("Selection: not performed; this same outer evidence cannot select a winner.")
+    print("Performance claim: prohibited for this comparison output.")
     print("Network: disabled")
 
 
@@ -916,6 +1186,14 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.max_lambda_candidates is not None and args.max_lambda_candidates < 2:
             parser.error("benchmark --max-lambda-candidates must be at least 2")
+    if args.command == "compare-predictors":
+        if args.allow_large_exhaustive_search and not args.exhaustive_lambda_search:
+            parser.error(
+                "compare-predictors --allow-large-exhaustive-search requires "
+                "--exhaustive-lambda-search"
+            )
+        if args.max_lambda_candidates is not None and args.max_lambda_candidates < 2:
+            parser.error("compare-predictors --max-lambda-candidates must be at least 2")
     dataset = load_evaluation_dataset(getattr(args, "data", None))
 
     if args.command == "route":
@@ -1054,15 +1332,21 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         else:
             print("tierroute predictor training")
-            print(f"  dataset:            {dataset.name}")
+            print(f"  dataset:            {_safe_terminal_text(dataset.name)}")
             print(f"  training examples:  {artifact.training_example_count}")
-            print(f"  training domains:   {', '.join(artifact.training_domains)}")
-            print(f"  candidate models:   {', '.join(artifact.model_ids)}")
+            print(
+                "  training domains:   "
+                + ", ".join(_safe_terminal_text(item) for item in artifact.training_domains)
+            )
+            print(
+                "  candidate models:   "
+                + ", ".join(_safe_terminal_text(item) for item in artifact.model_ids)
+            )
             print(f"  feature dimension:  {artifact.feature_schema.dimension}")
             print(f"  ridge solver:       {artifact.solver_id}")
-            print(f"  artifact:           {output}")
+            print(f"  artifact:           {_safe_terminal_text(str(output))}")
             if policy_output is not None and tuning is not None:
-                print(f"  policy artifact:    {policy_output}")
+                print(f"  policy artifact:    {_safe_terminal_text(str(policy_output))}")
                 print(f"  accounting scope:  {args.budget_scope}")
                 for selection in tuning.selections:
                     candidates = selection.candidates
@@ -1115,6 +1399,47 @@ def main(argv: list[str] | None = None) -> int:
         else:
             _print_benchmark(
                 benchmark,
+                dataset.name,
+                bundled_synthetic=args.data is None,
+            )
+        return 0
+
+    if args.command == "compare-predictors":
+        candidate_cap = (
+            None
+            if args.exhaustive_lambda_search
+            else (args.max_lambda_candidates or DEFAULT_MAX_LAMBDA_CANDIDATES)
+        )
+        comparison = evaluate_per_query_paired_predictor_comparison(
+            dataset.examples,
+            dataset.tier_specs,
+            bilinear_config=BilinearTrainingConfig(ridge=args.ridge, seed=args.seed),
+            gbm_config=GbmTrainingConfig(
+                n_estimators=args.gbm_estimators,
+                learning_rate=args.gbm_learning_rate,
+                min_samples_leaf=args.gbm_min_samples_leaf,
+                min_gain=args.gbm_min_gain,
+            ),
+            max_candidates_per_tier=candidate_cap,
+            allow_large_exhaustive=args.allow_large_exhaustive_search,
+        )
+        if args.json:
+            print(
+                json.dumps(
+                    _predictor_comparison_payload(
+                        comparison,
+                        dataset_name=dataset.name,
+                        dataset_license=dataset.license,
+                        provenance=dataset.provenance,
+                        bundled_synthetic=args.data is None,
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+        else:
+            _print_predictor_comparison(
+                comparison,
                 dataset.name,
                 bundled_synthetic=args.data is None,
             )

@@ -14,14 +14,12 @@ MAX_REPLAY_TOTAL_OUTCOMES = 1_000_000
 # downstream amplification at the adapter boundary, before typed construction.
 MAX_REPLAY_DOMAINS = 4_096
 MAX_REPLAY_LODO_MEMBERSHIPS = 1_000_000
-# Policy cross-fitting nests an inner LODO inside every outer-domain fold. The planned
-# 34,778-example, seven-domain RouterBench shape needs 1,252,008 memberships.
-MAX_REPLAY_NESTED_LODO_MEMBERSHIPS = 2_000_000
-# The reference trainer currently extracts M targets with a linear outcome lookup for
-# each of M models across N*D inner-LODO/final-fit example memberships.
+# Policy cross-fitting plus predictor calibration forms three nested fit levels. The
+# planned 34,778-example, seven-domain RouterBench shape needs 6,468,708 row visits.
+MAX_REPLAY_NESTED_LODO_MEMBERSHIPS = 8_000_000
+# Target columns are transposed once in linear O(N*M) time for each training subset.
 MAX_REPLAY_TRAINING_OUTCOME_SCANS = 100_000_000
-# Policy cross-fitting repeats the same M-by-M target extraction inside every outer
-# fold, using the nested membership count above.
+# Apply the same linear target-column charge to the complete nested row-visit count.
 MAX_REPLAY_NESTED_TRAINING_OUTCOME_SCANS = 256_000_000
 
 MAX_REPLAY_METADATA_TEXT_BYTES = 16 * 1024

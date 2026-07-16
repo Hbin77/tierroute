@@ -15,6 +15,7 @@ from tierroute.eval import (
 )
 from tierroute.features import EmbeddingProvider, PromptFeatureEncoder
 from tierroute.predictors._ridge import CENTERED_RIDGE_SOLVER_ID
+from tierroute.predictors._targets import targets_by_model
 from tierroute.predictors.artifacts import BilinearPredictorArtifact
 from tierroute.predictors.base import BilinearQualityPredictor
 from tierroute.predictors.calibration import IsotonicCalibrator
@@ -100,17 +101,11 @@ def _fit_base(
         len(row) != encoder.schema.dimension for row in feature_rows
     ):
         raise ValueError("encoded feature matrix has an unexpected shape")
-    targets_by_model = {
-        model_id: tuple(
-            next(outcome.quality for outcome in example.outcomes if outcome.model_id == model_id)
-            for example in ordered
-        )
-        for model_id in model_ids
-    }
+    target_columns = targets_by_model(ordered, model_ids)
     fitted = fit_targets_with_solver(
         solver,
         feature_rows,
-        targets_by_model,
+        target_columns,
         ridge=config.ridge,
     )
     model_weights = {model_id: fitted[model_id][0] for model_id in model_ids}
