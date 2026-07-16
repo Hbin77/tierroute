@@ -756,14 +756,22 @@ def _nanosecond_time(details: os.stat_result, name: str) -> int:
     return int(getattr(details, f"st_{name}") * 1_000_000_000)
 
 
-def _require_stable_source(before: os.stat_result, after: os.stat_result) -> None:
+def _require_stable_source(
+    before: os.stat_result,
+    after: os.stat_result,
+    *,
+    compare_change_time: bool = True,
+) -> None:
     if not _same_inode(before, after) or not stat.S_ISREG(after.st_mode):
         raise PreparedStoreFileError("prepared store source identity changed during authentication")
-    if (
-        before.st_size != after.st_size
-        or _nanosecond_time(before, "mtime") != _nanosecond_time(after, "mtime")
-        or _nanosecond_time(before, "ctime") != _nanosecond_time(after, "ctime")
-    ):
+    changed = before.st_size != after.st_size or _nanosecond_time(
+        before, "mtime"
+    ) != _nanosecond_time(after, "mtime")
+    if compare_change_time:
+        changed = changed or _nanosecond_time(before, "ctime") != _nanosecond_time(
+            after, "ctime"
+        )
+    if changed:
         raise PreparedStoreFileError("prepared store source contents changed during authentication")
 
 
@@ -805,7 +813,15 @@ def _finish_source_authentication(
     _require_stable_source(opened, final_descriptor)
     final_path = _lstat(path, "prepared store source after authentication")
     _validate_source_node(final_path)
-    _require_stable_source(opened, final_path)
+    _require_stable_source(
+        opened,
+        final_path,
+        # On Windows, descriptor and path stat expose the same file identity,
+        # size, and mtime but can report different creation-time precision via
+        # st_ctime_ns.  The same-interface fstat check above stays strict; the
+        # authenticated private copy and receipt hash bind the consumed bytes.
+        compare_change_time=os.name != "nt",
+    )
 
 
 def _destination_start(stream: BinaryIO) -> tuple[int, int, os.stat_result]:

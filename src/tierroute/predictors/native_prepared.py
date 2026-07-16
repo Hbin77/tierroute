@@ -856,12 +856,21 @@ def _nanosecond_time(details: os.stat_result, name: str) -> int:
     return int(getattr(details, f"st_{name}") * 1_000_000_000)
 
 
-def _stable_file(first: os.stat_result, second: os.stat_result) -> bool:
-    return (
+def _stable_file(
+    first: os.stat_result,
+    second: os.stat_result,
+    *,
+    compare_change_time: bool = True,
+) -> bool:
+    stable = (
         first.st_size == second.st_size
         and _nanosecond_time(first, "mtime") == _nanosecond_time(second, "mtime")
-        and _nanosecond_time(first, "ctime") == _nanosecond_time(second, "ctime")
     )
+    if compare_change_time:
+        stable = stable and _nanosecond_time(first, "ctime") == _nanosecond_time(
+            second, "ctime"
+        )
+    return stable
 
 
 def _is_reparse_point(details: os.stat_result) -> bool:
@@ -926,7 +935,14 @@ def _snapshot_verified_binary(source: Path, destination: Path, expected_sha256: 
             or not stat.S_ISREG(final_path.st_mode)
             or not _stable_file(opened, final_opened)
             or not _same_file(opened, final_path)
-            or not _stable_file(opened, final_path)
+            or not _stable_file(
+                opened,
+                final_path,
+                # Windows path stat and descriptor stat can disagree on
+                # st_ctime_ns creation-time precision.  Keep the descriptor
+                # check strict and bind the private executable copy by SHA-256.
+                compare_change_time=os.name != "nt",
+            )
         ):
             raise NativePreparedIntegrityError("native prepared binary changed while authenticated")
         if not hmac.compare_digest(digest.hexdigest(), expected_sha256):

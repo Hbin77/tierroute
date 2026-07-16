@@ -6,10 +6,12 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import stat
 import struct
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -418,6 +420,12 @@ def test_symlink_and_path_replacement_are_rejected(
     with pytest.raises(PreparedStoreFileError, match="symlink"):
         authenticate_prepared_store_file(link, receipt)
 
+    if os.name == "nt":
+        pytest.skip(
+            "Windows denies replacing an open source handle; the path-replacement "
+            "race requires POSIX rename semantics"
+        )
+
     replacement = tmp_path / "replacement.bin"
     replacement.write_bytes(source.read_bytes())
     original_scan = prepared_files_module._scan_store_descriptor
@@ -430,6 +438,53 @@ def test_symlink_and_path_replacement_are_rejected(
     monkeypatch.setattr(prepared_files_module, "_scan_store_descriptor", replacing_scan)
     with pytest.raises(PreparedStoreFileError, match="changed during authentication"):
         authenticate_prepared_store_file(source, receipt)
+
+
+def test_cross_interface_stability_can_omit_only_nonportable_change_time() -> None:
+    first = SimpleNamespace(
+        st_dev=1,
+        st_ino=2,
+        st_mode=stat.S_IFREG,
+        st_size=23,
+        st_mtime_ns=101,
+        st_ctime_ns=202,
+    )
+    changed_creation_time = SimpleNamespace(
+        st_dev=1,
+        st_ino=2,
+        st_mode=stat.S_IFREG,
+        st_size=23,
+        st_mtime_ns=101,
+        st_ctime_ns=303,
+    )
+
+    prepared_files_module._require_stable_source(
+        first,
+        changed_creation_time,
+        compare_change_time=False,
+    )
+    with pytest.raises(PreparedStoreFileError, match="contents changed"):
+        prepared_files_module._require_stable_source(first, changed_creation_time)
+
+
+@pytest.mark.parametrize("changed_field", ("st_size", "st_mtime_ns"))
+def test_cross_interface_stability_keeps_content_metadata_guards(changed_field: str) -> None:
+    first_values = {
+        "st_dev": 1,
+        "st_ino": 2,
+        "st_mode": stat.S_IFREG,
+        "st_size": 23,
+        "st_mtime_ns": 101,
+        "st_ctime_ns": 202,
+    }
+    second_values = first_values | {changed_field: first_values[changed_field] + 1}
+
+    with pytest.raises(PreparedStoreFileError, match="contents changed"):
+        prepared_files_module._require_stable_source(
+            SimpleNamespace(**first_values),
+            SimpleNamespace(**second_values),
+            compare_change_time=False,
+        )
 
 
 def test_private_snapshot_survives_source_mutation_and_close_lifetime(tmp_path: Path) -> None:

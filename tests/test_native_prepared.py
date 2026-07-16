@@ -19,6 +19,7 @@ import time
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,6 +75,30 @@ def _sha256(path: Path) -> str:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def test_binary_cross_interface_stability_can_omit_only_nonportable_change_time() -> None:
+    first = SimpleNamespace(st_size=23, st_mtime_ns=101, st_ctime_ns=202)
+    changed_creation_time = SimpleNamespace(st_size=23, st_mtime_ns=101, st_ctime_ns=303)
+
+    assert native_prepared_module._stable_file(
+        first,
+        changed_creation_time,
+        compare_change_time=False,
+    )
+    assert not native_prepared_module._stable_file(first, changed_creation_time)
+
+
+@pytest.mark.parametrize("changed_field", ("st_size", "st_mtime_ns"))
+def test_binary_cross_interface_stability_keeps_content_guards(changed_field: str) -> None:
+    first_values = {"st_size": 23, "st_mtime_ns": 101, "st_ctime_ns": 202}
+    second_values = first_values | {changed_field: first_values[changed_field] + 1}
+
+    assert not native_prepared_module._stable_file(
+        SimpleNamespace(**first_values),
+        SimpleNamespace(**second_values),
+        compare_change_time=False,
+    )
 
 
 def test_request_nonce_rejects_the_protocols_all_zero_sentinel(
