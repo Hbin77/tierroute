@@ -15,7 +15,7 @@ The retrospective ledger below covers the repository through merge commit `614a0
 human entrant may change a row to complete, in a later commit that records the entrant's
 explicit attestation after performing the review protocol in
 [maintainer-explainability.md](maintainer-explainability.md).
-The last row records the current governance PR outside that retrospective snapshot.
+Later rows record material assisted work outside that retrospective snapshot.
 
 ## Assistance boundary
 
@@ -23,7 +23,7 @@ The last row records the current governance PR outside that retrospective snapsh
 |---|---|
 | Service | OpenAI Codex coding agent; the current development environment identifies a GPT-5 basis |
 | Exact model revision | The exact historical model ID/checkpoint was not exposed or retained; no reproducible revision is claimed |
-| Period covered | Repository work on 2026-07-15 and 2026-07-16 through PR #16 |
+| Period covered | Repository work on 2026-07-15 and 2026-07-16 through PR #23 |
 | Material assistance | Requirement decomposition, implementation and refactoring proposals, test design, adversarial review, documentation drafting, local verification commands, and issue/branch/PR workflow |
 | Human-supplied decisions | Contest scope, architecture, package/license choices, one-shot default, LODO requirement, baseline set, offline/network prohibition, dependency policy, and approval gates |
 | Runtime role | None. Codex is not imported, packaged, called, or required by tierroute at build, training, evaluation, or inference time |
@@ -85,6 +85,7 @@ every owner walkthrough is **PENDING**.
 | [PR #16](https://github.com/Hbin77/tierroute/pull/16) | `614a018`; **REPO** | Complete replay-scope identity, immutable canonical snapshot, comparison/fold binding, and resource hardening | Python 3.10: 409 tests; Python 3.12: 408 tests plus one expected compatibility skip; dual CI and dependency-free wheel green | **PENDING** |
 | [PR #18](https://github.com/Hbin77/tierroute/pull/18) | PR and branch commits; **REPO** | This assistance ledger, explainability packet, submission draft, and future disclosure governance | Source/test/link audit and dual-Python locked verification are recorded in the PR; no named human review is claimed | **PENDING** |
 | [PR #22](https://github.com/Hbin77/tierroute/pull/22) | PR and branch commits; **REPO** | Predictor artifact resource-contract design, implementation, adversarial tests, documentation, debugging, and repository workflow | Pinned platform-local v1 predictor hashes; exact parser/snapshot boundary tests; Python 3.10: 447 tests; Python 3.12: 446 tests plus one expected compatibility skip; dual locked offline verification | **PENDING** |
+| [PR #23](https://github.com/Hbin77/tierroute/pull/23) | PR and branch commits; **REPO** | Replay JSON trust-boundary audit, finite limit design, implementation, adversarial tests, documentation, debugging, and repository workflow | Descriptor/UTF-8/parser/schema/collection/compound-training boundary tests; unchanged bundled-data SHA-256; Python 3.10: 530 tests; Python 3.12: 529 tests plus one expected compatibility skip; dual locked offline and dependency-free-wheel verification | **PENDING** |
 
 Future material AI-assisted changes must add or update one ledger row in the same PR.
 Pure typo or formatting changes may state the assistance in the PR without adding a

@@ -361,6 +361,12 @@ project and licensed Apache-2.0. The replay JSON schema is versioned (`schema_ve
 1`) and records tier specifications plus every candidate model's output, exact string
 cost, and quality for each prompt.
 
+All `--data` commands share one strict, bounded loader: stable regular-file reads,
+strict UTF-8/JSON, exact fields and primitive types, 256 MiB input, 100,000 examples,
+1,000,000 total outcomes, 1 MiB per prompt/output, and bounded outer/nested LODO work.
+There is no unlimited override. See the complete
+[version-1 schema, limits, and migration rule](docs/replay-json.md).
+
 ### RouterBench (optional and opt-in)
 
 RouterBench is not bundled. Its dataset card declares no license at the pinned revision,

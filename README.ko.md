@@ -340,6 +340,12 @@ domain-table은 의도대로 cheapest fallback, 즉 always-cheapest와 같아집
 Apache-2.0으로 배포합니다. replay JSON은 `schema_version: 1`이며 tier 명세와 각
 프롬프트에 대한 모든 후보 모델의 출력·문자열 비용·품질을 기록합니다.
 
+모든 `--data` 명령은 하나의 엄격하고 유한한 loader를 공유합니다. 안정된 regular-file
+읽기, strict UTF-8/JSON, 정확한 field·primitive type, 입력 256 MiB, example 100,000개,
+전체 outcome 1,000,000개, prompt/output 각각 1 MiB, outer/nested LODO 작업량 한도를
+강제하며 무제한 우회 옵션은 없습니다. 전체 계약과 공식 데이터 migration 규칙은
+[version-1 replay JSON 문서](docs/replay-json.md)에 있습니다.
+
 ### RouterBench(선택·opt-in)
 
 RouterBench는 저장소에 포함하지 않습니다. 고정 revision의 dataset card에 라이선스가

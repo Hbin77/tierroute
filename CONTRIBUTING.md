@@ -68,6 +68,15 @@ loading. Raise any limit only with measured parser/resource evidence, planned-sh
 headroom, and matching adversarial tests; do not change valid version-1 predictor bytes
 because policy artifacts bind their SHA-256.
 
+Replay JSON has a separate adapter-owned resource contract documented in
+`docs/replay-json.md`. Preserve its descriptor-stable regular-file read, pre-parser
+lexical limits, duplicate/nonstandard-number rejection, exact version-1 fields and
+types, collection/text bounds, outer/nested LODO amplification checks, and the reference
+trainer's plain/nested compound outcome-scan bounds. Do not add an environment or CLI
+bypass. If official data exceeds the contract, record authenticated shape measurements
+and use a reviewed constant change or a separate schema adapter with exact-limit and
+limit-plus-one tests.
+
 Runtime and tuning must share `route_from_predictions`, including its exact utility and
 tie-break order. An exhaustive lambda claim requires the full boundary/interval/tail
 candidate set. If a cap is used, stream roots into the deterministic bounded bottom-hash

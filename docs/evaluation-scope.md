@@ -81,8 +81,10 @@ Across one replay snapshot, metadata is additionally capped at 10,000,000 logica
 values and 256 MiB of encoded payload. The complete scope—including IDs, prompts,
 outputs, display names, costs, qualities, weights, and metadata—is capped at 1 GiB of
 logical encoded payload. Reusing one source object does not make repeated logical
-occurrences free. Prompts and outputs are hashed in full within this aggregate limit;
-the JSON adapter does not impose a separate prompt/output cap.
+occurrences free. Prompts and outputs are hashed in full within this aggregate limit.
+The earlier replay JSON boundary separately caps each prompt and output at 1 MiB before
+scope construction; direct typed callers remain governed by the complete scope limit.
+See the [replay JSON resource contract](replay-json.md).
 
 ## Comparison and derived-evidence contract
 
