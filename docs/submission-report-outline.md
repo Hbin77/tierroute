@@ -76,8 +76,11 @@ in [evaluation-scope.md](evaluation-scope.md). The intended novelty boundaries a
 
 Scope and artifact digests detect accidental or deliberate evidence mixing and make a
 replay identity reproducible. They are not, by themselves, proof of origin or
-authenticity. Authentication additionally requires a trusted pinned input checksum and
-the provenance fields in the corresponding evidence record.
+run authenticity. A pinned checksum verifies equality to an independently trusted
+expected byte sequence; provenance fields provide traceability but can be rewritten
+alongside recomputed digests. Origin and run authenticity require a separate trust
+anchor such as a signed release or attested CI evidence, neither of which an `I-*`
+digest claims by itself.
 
 ## Current implementation evidence baseline
 
@@ -176,7 +179,7 @@ flowchart LR
     LEDGER["Injected budget ledger<br/>scope owned by adapter"] -->|budget contract| REPLAY
     REPLAY -->|realized charge| LEDGER
     LEDGER -. remaining budget snapshot .-> STATE
-    REPLAY --> METRICS["Tier quality, exact cost evidence,<br/>per-query oracle-gap recovery"]
+    REPLAY --> METRICS["Tier quality, exact cost evidence,<br/>aggregate oracle-gap recovery<br/>against per-query oracle"]
 
     OFFICIAL["Official SKT data and scoring<br/>ORGANIZER-GATED"] -. license and schema pending .-> ADAPTER
     CASCADE["Cascade and sequence oracle<br/>ORGANIZER-GATED"] -. organizer-gated .-> POLICY
@@ -195,9 +198,10 @@ flowchart LR
   offline tests.
 - The implemented RouterBench preparation script uses a fixed revision and checksum
   outside runtime and does not redistribute the dataset. Its explicit
-  `--nested-lodo --acknowledge-noassertion` diagnostic authenticates the pinned bytes
-  and semantic scope, then runs the surface-only learned router and all six baselines
-  on one shared local evaluation scope. It emits provenance, configuration, and
+  `--nested-lodo --acknowledge-noassertion` diagnostic verifies the exact bytes and
+  decoded semantic digest against independently recorded constants, then runs the
+  surface-only learned router and all six baselines on one shared local evaluation
+  scope. It emits provenance, configuration, and
   completion evidence only; it publishes no metric, cost value, route, row, prompt,
   output, or prediction value and writes no converted dataset, prediction, learned
   model, or result artifact. RouterBench remains `NOASSERTION`, local-only, non-SKT,
