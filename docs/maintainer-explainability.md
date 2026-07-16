@@ -2,6 +2,8 @@
 
 # Maintainer explainability review
 
+[한국어 실행 워크시트](maintainer-explainability.ko.md)
+
 ## How to use this document
 
 This is the human review packet for contest-critical tierroute code. It is deliberately
@@ -10,9 +12,10 @@ and asks questions the entrant must answer in their own words. Reading this docu
 receiving a green CI result is not sign-off. The owner must trace the code, run the
 focused tests, perform a mutation drill, and complete the table at the end.
 
-The baseline snapshot for this first packet is merge commit `614a018`. Review the
-current commit instead if the code has moved, and record that exact commit in the
-sign-off table.
+The mutation walkthrough companion is pinned to merge commit
+`1426f3b4b89cf04254d992f35be7da15ee134202`. Review the current commit instead if the
+code has moved, and record that exact commit in the sign-off table. A green result on
+the pinned snapshot does not attest to later source changes.
 
 ## 1. Router contract and exact cost arithmetic
 
@@ -426,14 +429,15 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 
 | Boundary | Owner | Date | Reviewed commit | Status and notes |
 |---|---|---|---|---|
-| Router contract and exact costs | — | — | — | **Pending** |
-| Budget adapters, replay, and call evidence | — | — | — | **Pending** |
-| Complete evaluation-scope identity | — | — | — | **Pending** |
-| Metrics, learned-versus-six-baseline nested LODO, and showcase | — | — | — | **Pending** |
-| Features, ridge predictor, and calibration | — | — | — | **Pending** |
-| Exact lambda tuning and policy artifacts | — | — | — | **Pending** |
-| RouterBench hostile-data and local diagnostic boundary | — | — | — | **Pending** |
-| Atomic I/O, offline, build, and licenses | — | — | — | **Pending** |
+| Router contract and exact costs |  |  |  |  |
+| Budget adapters, replay, and call evidence |  |  |  |  |
+| Complete evaluation-scope identity |  |  |  |  |
+| Metrics, learned-versus-six-baseline nested LODO, and showcase |  |  |  |  |
+| Features, ridge predictor, and calibration |  |  |  |  |
+| Exact lambda tuning and policy artifacts |  |  |  |  |
+| RouterBench hostile-data and local diagnostic boundary |  |  |  |  |
+| Atomic I/O, offline, build, and licenses |  |  |  |  |
 
 Do not batch-mark these rows complete based only on the prose above. Each status is a
 claim about the entrant's present understanding and must remain independently auditable.
+Blank human-owned cells mean unsigned; automation must not populate them.

@@ -9,6 +9,10 @@ the public API is pre-1.0.
 
 ### Added
 
+- A Korean maintainer mutation walkthrough for the eight contest-critical boundaries,
+  with a pinned throwaway-worktree procedure, exact focused test nodes, blank human
+  records, and separate code/synthetic versus optional local-artifact RouterBench
+  evidence. The companion does not pre-fill or infer entrant sign-off.
 - An explicitly acknowledged, local-only RouterBench nested-LODO diagnostic that keeps
   the default prefix smoke entry point while suppressing its performance and cost
   values. The diagnostic deterministically selects 64 calibration and
