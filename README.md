@@ -458,8 +458,24 @@ Run `install-dev` only inside the project virtual environment; it removes the
 setuptools copy that some Python 3.10 `ensurepip` installations leave behind, then
 installs the audited lock with flit_core.
 
-`make reproduce` installs the exact development lock and runs the complete bundled-data
-pipeline, including training and artifact-backed routing. CI runs linting, tests, a
+Two locked, no-external-data reproduction lanes are available:
+
+```bash
+make reproduce-inference PYTHON=python  # fast: installed routing, evaluation, and demo
+make reproduce-training PYTHON=python   # complete: checks, tests, training, and routing
+```
+
+Both create an empty temporary Hugging Face cache and force offline mode. The fast lane
+skips `tierroute train` and the bilinear/lambda-policy training smoke; it exercises
+installed synthetic prediction, artifact loading, routing, evaluation, and the demo.
+Evaluation and demo still fit the required outer-LODO domain-table baseline. The
+complete lane additionally runs lint, SPDX, tests, license and install checks, then
+fits and consumes synthetic predictor and policy artifacts. `make reproduce` remains
+an alias for the complete lane. These targets install the pinned reviewed development
+packages but do not remove every unrelated distribution. Start from a fresh dedicated
+virtual environment so unrelated packages cannot contaminate the reproduction claim.
+
+CI runs linting, tests, a
 dependency-free wheel install, both CLI smoke paths, offline-mode checks, and a
 dependency-license gate. GPL-family dependencies are not accepted. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution and compliance checklist and
@@ -487,9 +503,12 @@ These decisions remain adapter- or configuration-local until official answers ar
 2. Does the official simulator permit sequential calls and selection from prior outputs?
    Cascade routing stays out of scope until confirmed.
 3. What license and redistribution terms govern SK Telecom data, and what are the
-   official Fast/Balanced/Premium weights? No SK Telecom data will be committed before
-   written license confirmation.
-4. Should a tierroute-trained ridge/bilinear-plus-isotonic predictor artifact be
+   official Fast/Balanced/Premium weights, cost units, hidden-data schema, and scoring
+   details? No SK Telecom data will be committed before written license confirmation.
+4. Are randomized expected-cost mixtures legal? The answer determines whether the
+   RouterBench Zero policy is a valid additional comparison, not one of the required
+   six baselines.
+5. Should a tierroute-trained ridge/bilinear-plus-isotonic predictor artifact be
    declared as an Appendix 2 type-3 self-developed model? Obtain the organizer's written
    interpretation before the final declaration; it is not external-model fine-tuning.
 

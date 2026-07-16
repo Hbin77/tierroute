@@ -103,27 +103,11 @@ jobs:
           test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
           echo "HF_HOME=$hf_home" >> "$GITHUB_ENV"
 
-      - name: Install exact development environment
-        run: |
-          python -m pip uninstall --yes setuptools
-          python -m pip install --no-deps --requirement requirements-dev.lock
-          python -m pip install --no-build-isolation --no-deps -e .
-          python -m pip check
+      - name: Reproduce fast installed-command path
+        run: make reproduce-inference PYTHON=python
 
-      - name: Run Ruff and SPDX checks
-        run: make lint spdx PYTHON=python
-
-      - name: Run tests offline
-        run: make test PYTHON=python
-
-      - name: Enforce dependency license allowlist
-        run: make licenses PYTHON=python
-
-      - name: Smoke-test the installed CLI offline
-        run: python scripts/smoke.py
-
-      - name: Smoke-test offline predictor/policy training and artifact routing
-        run: python scripts/training_smoke.py
+      - name: Reproduce complete training path
+        run: make reproduce-training PYTHON=python
 
       - name: Verify no model cache was populated
         run: test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"
