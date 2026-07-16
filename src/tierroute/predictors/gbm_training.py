@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from tierroute.eval import DomainFold, EvaluationExample, leave_one_domain_out
 from tierroute.features import EmbeddingProvider, PromptFeatureEncoder
@@ -19,16 +20,32 @@ from tierroute.predictors.calibration import (
     PerModelCalibratedQualityPredictor,
 )
 from tierroute.predictors.gbm import (
+    MAX_GBM_STUMPS_PER_MODEL,
     GbmModel,
     GbmQualityPredictor,
-    fit_gradient_boosted_stumps,
+    _fit_gradient_boosted_stumps,
 )
+from tierroute.predictors.resource_limits import MAX_PREDICTOR_MODELS
 
 GBM_ALGORITHM_ID = "tierroute-gradient-boosted-regression-stumps-v1"
-MAX_GBM_ESTIMATORS = 256
+MAX_GBM_ESTIMATORS = MAX_GBM_STUMPS_PER_MODEL
 MAX_GBM_TRAINING_CELLS = 2_000_000
 MAX_GBM_SPLIT_SCANS = 100_000_000
 MAX_GBM_TOTAL_STUMPS = 65_536
+
+
+def _config_float(value: object, name: str) -> float:
+    """Normalize one exact built-in number once to avoid stateful coercion."""
+
+    if type(value) not in (int, float):
+        raise ValueError(f"{name} must be a built-in real number")
+    try:
+        normalized = float(value)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(f"{name} must be finite") from error
+    if not math.isfinite(normalized):
+        raise ValueError(f"{name} must be finite")
+    return normalized
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,34 +62,18 @@ class GbmTrainingConfig:
     min_gain: float = 0.0
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.n_estimators, bool)
-            or not isinstance(self.n_estimators, int)
-            or not 1 <= self.n_estimators <= MAX_GBM_ESTIMATORS
-        ):
+        if type(self.n_estimators) is not int or not 1 <= self.n_estimators <= MAX_GBM_ESTIMATORS:
             raise ValueError(f"n_estimators must be an integer from 1 to {MAX_GBM_ESTIMATORS}")
-        if (
-            isinstance(self.learning_rate, bool)
-            or not isinstance(self.learning_rate, (int, float))
-            or not math.isfinite(float(self.learning_rate))
-            or not 0 < float(self.learning_rate) <= 1
-        ):
+        learning_rate = _config_float(self.learning_rate, "learning_rate")
+        if not 0 < learning_rate <= 1:
             raise ValueError("learning_rate must be finite and in (0, 1]")
-        if (
-            isinstance(self.min_samples_leaf, bool)
-            or not isinstance(self.min_samples_leaf, int)
-            or self.min_samples_leaf < 1
-        ):
+        if type(self.min_samples_leaf) is not int or self.min_samples_leaf < 1:
             raise ValueError("min_samples_leaf must be a positive integer")
-        if (
-            isinstance(self.min_gain, bool)
-            or not isinstance(self.min_gain, (int, float))
-            or not math.isfinite(float(self.min_gain))
-            or float(self.min_gain) < 0
-        ):
+        min_gain = _config_float(self.min_gain, "min_gain")
+        if min_gain < 0:
             raise ValueError("min_gain must be finite and non-negative")
-        object.__setattr__(self, "learning_rate", float(self.learning_rate))
-        object.__setattr__(self, "min_gain", float(self.min_gain))
+        object.__setattr__(self, "learning_rate", learning_rate)
+        object.__setattr__(self, "min_gain", min_gain)
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +127,11 @@ def preflight_gbm_fit(
             raise ValueError(f"{name} must be a positive integer")
     if not isinstance(config, GbmTrainingConfig):
         raise TypeError("config must be a GbmTrainingConfig")
+    if target_count > MAX_PREDICTOR_MODELS:
+        raise ValueError(
+            "GBM target catalogue exceeds the predictor limit "
+            f"({target_count:,} > {MAX_PREDICTOR_MODELS:,})"
+        )
     dense_cells = sample_count * feature_count
     if dense_cells > MAX_GBM_TRAINING_CELLS:
         raise ValueError(
@@ -223,7 +229,7 @@ def _fit_base(
         )
         for model_id in model_ids
     }
-    models = fit_gradient_boosted_stumps(
+    models = _fit_gradient_boosted_stumps(
         feature_rows,
         targets_by_model,
         example_ids=tuple(example.example_id for example in ordered),
@@ -299,7 +305,7 @@ def fit_calibrated_gbm(
     fitted = _fit_base(ordered, config, embedding_provider)
     return PerModelCalibratedQualityPredictor(
         base=fitted.predictor,
-        calibrators=calibrators,
+        calibrators=MappingProxyType(calibrators),
     )
 
 

@@ -181,6 +181,8 @@ def test_gbm_predictor_batches_embeddings_across_prompts_and_models() -> None:
     assert len(rows) == len(prompts)
     assert all(set(row) == set(model_ids) for row in rows)
     assert all(math.isfinite(value) for row in rows for value in row.values())
+    with pytest.raises(TypeError):
+        predictor.calibrators["swift"] = predictor.calibrators["swift"]  # type: ignore[index]
 
 
 def test_gbm_preflight_checks_exact_scan_boundary(
@@ -224,6 +226,42 @@ def test_gbm_preflight_rejects_before_embedding_provider_call(
         )
 
 
+def test_gbm_model_catalogue_limit_is_checked_before_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = RecordingEmbeddingProvider()
+    monkeypatch.setattr(gbm_training_module, "MAX_PREDICTOR_MODELS", 2)
+
+    with pytest.raises(ValueError, match="target catalogue"):
+        fit_calibrated_gbm(
+            load_evaluation_dataset().examples,
+            config=_small_config(),
+            embedding_provider=provider,
+        )
+
+    assert provider.calls == []
+
+
+def test_stateful_numeric_config_is_rejected_before_embedding() -> None:
+    class StatefulFloat(float):
+        values = iter((0.1, 0.1, math.inf))
+
+        def __float__(self) -> float:
+            return next(type(self).values)
+
+    provider = RecordingEmbeddingProvider()
+
+    with pytest.raises(ValueError, match="built-in real number"):
+        config = GbmTrainingConfig(learning_rate=StatefulFloat(0.1))
+        fit_calibrated_gbm(
+            load_evaluation_dataset().examples,
+            config=config,
+            embedding_provider=provider,
+        )
+
+    assert provider.calls == []
+
+
 def test_gbm_calibrated_work_is_aggregated_before_any_embedding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -247,6 +285,7 @@ def test_gbm_calibrated_work_is_aggregated_before_any_embedding(
         ({"n_estimators": True}, "n_estimators"),
         ({"learning_rate": 0}, "learning_rate"),
         ({"learning_rate": math.nan}, "learning_rate"),
+        ({"learning_rate": 10**10_000}, "learning_rate"),
         ({"min_samples_leaf": 0}, "min_samples_leaf"),
         ({"min_samples_leaf": True}, "min_samples_leaf"),
         ({"min_gain": -1}, "min_gain"),

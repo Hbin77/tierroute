@@ -6,6 +6,11 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
+
+from tierroute.predictors.resource_limits import MAX_PREDICTOR_MODELS
+
+MAX_GBM_STUMPS_PER_MODEL = 256
 
 
 def _finite_float(value: object, *, label: str) -> float:
@@ -106,12 +111,21 @@ class GbmModel:
         if not 0.0 < learning_rate <= 1.0:
             raise ValueError("learning_rate must be in (0, 1]")
         object.__setattr__(self, "learning_rate", learning_rate)
-        stumps = tuple(self.stumps)
-        if any(not isinstance(stump, RegressionStump) for stump in stumps):
-            raise TypeError("stumps must contain only RegressionStump values")
+        stumps: list[RegressionStump] = []
+        try:
+            for stump in self.stumps:
+                if len(stumps) >= MAX_GBM_STUMPS_PER_MODEL:
+                    raise ValueError(
+                        f"stumps exceed the per-model limit ({MAX_GBM_STUMPS_PER_MODEL:,})"
+                    )
+                if not isinstance(stump, RegressionStump):
+                    raise TypeError("stumps must contain only RegressionStump values")
+                stumps.append(stump)
+        except RuntimeError as error:
+            raise ValueError("stumps could not be read deterministically") from error
         if any(stump.feature_index >= self.feature_width for stump in stumps):
             raise ValueError("a stump feature index exceeds feature_width")
-        object.__setattr__(self, "stumps", stumps)
+        object.__setattr__(self, "stumps", tuple(stumps))
 
     def predict_features(self, features: Sequence[float]) -> float:
         """Score one finite feature row."""
@@ -154,20 +168,31 @@ class GbmQualityPredictor:
             raise TypeError("vectorizer must be callable")
         if self.batch_vectorizer is not None and not callable(self.batch_vectorizer):
             raise TypeError("batch_vectorizer must be callable or None")
-        if not isinstance(self.models, Mapping) or not self.models:
+        if not isinstance(self.models, Mapping):
             raise ValueError("models must be a non-empty mapping")
-        canonical: dict[str, GbmModel] = {}
-        if any(not isinstance(model_id, str) or not model_id for model_id in self.models):
-            raise ValueError("model IDs must be non-empty strings")
-        for model_id in sorted(self.models):
-            model = self.models[model_id]
-            if not isinstance(model, GbmModel):
-                raise TypeError("models must map IDs to GbmModel values")
-            canonical[model_id] = model
+        snapshot: dict[str, GbmModel] = {}
+        try:
+            for model_id, model in self.models.items():
+                if len(snapshot) >= MAX_PREDICTOR_MODELS:
+                    raise ValueError(
+                        f"models exceed the predictor limit ({MAX_PREDICTOR_MODELS:,})"
+                    )
+                if not isinstance(model_id, str) or not model_id:
+                    raise ValueError("model IDs must be non-empty strings")
+                if model_id in snapshot:
+                    raise ValueError("model IDs must be unique")
+                if not isinstance(model, GbmModel):
+                    raise TypeError("models must map IDs to GbmModel values")
+                snapshot[model_id] = model
+        except RuntimeError as error:
+            raise ValueError("models could not be read deterministically") from error
+        if not snapshot:
+            raise ValueError("models must be a non-empty mapping")
+        canonical = {model_id: snapshot[model_id] for model_id in sorted(snapshot)}
         widths = {model.feature_width for model in canonical.values()}
         if len(widths) != 1:
             raise ValueError("all GBM model heads must use the same feature width")
-        object.__setattr__(self, "models", canonical)
+        object.__setattr__(self, "models", MappingProxyType(canonical))
 
     @property
     def feature_width(self) -> int:
@@ -365,7 +390,7 @@ def _fit_model(
     )
 
 
-def fit_gradient_boosted_stumps(
+def _fit_gradient_boosted_stumps(
     feature_rows: Sequence[Sequence[float]],
     targets_by_model: Mapping[str, Sequence[float]],
     *,
@@ -375,15 +400,18 @@ def fit_gradient_boosted_stumps(
     min_samples_leaf: int,
     min_gain: float,
 ) -> dict[str, GbmModel]:
-    """Fit deterministic per-model squared-error GBM heads.
+    """Fit deterministic per-model squared-error GBM heads on preflighted input.
 
     Examples are canonically ordered by their unique IDs before any floating-point
     reduction.  Every boosting round fits a regression stump to the current
     residuals.  ``min_gain`` is the minimum unshrunk squared-error reduction; equal
-    gains choose the lower feature index and then the lower observed split value.
+    gains choose the lower feature index and then the lower observed split value. This
+    is a private raw primitive; the public trainer owns resource preflight.
     """
 
     n_estimators = _positive_integer(n_estimators, label="n_estimators")
+    if n_estimators > MAX_GBM_STUMPS_PER_MODEL:
+        raise ValueError(f"n_estimators exceeds the reviewed limit ({MAX_GBM_STUMPS_PER_MODEL:,})")
     min_samples_leaf = _positive_integer(min_samples_leaf, label="min_samples_leaf")
     learning_rate = _finite_float(learning_rate, label="learning_rate")
     if not 0.0 < learning_rate <= 1.0:

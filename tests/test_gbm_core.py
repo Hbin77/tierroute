@@ -10,7 +10,7 @@ from tierroute.predictors.gbm import (
     GbmModel,
     GbmQualityPredictor,
     RegressionStump,
-    fit_gradient_boosted_stumps,
+    _fit_gradient_boosted_stumps,
 )
 
 
@@ -26,7 +26,7 @@ def _fit(
 ) -> dict[str, GbmModel]:
     if ids is None:
         ids = tuple(f"e{index}" for index in range(len(rows)))
-    return fit_gradient_boosted_stumps(
+    return _fit_gradient_boosted_stumps(
         rows,
         targets,
         example_ids=ids,
@@ -214,6 +214,25 @@ def test_models_and_prediction_rows_must_share_a_valid_shape() -> None:
 
     with pytest.raises(ValueError, match="same feature width"):
         GbmQualityPredictor(lambda _: (0.0,), {"one": one_wide, "two": two_wide})
-    predictor = GbmQualityPredictor(lambda _: (0.0, 1.0), {"one": one_wide})
+    source_models = {"one": one_wide}
+    predictor = GbmQualityPredictor(lambda _: (0.0, 1.0), source_models)
+    source_models.clear()
+    assert predictor.feature_width == 1
+    with pytest.raises(TypeError):
+        predictor.models["other"] = one_wide  # type: ignore[index]
     with pytest.raises(ValueError, match="does not match expected width"):
         predictor.predict("prompt", "one")
+
+
+def test_direct_models_and_raw_rounds_have_hard_stump_limits() -> None:
+    stump = RegressionStump(0, 1.0, -1.0, 1.0)
+
+    with pytest.raises(ValueError, match="stumps exceed"):
+        GbmModel(
+            feature_width=1,
+            base_value=0.0,
+            learning_rate=0.1,
+            stumps=(stump,) * 257,
+        )
+    with pytest.raises(ValueError, match="n_estimators exceeds"):
+        _fit(((0.0,), (1.0,)), {"model": (0.0, 1.0)}, n_estimators=257)
