@@ -8,29 +8,31 @@ model, dataset, font, media asset, or CI action is added or upgraded.
 The core `tierroute` runtime has no third-party Python dependency. The pinned
 RouterBench artifact is decoded with the Python standard library; development tools are
 isolated from the offline routing path. Predictor training uses the project-owned
-standard-library centered-ridge solver and adds no distribution dependency. An
-experimental project-owned C11 training sidecar is source-only and optional; no native
-binary or compiler is part of the base wheel or routing runtime. The prepared
-nested-LODO graph, bounded in-memory feature-store/statistics reference, prepared
-moment solve, target-free feature shards, full admitted-width raw scoring, and their
-resource preflights use only the Python standard library. This execution slice adds no
-inventory item, model, dataset, binary, executable, or dependency; the tables below are
-unchanged. Its versioned digests identify in-memory canonical content but are not
-authentication or provenance proof, and the reference defines neither a persistent
-file format nor a native protocol. Its numeric work/storage estimate excludes Python
-objects, allocator overhead, caller-owned inputs, and other process memory and is not a
-peak-RSS or wall-time estimate.
+standard-library centered-ridge solver and adds no distribution dependency. Two
+experimental project-owned C11 sidecars are source-only and optional; no native binary
+or compiler is part of the base wheel or routing runtime. The prepared nested-LODO
+graph, bounded in-memory feature-store/statistics reference, prepared moment solve,
+target-free feature shards, full admitted-width raw scoring, authenticated file-backed
+store, and one-invocation prepared solve/score adapter use only the Python standard
+library plus the project-owned source below. The persistent/native slice adds no model,
+dataset, distributed binary, executable, or third-party dependency. Caller-pinned
+digests authenticate exact bytes against separately trusted expectations; they do not
+prove origin, provenance, toolchain behavior, or network absence. Resource estimates
+are admission accounting, not peak-RSS or wall-time estimates.
 
 ## Project-owned optional native source
 
 | Component | Version / checksum | License | Source | Purpose | Distribution |
 |---|---|---|---|---|---|
 | `native/tierroute_ridge.c` | protocol v1; SHA-256 `65ed92c3e0f6e4a0504110e41258268a68f127b0ed7401b301696d3d18a77261` | Apache-2.0 | https://github.com/Hbin77/tierroute | Experimental bounded dense centered-ridge training sidecar | Source distribution only; no executable in wheel or repository |
+| `native/tierroute_prepared.c` | `TRPSTO01`/`TRPSES01`/`TRPRES01` protocol v1; SHA-256 `3aafbe9f90e8db1258a87a16aed3c8dd3eaa1e570bc358bea7f1d173a4b569e0` | Apache-2.0 | https://github.com/Hbin77/tierroute | Experimental authenticated file-backed prepared nested-LODO moment solve and raw-score sidecar | Source distribution only; no executable in wheel or repository |
 
-The locally audited macOS executable is not distributed. Linux-musl and Windows-MSVC
-artifacts remain unapproved until their actual link/import evidence is recorded. System
-compilers are build-environment tools; an explicitly selected toolchain archive or a
-distributed executable would require a new SBOM and license-audit entry.
+No locally compiled executable is distributed. The earlier dense-ridge sidecar has
+separate platform evidence documented elsewhere; the new prepared-session candidate
+currently has local Darwin evidence only. Its macOS/Windows CI audits and all
+Linux-musl/Windows-MSVC release-artifact approvals remain pending. System compilers are
+build-environment tools; an explicitly selected toolchain archive or a distributed
+executable would require a new SBOM and license-audit entry.
 
 ## Build dependency
 
