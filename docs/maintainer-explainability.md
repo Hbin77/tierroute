@@ -12,8 +12,8 @@ and asks questions the entrant must answer in their own words. Reading this docu
 receiving a green CI result is not sign-off. The owner must trace the code, run the
 focused tests, perform a mutation drill, and complete the table at the end.
 
-The mutation walkthrough companion is pinned to merge commit
-`1426f3b4b89cf04254d992f35be7da15ee134202`. Review the current commit instead if the
+The mutation walkthrough companion is pinned to implementation snapshot commit
+`934aab6008b7c1a0a648b35ee74638175f6f4e18`. Review the current commit instead if the
 code has moved, and record that exact commit in the sign-off table. A green result on
 the pinned snapshot does not attest to later source changes.
 
@@ -201,19 +201,22 @@ Owner questions:
    retention and explain why neither that ratio nor mixed-tier cost has official
    sequence-budget meaning.
 
-## 5. Fitted features, ridge quality prediction, and calibration
+## 5. Fitted features, bilinear/GBM quality prediction, and calibration
 
-**Invariant.** Feature schema fitting, scaling, tag vocabulary, ridge coefficients,
-and isotonic calibration use training-side data only. Inner-LODO out-of-fold predictions
-fit calibration; the deployable predictor is then refit on all outer training rows.
-Artifacts are strict schema-bound JSON, and unknown schema/model/solver identities fail
-closed.
+**Invariant.** Feature schema fitting, scaling, tag vocabulary, ridge coefficients, GBM
+stumps, and isotonic calibration use training-side data only. Inner-LODO out-of-fold
+predictions fit calibration; the predictor is then refit on all outer training rows.
+Bilinear artifact v1 is strict schema-bound JSON, and unknown schema/model/solver
+identities fail closed. The GBM phase is in-memory only and has no artifact or CLI
+contract.
 
 - Core: [`features/encoding.py`](../src/tierroute/features/encoding.py),
   [`features/surface.py`](../src/tierroute/features/surface.py),
   [`features/embeddings.py`](../src/tierroute/features/embeddings.py),
   [`predictors/base.py`](../src/tierroute/predictors/base.py),
   [`predictors/training.py`](../src/tierroute/predictors/training.py),
+  [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py),
+  [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py),
   [`predictors/_ridge.py`](../src/tierroute/predictors/_ridge.py),
   [`predictors/solvers.py`](../src/tierroute/predictors/solvers.py),
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
@@ -222,6 +225,8 @@ closed.
 - Strongest evidence: [`test_feature_encoding.py`](../tests/test_feature_encoding.py),
   [`test_features_predictors.py`](../tests/test_features_predictors.py),
   [`test_bilinear_training.py`](../tests/test_bilinear_training.py),
+  [`test_gbm_core.py`](../tests/test_gbm_core.py),
+  [`test_gbm_training.py`](../tests/test_gbm_training.py),
   [`test_ridge_solver.py`](../tests/test_ridge_solver.py), and
   [`test_predictor_artifacts.py`](../tests/test_predictor_artifacts.py)
 - Design context: [lambda/training design](lambda-tuning.md)
@@ -239,6 +244,9 @@ Owner questions:
 5. What is implemented today at the embedding boundary? Explain that no inference
    provider or asset path is shipped, then name the revision, license, asset-manifest,
    and offline checks required before `bge-m3` can be claimed.
+6. For the GBM core, derive one residual update and split-gain calculation. Explain the
+   feature/split tie break, observed right-boundary rule, no-positive-gain early stop,
+   and why all inner/final work is preflighted before embedding.
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -380,7 +388,8 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Full-dimensional accelerated ridge | Reference solver rejects unaudited large work | Approved non-GPL backend, numerical parity, deterministic solver identity, SBOM, and issue #9 completion |
-| GBM comparison and SK Telecom data | Planned, not claimed | Data release plus written license/schema confirmation |
+| GBM artifact/CLI and matched family comparison | In-memory core only; no result | Separate artifact schema and a preregistered paired evaluation on identical folds/scope |
+| Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
 
 An owner must be able to distinguish every row above from implemented behavior. A
 planned interface or document is not evidence that a model, policy, or benchmark result
@@ -401,6 +410,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_benchmark.py tests/test_showcase.py \
   tests/test_feature_encoding.py \
   tests/test_features_predictors.py tests/test_bilinear_training.py \
+  tests/test_gbm_core.py tests/test_gbm_training.py \
   tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
   tests/test_lambda_tuning.py tests/test_lambda_policy_artifacts.py \
   tests/test_routerbench_adapter.py tests/test_validate_routerbench_script.py \
@@ -416,7 +426,8 @@ test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
 `reproduce-training` executes that fitting path. `reproduce-inference` intentionally
 does not invoke `tierroute benchmark` or `tierroute demo` and does not fit the bilinear
 predictor/lambda policy; its evaluation fits only the outer-training domain-table
-baseline.
+baseline. The in-memory GBM path is exercised by its pytest modules, not by a CLI smoke
+command.
 
 For each boundary, make one temporary local mutation that violates its stated
 invariant, run the named focused test, observe the expected failure, and restore the
@@ -433,7 +444,7 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 | Budget adapters, replay, and call evidence |  |  |  |  |
 | Complete evaluation-scope identity |  |  |  |  |
 | Metrics, learned-versus-six-baseline nested LODO, and showcase |  |  |  |  |
-| Features, ridge predictor, and calibration |  |  |  |  |
+| Features, ridge/GBM predictors, and calibration |  |  |  |  |
 | Exact lambda tuning and policy artifacts |  |  |  |  |
 | RouterBench hostile-data and local diagnostic boundary |  |  |  |  |
 | Atomic I/O, offline, build, and licenses |  |  |  |  |

@@ -15,9 +15,9 @@ The project is being developed for the student division of the 2026 Open Source
 Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge.”**
 It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
 quality and exact quote-error metrics, leakage-aware calibrated bilinear training,
-exact tier-lambda tuning, strict predictor/policy artifacts, and an external-data-free
-demo are implemented. The CLI selects a model but does **not** call an LLM or return a
-model completion.
+an in-memory deterministic GBM reference trainer, exact tier-lambda tuning, strict v1
+bilinear-predictor/policy artifacts, and an external-data-free demo are implemented.
+The CLI selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
 
@@ -124,6 +124,23 @@ Training and inference use no third-party numerical package. A project-owned,
 deterministic centered-ridge Cholesky solver fits every model target against one shared
 factorization and leaves the intercept unregularized. The resulting surface-feature
 artifact is strict canonical JSON and records the solver ID used to produce it:
+
+The commands below remain bilinear-only. The phase-1 GBM API is in-memory only: it has
+no versioned artifact, train/route/benchmark CLI integration, matched comparison, or
+performance result.
+
+```python
+from tierroute.adapters import load_evaluation_dataset
+from tierroute.predictors import GbmTrainingConfig, fit_calibrated_gbm
+
+examples = load_evaluation_dataset().examples
+predictor = fit_calibrated_gbm(examples, config=GbmTrainingConfig())
+model_ids = tuple(model.model_id for model in examples[0].candidate_models)
+scores = predictor.predict_many("Explain why binary search is logarithmic.", model_ids)
+```
+
+This bundled-data call is a deterministic wiring demonstration, not a measured
+predictive-quality result.
 
 ```bash
 tierroute train --output artifacts/synthetic-bilinear.json --json
@@ -256,8 +273,12 @@ solver, and unknown IDs still fail closed.
 - A fitted surface-feature schema (log-scaled counts, code/math signals, and
   prompt-derived domain tags), project-owned deterministic centered-ridge fitting,
   inner-LODO out-of-fold predictions, and separate isotonic calibration per model.
-- Canonical, strictly validated JSON predictor artifacts; pickle is never accepted for
-  predictor loading. Reads, parsing, serialization, saving, and policy hashing share a
+- Dependency-free squared-error gradient boosting with deterministic regression
+  stumps, one ensemble per model, stable ordering and tie-breaking, conservative
+  pre-embedding resource guards, inner-LODO out-of-fold prediction, and per-model
+  isotonic calibration. Synthetic tests establish algorithm wiring only.
+- Canonical, strictly validated JSON bilinear predictor artifacts v1; pickle is never
+  accepted for predictor loading. Reads, parsing, serialization, saving, and policy hashing share a
   32 MiB UTF-8 limit. Version-1 structure is capped at 4,096 models, training domains,
   and feature tags; 16,384 total feature dimensions; 1,000,000 numeric scalars; 640
   characters per JSON number; 4 KiB per metadata value; and 1 MiB aggregate metadata.
@@ -302,8 +323,9 @@ solver, and unknown IDs still fail closed.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
 
 Without `--artifact`, the no-download CLI uses a transparent synthetic demo predictor.
-A local `bge-m3` embedding backend and GBM-versus-bilinear experiment remain planned;
-they are not represented as finished features.
+The deterministic GBM core is library-only. A local `bge-m3` embedding backend, GBM
+artifacts/CLI integration, and a matched GBM-versus-bilinear experiment remain planned.
+No predictor-family superiority claim is made.
 
 ## Router contract and architecture
 
@@ -342,7 +364,7 @@ prompt ─> fitted feature encoder ─> calibrated predictor ─> policy <─ bu
 
 core/        stable state, action, model, and validation contracts
 features/    offline surface features, fitted schema, local embedding contract
-predictors/  bilinear trainer, per-model calibration, strict JSON artifacts
+predictors/  bilinear training/artifacts, in-memory deterministic GBM, calibration
 policies/    exact one-shot lambda policy, tuning/artifacts, required baselines
 eval/        replay, accounting protocol, metrics, planning, and LODO
 adapters/    budget-scope and external-dataset uncertainty boundaries

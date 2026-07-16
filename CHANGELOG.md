@@ -9,6 +9,11 @@ the public API is pre-1.0.
 
 ### Added
 
+- A dependency-free, deterministic squared-error GBM core using per-model
+  regression-stump ensembles, explicit ordering and tie rules, conservative
+  pre-embedding work limits, inner-LODO out-of-fold fitting, and per-model isotonic
+  calibration. This phase is library-only and synthetic-test-only; it adds no artifact
+  or CLI path, matched comparison, or performance claim.
 - A Korean maintainer mutation walkthrough for the eight contest-critical boundaries,
   with a pinned throwaway-worktree procedure, exact focused test nodes, blank human
   records, and separate code/synthetic versus optional local-artifact RouterBench
@@ -161,7 +166,9 @@ the public API is pre-1.0.
   accounting, after the organizer confirms the official budget semantics.
 - Add a GPL-family-free accelerated ridge backend with numerical parity and resource
   evidence before the full-dimensional bge-m3 experiment.
-- Train and compare a calibrated GBM against the bilinear predictor on licensed data.
+- Add a separately versioned GBM artifact and explicit CLI integration.
+- Compare calibrated GBM and bilinear predictors on identical nested-LODO folds and
+  licensed data without selecting a winner on the same evaluation evidence.
 - Add a local-only inference backend for the pinned MIT-licensed bge-m3 revision.
 - Connect official SK Telecom data and scoring only after its schema, weights, and
   redistribution terms are confirmed.
