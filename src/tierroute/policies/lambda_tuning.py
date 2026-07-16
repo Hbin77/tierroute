@@ -62,6 +62,123 @@ _BINARY64_DIFFERENCE_NUMERATOR_DECIMAL_DIGITS = 632
 _BINARY64_DIFFERENCE_DENOMINATOR_DECIMAL_DIGITS = 324
 
 
+@dataclass(frozen=True, slots=True)
+class LambdaSearchPreflightEstimate:
+    """Conservative, deterministic resource bounds for one lambda search.
+
+    ``pair_scan_occurrences`` describes one logical scan of every candidate-model
+    pair. A caller that invokes multiple search/preflight stages can multiply or sum
+    that count to account for its concrete implementation traversals. Candidate and
+    artifact bounds already include every requested tier for this one search.
+    """
+
+    example_count: int
+    tier_count: int
+    model_count: int
+    domain_count: int
+    max_candidates_per_tier: int | None
+    pair_scan_occurrences: int
+    unequal_cost_pair_occurrences: int
+    derived_candidate_upper_bound: int
+    candidate_upper_bound: int
+    utility_evaluation_upper_bound: int
+    maximum_cost_fraction_digits: int
+    maximum_root_numerator_digits: int
+    maximum_root_denominator_digits: int
+    maximum_candidate_fraction_characters: int
+    metadata_bytes: int
+    estimated_peak_bytes: int
+    estimated_policy_artifact_bytes: int
+
+    def __post_init__(self) -> None:
+        positive_fields = (
+            "example_count",
+            "tier_count",
+            "model_count",
+            "domain_count",
+            "derived_candidate_upper_bound",
+            "candidate_upper_bound",
+            "utility_evaluation_upper_bound",
+            "maximum_cost_fraction_digits",
+            "maximum_root_numerator_digits",
+            "maximum_root_denominator_digits",
+            "maximum_candidate_fraction_characters",
+            "metadata_bytes",
+            "estimated_peak_bytes",
+            "estimated_policy_artifact_bytes",
+        )
+        nonnegative_fields = (
+            "pair_scan_occurrences",
+            "unequal_cost_pair_occurrences",
+        )
+        for field_name in (*positive_fields, *nonnegative_fields):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{field_name} must be an integer")
+            if field_name in positive_fields and value < 1:
+                raise ValueError(f"{field_name} must be positive")
+            if field_name in nonnegative_fields and value < 0:
+                raise ValueError(f"{field_name} must be non-negative")
+        if self.max_candidates_per_tier is not None:
+            if isinstance(self.max_candidates_per_tier, bool) or not isinstance(
+                self.max_candidates_per_tier, int
+            ):
+                raise TypeError("max_candidates_per_tier must be an integer or None")
+            if self.max_candidates_per_tier < 2:
+                raise ValueError("max_candidates_per_tier must be at least two")
+        if self.domain_count > self.example_count:
+            raise ValueError("domain_count cannot exceed example_count")
+        expected_pair_scans = self.example_count * self.model_count * (self.model_count - 1) // 2
+        if self.pair_scan_occurrences != expected_pair_scans:
+            raise ValueError("pair_scan_occurrences is inconsistent")
+        if self.unequal_cost_pair_occurrences > self.pair_scan_occurrences:
+            raise ValueError("unequal_cost_pair_occurrences cannot exceed pair_scan_occurrences")
+        if self.derived_candidate_upper_bound != 2 * (self.unequal_cost_pair_occurrences + 1):
+            raise ValueError("derived_candidate_upper_bound is inconsistent")
+        expected_candidates = (
+            self.derived_candidate_upper_bound
+            if self.max_candidates_per_tier is None
+            else min(self.derived_candidate_upper_bound, self.max_candidates_per_tier)
+        )
+        if self.candidate_upper_bound != expected_candidates:
+            raise ValueError("candidate_upper_bound is inconsistent")
+        if self.utility_evaluation_upper_bound != (
+            self.candidate_upper_bound * self.tier_count * self.example_count * self.model_count
+        ):
+            raise ValueError("utility_evaluation_upper_bound is inconsistent")
+        if self.maximum_cost_fraction_digits < 2:
+            raise ValueError("maximum_cost_fraction_digits must be at least two")
+        root_characters = self.maximum_root_numerator_digits + self.maximum_root_denominator_digits
+        midpoint_characters = (
+            self.maximum_root_numerator_digits + 3 * self.maximum_root_denominator_digits + 2
+        )
+        tail_characters = (
+            max(
+                self.maximum_root_numerator_digits,
+                self.maximum_root_denominator_digits,
+            )
+            + self.maximum_root_denominator_digits
+            + 1
+        )
+        if self.maximum_candidate_fraction_characters != max(
+            2,
+            root_characters,
+            midpoint_characters,
+            tail_characters,
+        ):
+            raise ValueError("maximum_candidate_fraction_characters is inconsistent")
+        candidate_fraction_digits = 8 * self.maximum_cost_fraction_digits + 2_050
+        fraction_payload_bytes = (candidate_fraction_digits * 4 + 8) // 9
+        expected_peak_bytes = self.candidate_upper_bound * (2 * fraction_payload_bytes + 576)
+        if self.estimated_peak_bytes != expected_peak_bytes:
+            raise ValueError("estimated_peak_bytes is inconsistent")
+        expected_artifact_bytes = (self.candidate_upper_bound + 1) * self.tier_count * (
+            self.maximum_candidate_fraction_characters + 64
+        ) + self.metadata_bytes
+        if self.estimated_policy_artifact_bytes != expected_artifact_bytes:
+            raise ValueError("estimated_policy_artifact_bytes is inconsistent")
+
+
 def _quality_fraction(value: int | float) -> Fraction:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError("predicted and realized quality values must be real numbers")
@@ -123,7 +240,7 @@ def _validate_search_size(
     *,
     max_candidates_per_tier: int | None,
     allow_large_exhaustive: bool,
-) -> None:
+) -> LambdaSearchPreflightEstimate:
     """Reject an unacknowledged exact search before roots are materialized.
 
     One unequal-cost model pair can contribute at most one non-negative root. If there
@@ -145,9 +262,6 @@ def _validate_search_size(
             raise TypeError("max_candidates_per_tier must be an integer or None")
         if max_candidates_per_tier < 2:
             raise ValueError("max_candidates_per_tier must be at least two")
-    if allow_large_exhaustive:
-        return
-
     pair_scan_occurrences = 0
     unequal_cost_pair_occurrences = 0
     maximum_cost_fraction_digits = 2
@@ -245,10 +359,11 @@ def _validate_search_size(
     # hard 8 MiB artifact failure before predictor fitting; callers can acknowledge a
     # reviewed conservative false positive through the same Python API escape hatch.
     metadata_bytes = 64 * 1024
+    domains = {example.domain for example in examples}
     try:
         metadata_bytes += sum(
             len(json.dumps(domain, ensure_ascii=False).encode("utf-8")) + 1
-            for domain in sorted({example.domain for example in examples})
+            for domain in sorted(domains)
         )
     except UnicodeEncodeError as error:
         raise ValueError("evaluation domains must contain valid Unicode text") from error
@@ -256,14 +371,33 @@ def _validate_search_size(
     estimated_policy_artifact_bytes = (candidate_upper_bound + 1) * len(tier_specs) * (
         maximum_candidate_fraction_characters + 64
     ) + metadata_bytes
-    if (
+    estimate = LambdaSearchPreflightEstimate(
+        example_count=len(examples),
+        tier_count=len(tier_specs),
+        model_count=model_count,
+        domain_count=len(domains),
+        max_candidates_per_tier=max_candidates_per_tier,
+        pair_scan_occurrences=pair_scan_occurrences,
+        unequal_cost_pair_occurrences=unequal_cost_pair_occurrences,
+        derived_candidate_upper_bound=derived_candidate_upper_bound,
+        candidate_upper_bound=candidate_upper_bound,
+        utility_evaluation_upper_bound=utility_evaluation_upper_bound,
+        maximum_cost_fraction_digits=maximum_cost_fraction_digits,
+        maximum_root_numerator_digits=maximum_root_numerator_digits,
+        maximum_root_denominator_digits=maximum_root_denominator_digits,
+        maximum_candidate_fraction_characters=maximum_candidate_fraction_characters,
+        metadata_bytes=metadata_bytes,
+        estimated_peak_bytes=estimated_peak_bytes,
+        estimated_policy_artifact_bytes=estimated_policy_artifact_bytes,
+    )
+    if allow_large_exhaustive or (
         pair_scan_occurrences <= MAX_UNCONFIRMED_BREAKPOINT_PAIR_SCANS
         and candidate_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_CANDIDATES
         and utility_evaluation_upper_bound <= MAX_UNCONFIRMED_EXHAUSTIVE_UTILITY_EVALUATIONS
         and estimated_peak_bytes <= MAX_UNCONFIRMED_EXHAUSTIVE_ESTIMATED_BYTES
         and estimated_policy_artifact_bytes <= MAX_POLICY_ARTIFACT_BYTES
     ):
-        return
+        return estimate
     search_kind = "exhaustive" if max_candidates_per_tier is None else "bounded"
     raise ValueError(
         f"{search_kind} lambda search refused before candidate materialization or fitting: "
@@ -289,13 +423,30 @@ def preflight_lambda_search(
     *,
     max_candidates_per_tier: int | None,
     allow_large_exhaustive: bool = False,
-) -> None:
+) -> LambdaSearchPreflightEstimate:
     """Refuse an unacknowledged bounded or exhaustive workload before fitting."""
+
+    return estimate_lambda_search(
+        examples,
+        tier_specs,
+        max_candidates_per_tier=max_candidates_per_tier,
+        allow_large_exhaustive=allow_large_exhaustive,
+    )
+
+
+def estimate_lambda_search(
+    examples: Sequence[EvaluationExample],
+    tier_specs: Sequence[TierSpec],
+    *,
+    max_candidates_per_tier: int | None,
+    allow_large_exhaustive: bool = False,
+) -> LambdaSearchPreflightEstimate:
+    """Return deterministic bounds, refusing unacknowledged oversized searches."""
 
     ordered = _ordered_examples(examples)
     specs = _tier_specs(tier_specs)
     model_ids = _model_ids(ordered)
-    _validate_search_size(
+    return _validate_search_size(
         ordered,
         specs,
         len(model_ids),
@@ -309,10 +460,10 @@ def preflight_exhaustive_lambda_search(
     tier_specs: Sequence[TierSpec],
     *,
     allow_large_exhaustive: bool = False,
-) -> None:
+) -> LambdaSearchPreflightEstimate:
     """Compatibility wrapper for an uncapped exact-search preflight."""
 
-    preflight_lambda_search(
+    return preflight_lambda_search(
         examples,
         tier_specs,
         max_candidates_per_tier=None,
