@@ -195,7 +195,8 @@ the public API is pre-1.0.
   primitive-subclass, and oversized-work tests lock these boundaries.
 - Human-readable CLI output escapes terminal control, bidi-formatting, surrogate, and
   line-separator code points from replay-derived names, prompts, IDs, reasons, and paths.
-  JSON output remains machine-escaped by the JSON serializer.
+  JSON remains structurally serialized for machine consumers and intentionally bypasses
+  the human terminal renderer.
 - Replay JSON now uses one descriptor-stable, bounded regular-file reader and a lexical
   preflight before strict JSON parsing. Duplicate/unknown/missing fields, nonstandard or
   overflowing numbers, implicit primitive coercions, invalid Unicode, oversized text,
