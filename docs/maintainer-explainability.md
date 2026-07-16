@@ -274,6 +274,39 @@ Owner questions:
 licensing. A user-triggered preparation step downloads one pinned artifact. Validation
 checks size and SHA before a non-dispatching decoder accepts only the exact reviewed
 pickle/data shape; runtime never calls `pickle.load`, pandas, or user-defined globals.
+The downloader rejects symlink/non-regular destinations, owns an unpredictable
+same-directory `0600` staging inode, checks that inode before atomic replacement, and
+re-authenticates the installed path. Cleanup never intentionally removes a different
+inode owned by another invocation.
+The default prefix replay remains a smoke check. The separate nested-LODO diagnostic
+requires `--nested-lodo --acknowledge-noassertion`. Human output begins with `LOCAL
+OPTIONAL VALIDATION — NON-OFFICIAL, NON-REPORTABLE`, while JSON carries the same exact
+string in a required warning field. The path performs no network or file writes and
+publishes no performance result.
+
+**Diagnostic design.** A digest framed from pinned revision, normalized domain, and
+`sample_id` ranks rows independently of prompt, output, quality, and cost. Each of the
+seven pinned domains contributes exactly 64 calibration rows and the next 8 evaluation
+rows; evaluation returns to source order. Calibration-only per-model maximum charges
+become fixed pre-call quotes, and every evaluation charge must fit its quote before any
+fit. Sorted quote minimum/median/maximum mechanically define three diagnostic budgets
+with weights `0.5`/`0.3`/`0.2`; they are not official tier definitions. A surface-only
+bilinear predictor (no `bge-m3`) and all six baselines share the 56-row evaluation scope.
+Nested LODO governs quality-predictor fitting, lambda tuning, learned replay, and the
+domain-table baseline, with a disclosed approximate lambda cap of 32 candidates per
+tier. The fixed quote/tier calibration pool is separate from evaluation but spans all
+seven domains, so the complete diagnostic is not an end-to-end domain-shift claim.
+
+Only aggregate provenance, structure, configuration, and completion evidence may reach
+human or JSON output. Prompts, outputs, `sample_id` values, row decisions, performance,
+realized-cost, and oracle-gap results remain suppressed, and no converted data,
+features, predictions, learned artifact, redirected output, or result belongs in Git.
+Benchmark internals receive deterministic source-order surrogate IDs, and the CLI emits
+a fixed path/row-free failure envelope rather than reflecting exception text or a
+traceback.
+The source row grain is `sample_id`; duplicated prompt text, domain imbalance, and
+heterogeneous upstream evaluators are reasons this diagnostic cannot be described as a
+RouterBench paper reproduction, SKT data, an official score, or reportable evidence.
 
 - Core: [`adapters/routerbench.py`](../src/tierroute/adapters/routerbench.py),
   [`download_routerbench.py`](../scripts/download_routerbench.py), and
@@ -290,7 +323,20 @@ Owner questions:
 3. Distinguish artifact SHA, decoded semantic SHA, and evaluation data/replay/scope hashes.
 4. Why does an MIT code repository not establish a license for the separate dataset?
 5. How are checksum-before-decode and same-file/path-replacement hazards handled, and
-   why must quoted candidate costs remain separate from realized RouterBench charges?
+   how do unpredictable staging names, inode checks, and post-install authentication
+   prevent concurrent or substituted staging content from being accepted? Why must
+   quoted candidate costs remain separate from realized RouterBench charges?
+6. Why is membership ranked only from revision, normalized domain, and `sample_id`, and
+   why must mutations to prompt, quality, cost, or output leave membership unchanged?
+7. Why use exactly 64 calibration plus 8 evaluation rows per domain, restore evaluation
+   source order, and reject duplicate IDs or an incomplete seven-domain population?
+8. Why is a calibration maximum a safer quote than a mean, and why must all evaluation
+   charges be preflighted before predictor fitting?
+9. Why are min/median/max quote budgets, weights, surface-only features, and the
+   32-candidate lambda cap diagnostic configuration rather than contest claims, and why
+   does global all-domain quote calibration prevent an end-to-end domain-shift claim?
+10. Which fields may the human/JSON output expose, which data-derived materials must
+    remain local, and why do domain/evaluator limitations rule out paper reproduction?
 
 ## 8. Atomic files, offline operation, build, and license compliance
 
@@ -386,7 +432,7 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 | Metrics, learned-versus-six-baseline nested LODO, and showcase | — | — | — | **Pending** |
 | Features, ridge predictor, and calibration | — | — | — | **Pending** |
 | Exact lambda tuning and policy artifacts | — | — | — | **Pending** |
-| RouterBench hostile-data boundary | — | — | — | **Pending** |
+| RouterBench hostile-data and local diagnostic boundary | — | — | — | **Pending** |
 | Atomic I/O, offline, build, and licenses | — | — | — | **Pending** |
 
 Do not batch-mark these rows complete based only on the prose above. Each status is a

@@ -37,9 +37,36 @@ jobs:
           python -m pip install --no-deps pip==26.1.2
           python -m pip install --no-deps flit_core==3.12.0
           python -m pip wheel --no-build-isolation --no-deps --wheel-dir "$wheelhouse" .
+          python -c 'import sys; from flit_core.buildapi import build_sdist; build_sdist(sys.argv[1])' "$wheelhouse"
           python -m venv "$clean_venv"
           wheel="$(find "$wheelhouse" -maxdepth 1 -name 'tierroute-*.whl' -print -quit)"
+          sdist="$(find "$wheelhouse" -maxdepth 1 -name 'tierroute-*.tar.gz' -print -quit)"
           test -n "$wheel"
+          test -n "$sdist"
+          python - "$wheel" "$sdist" <<'PY'
+          import sys
+          import tarfile
+          import zipfile
+
+          wheel, sdist = sys.argv[1:]
+          with zipfile.ZipFile(wheel) as archive:
+              wheel_names = archive.namelist()
+          with tarfile.open(sdist, "r:gz") as archive:
+              sdist_names = archive.getnames()
+
+          def forbidden(name: str) -> bool:
+              normalized = "/" + name.replace("\\", "/").lower().strip("/")
+              return (
+                  "/data/routerbench/" in normalized
+                  or normalized.endswith("/data/routerbench")
+                  or "/artifacts/routerbench/" in normalized
+                  or normalized.endswith("/artifacts/routerbench")
+                  or normalized.endswith((".pkl", ".part"))
+              )
+
+          offenders = [name for name in (*wheel_names, *sdist_names) if forbidden(name)]
+          assert not offenders, f"forbidden external/derived data in release archives: {offenders}"
+          PY
           "$clean_venv/bin/python" -m pip install --no-deps "$wheel"
           "$clean_venv/bin/python" -m pip check
           echo "TIERROUTE_CLEAN_VENV=$clean_venv" >> "$GITHUB_ENV"
