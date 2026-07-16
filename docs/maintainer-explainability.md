@@ -103,7 +103,7 @@ Owner questions:
 4. Why are custom mappings, numeric subclasses, cycles, and repeated logical payloads
    rejected or bounded before routing?
 
-## 4. Metrics and leakage-free learned-versus-baseline evaluation
+## 4. Metrics, leakage-free benchmarking, and the stream showcase
 
 **Invariant.** Reportable learned-policy validation uses true nested
 leave-one-domain-out splits: predictor fitting, calibration, and lambda tuning remain
@@ -111,19 +111,28 @@ inside each outer training side. The domain-table baseline is also fitted only o
 side and can read only an explicit pre-call metadata tag, not the split label. The
 learned router and all six policies replay the same original row order and per-query
 ledger scope. Scores, exact cost evidence, and oracle-gap recovery are derived again
-from bound reports rather than trusted as stored numbers.
+from bound reports rather than trusted as stored numbers. The three-step showcase
+directly replays the same outer-fold learned policies and must agree with the nested
+result; its running values remain presentation diagnostics outside the full benchmark.
 
 - Core: [`eval/metrics.py`](../src/tierroute/eval/metrics.py),
   [`eval/planning.py`](../src/tierroute/eval/planning.py),
   [`eval/validation.py`](../src/tierroute/eval/validation.py), and
   [`policies/baselines.py`](../src/tierroute/policies/baselines.py), with orchestration in
   [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py)
-  and [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py)
+  and [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py). The presentation
+  boundary is [`showcase.py`](../src/tierroute/showcase.py)
 - Strongest evidence: [`test_metrics.py`](../tests/test_metrics.py),
   [`test_validation.py`](../tests/test_validation.py),
   [`test_policies.py`](../tests/test_policies.py), and
   [`test_baseline_evaluation.py`](../tests/test_baseline_evaluation.py), plus the
-  learned-versus-baseline contract in [`test_benchmark.py`](../tests/test_benchmark.py)
+  learned-versus-baseline contract in [`test_benchmark.py`](../tests/test_benchmark.py),
+  showcase invariants in [`test_showcase.py`](../tests/test_showcase.py), and human/JSON
+  CLI coverage in [`test_cli.py`](../tests/test_cli.py)
+- Smoke-lane evidence: inference-only commands in
+  [`scripts/smoke.py`](../scripts/smoke.py), training-backed benchmark/showcase in
+  [`scripts/training_smoke.py`](../scripts/training_smoke.py), and the public target
+  contract in [`test_reproduction_contract.py`](../tests/test_reproduction_contract.py)
 - Design context: [literature and novelty review](literature-and-novelty.md) and
   [README evaluation section](../README.md#evaluation)
 
@@ -144,6 +153,31 @@ supplying `--data` owns the license and the validity of any empirical or competi
 claim. Cumulative and cascade reports remain gated on official sequence semantics and a
 sequence-level oracle.
 
+The separate presentation commands are:
+
+```bash
+tierroute demo
+tierroute demo --json
+```
+
+They select exactly three bundled synthetic rows, one each at Fast, Balanced, and
+Premium. Each row is directly replayed as one example and one tier through
+`OfflineSimulator` using the learned/tuned policy fitted on its outer training side;
+the result must equal that row/tier in the nested learned report. Each step exposes its
+illustrative budget, quote, realized charge, observed quality, independent per-query
+oracle quality, running realized cost, and unweighted running retention. The retention
+formula is `sum(observed) / sum(independent per-query oracle)`. Its denominator is not a
+sequence-level oracle, and the ratio is not oracle-gap recovery. The mixed-tier running
+cost is also reporting-only, not shared or cumulative budget accounting. All inputs and
+values are project-authored synthetic wiring evidence. The full learned and six-baseline
+populations remain in `tierroute benchmark`, outside this three-row stream.
+The JSON contract is `tierroute-routing-stream-showcase` version 1: `stream.steps`
+contains the curated rows, `accounting` states the interpretation boundaries,
+`stream.totals` conserves the displayed values, and `benchmark_evidence` carries the
+separate full-population learned-plus-six-baseline report. The bundled steps end at a
+reporting-only realized-cost sum of `1.8` and an unweighted retention of `1/1`; those
+fixture values are wiring assertions, not performance claims.
+
 Owner questions:
 
 1. Write the tier-weighted quality and oracle-gap recovery formulas, including when
@@ -159,6 +193,10 @@ Owner questions:
 6. Why does true nested LODO refit the predictor, calibrator, and lambda inside every
    outer training side, and what do the compact fold-membership digests bind without
    publishing raw example IDs? What do they not authenticate?
+7. Trace one showcase row from its outer-fold learned router through the direct
+   one-example/one-tier replay and nested-result equality check. Derive its running
+   retention and explain why neither that ratio nor mixed-tier cost has official
+   sequence-budget meaning.
 
 ## 5. Fitted features, ridge quality prediction, and calibration
 
@@ -311,7 +349,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_budgets.py tests/test_simulator.py tests/test_json_dataset.py \
   tests/test_eval_provenance.py tests/test_eval_schemas.py tests/test_metrics.py \
   tests/test_validation.py tests/test_policies.py tests/test_baseline_evaluation.py \
-  tests/test_benchmark.py \
+  tests/test_benchmark.py tests/test_showcase.py \
   tests/test_feature_encoding.py \
   tests/test_features_predictors.py tests/test_bilinear_training.py \
   tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
@@ -325,10 +363,11 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
 ```
 
-`make verify` reaches the benchmark through `training-smoke`, and
+`make verify` reaches the benchmark and showcase through `training-smoke`, and
 `reproduce-training` executes that fitting path. `reproduce-inference` intentionally
-does not invoke `tierroute benchmark` or fit the bilinear predictor/lambda policy; its
-evaluation and demo fit only the outer-training domain-table baseline.
+does not invoke `tierroute benchmark` or `tierroute demo` and does not fit the bilinear
+predictor/lambda policy; its evaluation fits only the outer-training domain-table
+baseline.
 
 For each boundary, make one temporary local mutation that violates its stated
 invariant, run the named focused test, observe the expected failure, and restore the
@@ -344,7 +383,7 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 | Router contract and exact costs | — | — | — | **Pending** |
 | Budget adapters, replay, and call evidence | — | — | — | **Pending** |
 | Complete evaluation-scope identity | — | — | — | **Pending** |
-| Metrics and learned-versus-six-baseline nested LODO | — | — | — | **Pending** |
+| Metrics, learned-versus-six-baseline nested LODO, and showcase | — | — | — | **Pending** |
 | Features, ridge predictor, and calibration | — | — | — | **Pending** |
 | Exact lambda tuning and policy artifacts | — | — | — | **Pending** |
 | RouterBench hostile-data boundary | — | — | — | **Pending** |
