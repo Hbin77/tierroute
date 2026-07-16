@@ -316,10 +316,16 @@ after the child process starts; pre-authentication filesystem I/O and request
 serialization are bounded by byte ceilings but are not covered by that child timeout.
 
 This dense sidecar alone does not make the reportable full RouterBench run feasible:
-the current nested path would still repeat feature work and 301 fits. Full training
-with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total features)
-remains gated on a prepared training session that reuses domain sufficient statistics
-and batched scores, plus audited Linux-musl and Windows-MSVC artifacts. tierroute will
+the current nested path still repeats feature work and 301 fits. An experimental
+[prepared graph contract](docs/prepared-session-graph.md) now proves that the
+seven-domain nested-evaluation graph contains 63 unique base-training subsets,
+154 subset/domain score blocks, and `22N` scored-row memberships, and it preflights a
+binary64 modeled-buffer and dominant-numeric-work estimate before enumeration. It does
+not execute or cache any feature, fit, or score, and the estimate is not a peak-memory
+or complete-work bound. Full training with the planned 1,024-dimensional
+bge-m3 embedding (up to 1,036 total features) remains gated on the corresponding
+authenticated feature store, sufficient-statistics and batched-score implementation,
+end-to-end parity, plus audited Linux-musl and Windows-MSVC artifacts. tierroute will
 not silently reduce or discard embedding dimensions. The reference path keeps its
 conservative operation guard, static reviewed solver ID, pre-embedding preflight, and
 unknown-ID rejection; inference remains dependency-free because it uses only stored

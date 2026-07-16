@@ -2,7 +2,7 @@
 
 # Software Bill of Materials
 
-Last audited: 2026-07-16. Update this file in the same commit whenever a dependency,
+Last audited: 2026-07-17. Update this file in the same commit whenever a dependency,
 model, dataset, font, media asset, or CI action is added or upgraded.
 
 The core `tierroute` runtime has no third-party Python dependency. The pinned
@@ -10,7 +10,9 @@ RouterBench artifact is decoded with the Python standard library; development to
 isolated from the offline routing path. Predictor training uses the project-owned
 standard-library centered-ridge solver and adds no distribution dependency. An
 experimental project-owned C11 training sidecar is source-only and optional; no native
-binary or compiler is part of the base wheel or routing runtime.
+binary or compiler is part of the base wheel or routing runtime. The prepared
+nested-LODO graph and resource preflight use only the Python standard library and add
+no inventory item, protocol implementation, model, dataset, or executable.
 
 ## Project-owned optional native source
 
