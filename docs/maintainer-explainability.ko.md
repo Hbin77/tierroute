@@ -12,7 +12,7 @@ worktree에서 제시된 변이를 한 번씩 수행한 뒤, 복구와 테스트
 확인해야 한다.
 
 이 실습의 기준 소스는 구현 스냅샷 커밋
-`934aab6008b7c1a0a648b35ee74638175f6f4e18`다. 소스가 바뀌면 현재 검토한 정확한
+`c6491508533655baa76c7b50bfdadacbc1612e60`다. 소스가 바뀌면 현재 검토한 정확한
 커밋으로 절차와 변이를 다시 감사하고, 서명 표에는 그 커밋을 기록한다.
 기준 스냅샷의 성공은 이후 소스 변경을 인증하지 않는다.
 
@@ -69,7 +69,7 @@ venv, 빈 Hugging Face cache, 테스트 임시 디렉터리를 만든다. 현재
 set -euo pipefail
 repo="$(git rev-parse --show-toplevel)"
 test -z "$(git -C "$repo" status --porcelain=v1 --untracked-files=all)"
-review_commit="934aab6008b7c1a0a648b35ee74638175f6f4e18"
+review_commit="c6491508533655baa76c7b50bfdadacbc1612e60"
 git -C "$repo" cat-file -e "$review_commit^{commit}"
 
 review_root="$(mktemp -d "${TMPDIR:-/tmp}/tierroute-explain.XXXXXX")"

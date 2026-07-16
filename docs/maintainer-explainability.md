@@ -13,7 +13,7 @@ receiving a green CI result is not sign-off. The owner must trace the code, run 
 focused tests, perform a mutation drill, and complete the table at the end.
 
 The mutation walkthrough companion is pinned to implementation snapshot commit
-`934aab6008b7c1a0a648b35ee74638175f6f4e18`. Review the current commit instead if the
+`c6491508533655baa76c7b50bfdadacbc1612e60`. Review the current commit instead if the
 code has moved, and record that exact commit in the sign-off table. A green result on
 the pinned snapshot does not attest to later source changes.
 
