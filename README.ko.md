@@ -634,9 +634,10 @@ CI는 lint, 테스트, 의존성 없는 wheel
 
 개발 보조 도구의 실질적 사용 범위, 증거의 한계, 사람 검토 상태는
 [docs/ai-assistance-audit.md](docs/ai-assistance-audit.md)에 기록합니다. 핵심 불변식별
-설명·실패 경로 검토 자료와 참가자 서명 표는
-[docs/maintainer-explainability.md](docs/maintainer-explainability.md)에 있습니다. CI와
-AI 에이전트 리뷰는 자동화 증거이며 참가자의 사람 검토 서명을 대신하지 않습니다.
+설명·실패 경로 검토와 8개 임시 변이 실습, 참가자 서명 표는
+[한국어 유지관리자 실행 워크시트](docs/maintainer-explainability.ko.md)에 있습니다.
+[영문 원본](docs/maintainer-explainability.md)도 같은 경계와 서명 표를 유지합니다. CI와 AI
+에이전트 리뷰는 자동화 증거이며 참가자의 사람 검토 서명을 대신하지 않습니다.
 
 ## Open questions
 
