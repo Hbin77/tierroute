@@ -26,7 +26,12 @@ Python 3.10 or newer is required. From a fresh checkout:
 ```bash
 cd tierroute
 python -m venv .venv
-source .venv/bin/activate
+```
+
+Activate it with `. .venv/bin/activate` in a POSIX-compatible shell or
+`.\.venv\Scripts\Activate.ps1` in Windows PowerShell, then install:
+
+```bash
 python -m pip install -e .
 ```
 
