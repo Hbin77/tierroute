@@ -22,6 +22,7 @@ from tierroute.eval import (
     summarize_report,
 )
 from tierroute.policies import (
+    BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM,
     BASELINE_NAMES,
     LodoSixBaselineEvaluation,
     evaluate_per_query_lodo_baselines,
@@ -106,6 +107,15 @@ def test_six_baselines_share_one_original_order_outer_lodo_population() -> None:
 
     assert evaluation.accounting_scope == "per-query"
     assert evaluation.example_ids == expected_ids
+    assert (
+        evaluation.cheap_model_id,
+        evaluation.premium_model_id,
+        evaluation.strong_model_id,
+        evaluation.random_seed,
+        evaluation.character_threshold,
+    ) == ("cheap", "premium", "strong", 2026, 20)
+    assert evaluation.baseline_config_evidence_algorithm == BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM
+    assert len(evaluation.baseline_config_evidence_sha256) == 64
     assert tuple(result.name for result in evaluation.baselines) == BASELINE_NAMES
     assert {fold.held_out_domain for fold in evaluation.folds} == {
         "split-a",
@@ -369,6 +379,33 @@ def test_seeded_random_decisions_do_not_depend_on_replay_order() -> None:
     backward = _evaluate(tuple(reversed(examples)))
 
     assert _selected_models(forward, "random") == _selected_models(backward, "random")
+
+
+def test_baseline_parameters_are_validated_before_replay() -> None:
+    with pytest.raises(TypeError, match="random_seed"):
+        evaluate_per_query_lodo_baselines(
+            _interleaved_examples(),
+            SPECS,
+            PerQueryBudgetLedger,
+            premium_model_id="premium",
+            strong_model_id="strong",
+            random_seed=True,  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError, match="character_threshold"):
+        evaluate_per_query_lodo_baselines(
+            _interleaved_examples(),
+            SPECS,
+            PerQueryBudgetLedger,
+            premium_model_id="premium",
+            strong_model_id="strong",
+            character_threshold=20.5,  # type: ignore[arg-type]
+        )
+
+    evaluation = _evaluate(_interleaved_examples())
+    with pytest.raises(ValueError, match="replay config evidence"):
+        replace(evaluation, random_seed=7)
+    with pytest.raises(ValueError, match="replay config evidence"):
+        replace(evaluation, character_threshold=21)
 
 
 def test_guard_wraps_replay_ledgers_even_if_factory_changes_after_preflight() -> None:

@@ -103,26 +103,46 @@ Owner questions:
 4. Why are custom mappings, numeric subclasses, cycles, and repeated logical payloads
    rejected or bounded before routing?
 
-## 4. Metrics and leakage-free six-baseline evaluation
+## 4. Metrics and leakage-free learned-versus-baseline evaluation
 
-**Invariant.** Reportable validation uses deterministic leave-one-domain-out splits.
-The domain table is fitted only on the outer training side and can read only an
-explicit pre-call metadata tag, not the split label. All six policies replay the same
-original row order and per-query ledger scope. Scores, exact cost evidence, and
-oracle-gap recovery are derived again from bound reports rather than trusted as stored
-numbers.
+**Invariant.** Reportable learned-policy validation uses true nested
+leave-one-domain-out splits: predictor fitting, calibration, and lambda tuning remain
+inside each outer training side. The domain-table baseline is also fitted only on that
+side and can read only an explicit pre-call metadata tag, not the split label. The
+learned router and all six policies replay the same original row order and per-query
+ledger scope. Scores, exact cost evidence, and oracle-gap recovery are derived again
+from bound reports rather than trusted as stored numbers.
 
 - Core: [`eval/metrics.py`](../src/tierroute/eval/metrics.py),
   [`eval/planning.py`](../src/tierroute/eval/planning.py),
   [`eval/validation.py`](../src/tierroute/eval/validation.py), and
   [`policies/baselines.py`](../src/tierroute/policies/baselines.py), with orchestration in
   [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py)
+  and [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py)
 - Strongest evidence: [`test_metrics.py`](../tests/test_metrics.py),
   [`test_validation.py`](../tests/test_validation.py),
   [`test_policies.py`](../tests/test_policies.py), and
-  [`test_baseline_evaluation.py`](../tests/test_baseline_evaluation.py)
+  [`test_baseline_evaluation.py`](../tests/test_baseline_evaluation.py), plus the
+  learned-versus-baseline contract in [`test_benchmark.py`](../tests/test_benchmark.py)
 - Design context: [literature and novelty review](literature-and-novelty.md) and
   [README evaluation section](../README.md#evaluation)
+
+The report-shaped CLI is:
+
+```bash
+tierroute benchmark --budget-scope per-query [--data path/to/replay.json] [--json]
+```
+
+It requires the learned report and every baseline to share one
+`EvaluationScopeIdentity` and publishes per-fold train/test counts plus a versioned
+digest binding the held-out domain and exact ordered memberships, not raw example IDs.
+The membership digest is a compact reproducibility identity, not authenticated proof.
+The same JSON records tier weights and limits, resolved baseline roles and algorithm
+parameters, their versioned config-to-replay-decision evidence digest, and requested
+lambda-search resource controls. The bundled synthetic replay is wiring-only. A caller
+supplying `--data` owns the license and the validity of any empirical or competition
+claim. Cumulative and cascade reports remain gated on official sequence semantics and a
+sequence-level oracle.
 
 Owner questions:
 
@@ -136,6 +156,9 @@ Owner questions:
    bad fold partitions, duplicate table keys, or unknown fold models?
 5. Name all six baseline policies and explain the seeded random identity, length
    threshold/ties, unseen-domain fallback, and the oracle's privileged-label boundary.
+6. Why does true nested LODO refit the predictor, calibrator, and lambda inside every
+   outer training side, and what do the compact fold-membership digests bind without
+   publishing raw example IDs? What do they not authenticate?
 
 ## 5. Fitted features, ridge quality prediction, and calibration
 
@@ -288,6 +311,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_budgets.py tests/test_simulator.py tests/test_json_dataset.py \
   tests/test_eval_provenance.py tests/test_eval_schemas.py tests/test_metrics.py \
   tests/test_validation.py tests/test_policies.py tests/test_baseline_evaluation.py \
+  tests/test_benchmark.py \
   tests/test_feature_encoding.py \
   tests/test_features_predictors.py tests/test_bilinear_training.py \
   tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
@@ -300,6 +324,11 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   make verify PYTHON=python
 test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
 ```
+
+`make verify` reaches the benchmark through `training-smoke`, and
+`reproduce-training` executes that fitting path. `reproduce-inference` intentionally
+does not invoke `tierroute benchmark` or fit the bilinear predictor/lambda policy; its
+evaluation and demo fit only the outer-training domain-table baseline.
 
 For each boundary, make one temporary local mutation that violates its stated
 invariant, run the named focused test, observe the expected failure, and restore the
@@ -315,7 +344,7 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 | Router contract and exact costs | — | — | — | **Pending** |
 | Budget adapters, replay, and call evidence | — | — | — | **Pending** |
 | Complete evaluation-scope identity | — | — | — | **Pending** |
-| Metrics and six-baseline outer LODO | — | — | — | **Pending** |
+| Metrics and learned-versus-six-baseline nested LODO | — | — | — | **Pending** |
 | Features, ridge predictor, and calibration | — | — | — | **Pending** |
 | Exact lambda tuning and policy artifacts | — | — | — | **Pending** |
 | RouterBench hostile-data boundary | — | — | — | **Pending** |

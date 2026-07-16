@@ -27,6 +27,7 @@ def test_runtime_commands_never_open_a_socket(
 
     assert main(["route", "offline prompt", "--tier", "fast", "--json"]) == 0
     assert main(["evaluate", "--json"]) == 0
+    assert main(["benchmark", "--budget-scope", "per-query", "--json"]) == 0
     assert main(["demo"]) == 0
     artifact = tmp_path / "predictor.json"
     policy = tmp_path / "policy.json"

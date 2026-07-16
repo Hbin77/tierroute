@@ -30,21 +30,25 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-Run one routing decision, all six replay baselines, and the combined demo:
+Run one routing decision, all six replay baselines, the learned-versus-baseline
+benchmark, and the combined demo:
 
 ```bash
 tierroute route "Prove that sqrt(2) is irrational." --tier fast
 tierroute evaluate
+tierroute benchmark --budget-scope per-query
 tierroute demo
 ```
 
 The equivalent module entry point is `python -m tierroute`. Machine-readable output
-is available for `route`, `evaluate`, and `train` with `--json`; a compatible versioned
-replay JSON can be supplied to evaluation:
+is available for `route`, `evaluate`, `benchmark`, and `train` with `--json`; a
+compatible versioned replay JSON can be supplied to evaluation and benchmarking:
 
 ```bash
 tierroute route "Debug this Python function" --tier balanced --json
 tierroute evaluate --data src/tierroute/data/synthetic.json --json
+tierroute benchmark --budget-scope per-query \
+  --data src/tierroute/data/synthetic.json --json
 HF_HUB_OFFLINE=1 tierroute demo
 ```
 
@@ -53,9 +57,9 @@ HF_HUB_OFFLINE=1 tierroute demo
 outcomes and adds per-tier and cross-tier `cost_evidence` for the calls that replay
 actually executed. Neither command makes a live provider call.
 
-The bundled prompts, costs, outputs, predicted qualities, and scorecard are
-project-authored **synthetic smoke-test values**. They verify wiring and are not a
-benchmark result, an empirical model comparison, or a competition score.
+The bundled prompts, costs, outputs, predicted qualities, scorecard, and benchmark
+rows are project-authored **synthetic smoke-test values**. They verify wiring and are
+not a benchmark result, an empirical model comparison, or a competition score.
 
 ### Offline predictor and policy training
 
@@ -123,14 +127,39 @@ A policy trained with `--budget-scope cumulative` can be routed only when the ca
 also supplies the current exact state with `--remaining-budget`. This command does not
 invent an initial balance or silently reuse a per-query assumption.
 
-Use `--data path/to/replay.json` on both commands for another version-1 replay dataset.
-The bundled-data command proves fit/save/load/route wiring only. It does not produce a
-reportable benchmark result. The CLI fits deployment artifacts on all supplied rows;
-both isotonic calibration and lambda selection use out-of-fold predictions. Reportable
-experiments must instead use `nested_lodo_lambda_evaluation`: each outer training side
-gets its own inner-LODO lambda fit and full-training predictor refit, and only the
-untouched outer domain is scored. All outer predictions are then replayed once in the
-original global order so cumulative accounting is not reset between folds.
+Use `--data path/to/replay.json` on training and benchmark commands for another
+version-1 replay dataset. The `train` command fits deployment artifacts on all supplied
+rows; both isotonic calibration and lambda selection use out-of-fold predictions. It
+does not produce a reportable benchmark result.
+
+Use the dedicated benchmark runner for leakage-free learned-versus-baseline evidence:
+
+```bash
+tierroute benchmark --budget-scope per-query
+tierroute benchmark --budget-scope per-query \
+  --data path/to/replay.json --json
+```
+
+The command performs true nested LODO: each outer training side gets its own inner-LODO
+out-of-fold predictions and lambda tuning, then a predictor refit on that complete
+outer-training side; only the untouched outer domain is scored. It then replays the
+learned router and all six canonical baselines once over the identical original-order
+population under the same `PerQueryBudgetLedger` and `EvaluationScopeIdentity`. JSON
+output includes counts and a versioned SHA-256 digest binding the held-out domain and
+exact ordered train/test membership instead of disclosing raw example IDs. This is a
+compact reproducibility identity, not authenticated proof. It also records tier budget
+limits and weights, resolved baseline roles/seeds/thresholds/rule identities, and the
+requested lambda-search cap or exhaustive override so the weighted result is
+independently reproducible from the replay. A separate versioned SHA-256 evidence
+digest binds the baseline parameters to the exact ordered call decisions they produced.
+The command runs offline and accepts only `--budget-scope per-query`. Cumulative
+benchmarking and cascade claims remain gated until the organizer confirms sequence-level
+budget and call-history semantics and tierroute implements a sequence-level oracle.
+
+Running this command with the bundled synthetic data proves benchmark wiring only. It
+is not empirical evidence. With `--data`, the caller is responsible for the replay
+data's license and for the validity of any benchmark or competition claim derived from
+the output.
 
 The built-in solver is an auditable reference backend for the surface schema and
 modest matrices, with complexity `O(n*d^2 + d^3)`. A reportable full RouterBench run
@@ -199,6 +228,9 @@ solver, and unknown IDs still fail closed.
   supported.
 - True nested LODO orchestration keeps every outer domain out of predictor fitting,
   calibration, and lambda tuning.
+- A report-shaped per-query benchmark CLI compares that nested-LODO learned router
+  against all six baselines on one identical evaluation scope and publishes compact,
+  versioned outer-fold membership digests.
 - A per-query outer-LODO six-baseline suite fits every domain table on its outer
   training side, records fold evidence, and replays all methods once on the same
   original-order rows. A live guard verifies that the actual ledger used by every
@@ -331,6 +363,16 @@ The six-baseline constructor then recomputes every score, realized total, quote 
 and oracle-gap value from its own reports; mixed or stale rows fail closed. JSON and
 text CLI output expose the scope algorithm, digest, and `max_calls_per_query`.
 
+`tierroute benchmark --budget-scope per-query` adds the calibrated bilinear one-shot
+router through true nested LODO, then compares it with those same six baseline reports.
+The learned report and every baseline must carry the identical evaluation-scope
+identity, tier specifications, query order, and per-query accounting evidence. Each
+outer fold records training/test counts and a
+`tierroute-fold-membership-sha256-v1` digest over its held-out domain and exact ordered
+memberships; the CLI does not expose the underlying example IDs. This digest is compact
+reproducibility evidence, not an authenticated signature. Cumulative and cascade
+evaluation remain gated as described above.
+
 The scope digest is an accidental-mix and reproducibility identity, not an authenticated
 signature. It excludes router actions so different policies remain comparable. Ledger
 implementation semantics cannot be hashed safely; the metric layer separately compares
@@ -445,6 +487,7 @@ ruff format --check .
 HF_HUB_OFFLINE=1 pytest
 tierroute route "offline smoke" --tier fast
 tierroute evaluate
+tierroute benchmark --budget-scope per-query
 tierroute demo
 tierroute train --output artifacts/synthetic-bilinear.json --json
 tierroute route "artifact smoke" --artifact artifacts/synthetic-bilinear.json --json
@@ -466,14 +509,17 @@ make reproduce-training PYTHON=python   # complete: checks, tests, training, and
 ```
 
 Both create an empty temporary Hugging Face cache and force offline mode. The fast lane
-skips `tierroute train` and the bilinear/lambda-policy training smoke; it exercises
-installed synthetic prediction, artifact loading, routing, evaluation, and the demo.
-Evaluation and demo still fit the required outer-LODO domain-table baseline. The
-complete lane additionally runs lint, SPDX, tests, license and install checks, then
-fits and consumes synthetic predictor and policy artifacts. `make reproduce` remains
-an alias for the complete lane. These targets install the pinned reviewed development
-packages but do not remove every unrelated distribution. Start from a fresh dedicated
-virtual environment so unrelated packages cannot contaminate the reproduction claim.
+skips `tierroute train`, `tierroute benchmark`, and all bilinear/lambda-policy fitting;
+it exercises installed synthetic prediction, artifact loading, routing, evaluation,
+and the demo. Evaluation and demo still fit the required outer-LODO domain-table
+baseline, but do not fit the learned predictor. The complete lane additionally runs
+lint, SPDX, tests, license and install checks, then its training smoke fits and consumes
+synthetic predictor/policy artifacts and executes the nested-LODO benchmark. Thus
+benchmark training runs only in `training-smoke`/`reproduce-training`, not the inference
+lane. `make reproduce` remains an alias for the complete lane. These targets install
+the pinned reviewed development packages but do not remove every unrelated
+distribution. Start from a fresh dedicated virtual environment so unrelated packages
+cannot contaminate the reproduction claim.
 
 CI runs linting, tests, a
 dependency-free wheel install, both CLI smoke paths, offline-mode checks, and a

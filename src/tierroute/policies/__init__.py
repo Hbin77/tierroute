@@ -2,6 +2,7 @@
 """Routing policies and baselines."""
 
 from tierroute.policies.baseline_evaluation import (
+    BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM,
     BASELINE_NAMES,
     BaselineResult,
     DomainTableEntry,
@@ -16,6 +17,14 @@ from tierroute.policies.baselines import (
     LengthHeuristicRouter,
     OracleRouter,
     RandomRouter,
+)
+from tierroute.policies.benchmark import (
+    FOLD_MEMBERSHIP_HASH_ALGORITHM,
+    BenchmarkBaselineConfig,
+    BenchmarkLambdaSearchConfig,
+    OuterFoldMembershipDigest,
+    PerQueryNestedLodoBenchmark,
+    evaluate_per_query_bilinear_benchmark,
 )
 from tierroute.policies.lambda_artifacts import (
     LAMBDA_NUMERIC_CONVENTION,
@@ -49,12 +58,16 @@ from tierroute.policies.lambda_tuning import (
 )
 
 __all__ = [
+    "BASELINE_CONFIG_EVIDENCE_HASH_ALGORITHM",
     "BASELINE_NAMES",
+    "FOLD_MEMBERSHIP_HASH_ALGORITHM",
     "LAMBDA_NUMERIC_CONVENTION",
     "LAMBDA_POLICY_ARTIFACT_VERSION",
     "AlwaysCheapestRouter",
     "AlwaysPremiumRouter",
     "BaselineResult",
+    "BenchmarkBaselineConfig",
+    "BenchmarkLambdaSearchConfig",
     "CrossFittedPredictionTable",
     "DomainBestRouter",
     "DomainTableEntry",
@@ -68,6 +81,8 @@ __all__ = [
     "OracleRouter",
     "OuterFoldBaselineEvidence",
     "OuterFoldLambdaResult",
+    "OuterFoldMembershipDigest",
+    "PerQueryNestedLodoBenchmark",
     "RandomRouter",
     "TierLambdaSelection",
     "TierLambdaTuningResult",
@@ -76,6 +91,7 @@ __all__ = [
     "as_lambda",
     "cross_fitted_prediction_table",
     "derive_lambda_candidate_set",
+    "evaluate_per_query_bilinear_benchmark",
     "evaluate_per_query_lodo_baselines",
     "exact_lambda_candidates",
     "fit_tiered_lambda_router_for_fold",
