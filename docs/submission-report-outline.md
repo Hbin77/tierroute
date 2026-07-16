@@ -97,7 +97,8 @@ commit and rerun every cited check before using any record in the final report.
 | `I-ACCOUNT-129A230` | Offline replay separates quoted and realized charges and conserves executed-call ledger evidence | [`eval/simulator.py`](../src/tierroute/eval/simulator.py), [`eval/budgets.py`](../src/tierroute/eval/budgets.py), [`eval/schemas.py`](../src/tierroute/eval/schemas.py) | [`test_simulator.py`](../tests/test_simulator.py), [`test_budgets.py`](../tests/test_budgets.py), [`test_eval_schemas.py`](../tests/test_eval_schemas.py) | Per-query and cumulative adapters are distinct; official budget scope remains gated |
 | `I-SCOPE-129A230` | Learned router and six baselines use an identical, versioned, digest-bound evaluation-scope identity and fail closed on mismatch | [`eval/provenance.py`](../src/tierroute/eval/provenance.py), [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_eval_provenance.py`](../tests/test_eval_provenance.py), [`test_baseline_evaluation.py`](../tests/test_baseline_evaluation.py), [`test_benchmark.py`](../tests/test_benchmark.py) | Scope digests detect mismatch; they do not authenticate an untrusted dataset |
 | `I-PREDICTOR-129A230` | Surface-feature bilinear quality fitting uses training-side ridge and per-model isotonic calibration inside nested/outer LODO orchestration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_bilinear_training.py`](../tests/test_bilinear_training.py), [`test_features_predictors.py`](../tests/test_features_predictors.py), [`test_benchmark.py`](../tests/test_benchmark.py) | This proves leakage-control wiring on the cited replay, not predictive gain on official data |
-| `I-GBM-C649150` | Dependency-free per-model squared-error regression-stump boosting uses deterministic split/tie rules, immutable bounded state, pre-embedding work/catalogue guards, inner-LODO OOF predictions, and per-model isotonic calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) at `c649150` | [`test_gbm_core.py`](../tests/test_gbm_core.py), [`test_gbm_training.py`](../tests/test_gbm_training.py), [PR #41 CI run `29490146160`](https://github.com/Hbin77/tierroute/actions/runs/29490146160) | This proves deterministic, leakage-controlled library wiring only; no artifact, CLI, matched comparison, or predictive-gain evidence |
+| `I-GBM-C649150` | Dependency-free per-model squared-error regression-stump boosting uses deterministic split/tie rules, immutable bounded state, pre-embedding work/catalogue guards, inner-LODO OOF predictions, and per-model isotonic calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) at `c649150` | [`test_gbm_core.py`](../tests/test_gbm_core.py), [`test_gbm_training.py`](../tests/test_gbm_training.py), [PR #41 CI run `29490146160`](https://github.com/Hbin77/tierroute/actions/runs/29490146160) | This proves deterministic, leakage-controlled in-memory wiring only; no artifact, deployment CLI, or predictive-gain evidence |
+| `I-PAIR-3E20792` | Fixed surface-only bilinear and GBM families are estimated on identical nested-LODO evidence after a complete pre-fit GBM-work guard; one shared six-baseline object and raw `GBM - bilinear` global/domain deltas are emitted in machine-readable JSON with family selection and performance claims disabled | [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) hardened through `786c418`, [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py) implemented at `63df628` and hardened at `786c418`, [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) identity-hardened at `b307684`, [`cli.py`](../src/tierroute/cli.py) implemented at `3e20792` and hardened at `db12ff8` | [`test_gbm_training.py`](../tests/test_gbm_training.py), [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py), [`test_predictor_comparison_cli.py`](../tests/test_predictor_comparison_cli.py), [PR #43](https://github.com/Hbin77/tierroute/pull/43) | Descriptive paired estimation is not unbiased family selection and supplies no official-data, superiority, quality-gain, or savings result |
 | `I-POLICY-129A230` | Each fixed-lambda decision uses exact arithmetic; tuning records whether retained candidates are exhaustive or approximate | [`policies/lambda_threshold.py`](../src/tierroute/policies/lambda_threshold.py), [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py), [`policies/lambda_artifacts.py`](../src/tierroute/policies/lambda_artifacts.py) | [`test_policies.py`](../tests/test_policies.py), [`test_lambda_tuning.py`](../tests/test_lambda_tuning.py), [`test_lambda_policy_artifacts.py`](../tests/test_lambda_policy_artifacts.py) | Exact decisions do not make a truncated candidate search exhaustive or globally optimal |
 | `I-OFFLINE-129A230` | The base wheel has no runtime dependency, shipped built-in runtime paths pass with networking denied, and CI audits licenses plus wheel/sdist data exclusion | [`ci.yml`](../.github/workflows/ci.yml), [`SBOM.md`](../SBOM.md), [`check_licenses.py`](../scripts/check_licenses.py) | [`test_offline_runtime.py`](../tests/test_offline_runtime.py), [`test_license_gate.py`](../tests/test_license_gate.py), [`test_package.py`](../tests/test_package.py), CI run `29483000949` | Package installation can require pre-cached or fetched build/dev wheels; the no-network claim begins after installation |
 
@@ -134,10 +135,11 @@ optimization over every policy.
 | Offline replay with exact quote/realized-cost evidence | `IMPLEMENTED` | `I-ACCOUNT-129A230` |
 | Six common baselines on one identical, versioned, digest-bound evaluation scope | `IMPLEMENTED` | `I-SCOPE-129A230` |
 | Surface-feature bilinear predictor with per-model isotonic calibration | `IMPLEMENTED` | `I-PREDICTOR-129A230` |
-| In-memory deterministic stump-GBM core with per-model isotonic calibration | `IMPLEMENTED — LIBRARY ONLY` | `I-GBM-C649150` |
+| In-memory deterministic stump-GBM core with per-model isotonic calibration | `IMPLEMENTED — IN-MEMORY` | `I-GBM-C649150` |
+| Same-scope GBM-versus-bilinear paired estimation | `IMPLEMENTED — DESCRIPTIVE ONLY` | `I-PAIR-3E20792` |
 | Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | `I-POLICY-129A230` |
 | Local bge-m3 provider and controlled feature ablation | `PLANNED` | model manifest, provider tests, ablation record |
-| GBM-versus-bilinear comparison | `PLANNED` | implementation plus matched-scope result |
+| Licensed family-selection-aware GBM-versus-bilinear experiment | `PLANNED` | preregistration plus untouched selection/scoring evidence |
 | Official SKT adapter and official score | `ORGANIZER-GATED` | written license/schema evidence and result artifact |
 | Cascade or response-adaptive routing | `ORGANIZER-GATED` | organizer semantics plus sequence-level evaluation |
 
@@ -162,19 +164,21 @@ flowchart LR
     SURFACE --> ENCODER["Versioned feature schema"]
     BGE -. optional feature block .-> ENCODER
     ENCODER --> BILINEAR["Bilinear quality predictor<br/>IMPLEMENTED"]
-    ENCODER --> GBM["Deterministic stump-GBM<br/>IMPLEMENTED — LIBRARY ONLY"]
-    BILINEAR --> CAL["Per-model isotonic calibration"]
-    GBM --> CAL
-    GBM -. future integration .-> GBMCLI["GBM artifact, CLI, matched comparison<br/>PLANNED"]
-    CAL --> POLICY["One-shot exact-arithmetic<br/>lambda-threshold decision"]
+    ENCODER --> GBM["Deterministic stump-GBM<br/>IMPLEMENTED — IN-MEMORY"]
+    BILINEAR --> BILCAL["Bilinear per-model<br/>isotonic calibration"]
+    GBM --> GBMCAL["GBM per-model<br/>isotonic calibration"]
+    GBM -. future integration .-> GBMCLI["GBM artifact and train/route CLI<br/>PLANNED"]
+    BILCAL --> POLICY["One-shot exact-arithmetic<br/>lambda-threshold decision"]
+    GBMCAL -. paired evaluation only .-> POLICY
     POLICY --> ACTION["CallModel or SelectOutput"]
 
     RAW -. outer-training partition .-> OUTERTRAIN["Outer-training rows and labels"]
     OUTERTRAIN --> INNER["Training-side cross-fitted<br/>calibrated predictions"]
     INNER --> TUNE["Tier lambda tuning"]
     OUTERTRAIN -->|held-in outcomes, quality, realized cost| TUNE
-    OUTERTRAIN --> REFIT["Final calibrated bilinear refit<br/>outer-training side only"]
-    REFIT -. fold predictor .-> BILINEAR
+    OUTERTRAIN --> REFIT["Final calibrated family refit<br/>outer-training side only"]
+    REFIT -. bilinear fold predictor .-> BILCAL
+    REFIT -. GBM fold predictor in paired evaluation .-> GBMCAL
     TUNE -. per-tier fold lambda mapping .-> POLICY
 
     ACTION --> REPLAY["Offline replay simulator<br/>logged outcomes only"]
@@ -183,7 +187,8 @@ flowchart LR
     LEDGER["Injected budget ledger<br/>scope owned by adapter"] -->|budget contract| REPLAY
     REPLAY -->|realized charge| LEDGER
     LEDGER -. remaining budget snapshot .-> STATE
-    REPLAY --> METRICS["Tier quality, exact cost evidence,<br/>aggregate oracle-gap recovery<br/>against per-query oracle"]
+    REPLAY --> METRICS["Per-family tier quality, exact cost evidence,<br/>aggregate oracle-gap recovery<br/>against per-query oracle"]
+    METRICS --> PAIR["Two per-family reports to paired deltas<br/>IMPLEMENTED — NO SELECTION"]
 
     OFFICIAL["Official SKT data and scoring<br/>ORGANIZER-GATED"] -. license and schema pending .-> ADAPTER
     CASCADE["Cascade and sequence oracle<br/>ORGANIZER-GATED"] -. organizer-gated .-> POLICY
@@ -216,6 +221,9 @@ flowchart LR
   end-to-end domain-shift result or a RouterBench paper reproduction.
 - bge-m3 preparation, manifest validation, and inference remain `PLANNED`; any future
   provider must accept local assets only and pass empty-cache offline tests.
+- The paired predictor runner is `IMPLEMENTED` for descriptive estimation only. It
+  fixes `selected_family=null` and `performance_claim_allowed=false`; selecting a
+  family requires untouched evidence or an additional selection-aware validation layer.
 - Uncalled outputs and held-out quality labels stay outside `RouterState`.
 - `adapters/` owns unresolved per-query-versus-cumulative budget interpretation.
 - The default policy makes one model choice. The typed action/history contract permits
@@ -292,8 +300,9 @@ true`; a bounded retained search must stay labeled approximate.
 4. A LODO fold table or distribution showing domain-shift variance, not only the mean.
 5. A calibration figure or error summary on held-out predictions.
 6. If both feature paths exist, a controlled surface-only versus surface+bge-m3
-   ablation. When GBM is integrated into the benchmark, compare it on identical outer
-   folds and evaluation scope.
+   ablation. The implemented bilinear/GBM runner can verify identical outer folds and
+   evaluation scope, but reportable family choice requires licensed data and a separate
+   selection-aware protocol; do not name a winner from the paired estimation itself.
 
 Do not write “동일 품질, 비용 X% 절감” unless `X` is computed against a named comparator
 on the identical evaluation scope, with uncertainty/variation and budget feasibility
@@ -358,7 +367,8 @@ protocol.
   are not proven by the generic replay schema.
 - The bundled synthetic data and three-step demo prove wiring only.
 - RouterBench data remain external. PR #35 proves only the pinned local diagnostic's
-  structural execution and safe-output boundary; it publishes no performance result.
+  structural execution and safe-output boundary; it authorizes no performance claim or
+  predictor-family selection.
   Its `NOASSERTION` license and global all-domain quote/tier calibration prevent using
   it as a public result, an end-to-end domain-shift claim, or a paper reproduction.
 - A local bge-m3 provider and full-dimensional accelerated training are not shipped at

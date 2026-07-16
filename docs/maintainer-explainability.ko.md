@@ -379,26 +379,32 @@ test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"
 **불변식.** feature schema·scaling·tag vocabulary, ridge·GBM stump, isotonic
 calibration은 outer training에서만 fit한다. 보정은 inner-LODO OOF 예측을 쓰고,
 예측기는 outer training 전체로 다시 fit한다. bilinear artifact v1만 엄격한 직렬화
-계약을 가지며 GBM은 인메모리 전용이다. 현재 embedding 경계는 provider 주입을
-지원하지만 `bge-m3` 가중치·추론 provider를 배포한다고 주장하지 않는다.
+계약을 가지며 GBM 상태는 인메모리 전용이다. 제공하는 CLI 중에는 계열을 선택하지 않는
+paired-estimation 명령만 GBM을 실행하며 artifact·배포 라우팅 계약은 없다. 현재
+embedding 경계는 provider 주입을 지원하지만 `bge-m3` 가중치·추론 provider를
+배포한다고 주장하지 않는다.
 
 - 소유 심볼: [`fit_calibrated_bilinear_for_fold`](../src/tierroute/predictors/training.py),
   [`fit_calibrated_gbm_for_fold`](../src/tierroute/predictors/gbm_training.py),
   [`RegressionStump`](../src/tierroute/predictors/gbm.py),
+  [`PairedPredictorComparison`](../src/tierroute/policies/predictor_comparison.py),
   [`PromptFeatureSchema`](../src/tierroute/features/encoding.py),
   [`IsotonicCalibrator`](../src/tierroute/predictors/calibration.py)
 - 임시 변이: outer 학습에 held-out test 행을 합쳐 embedding provider에 노출한다.
 
 변이 전에는 residual 갱신·split gain·feature/split 동률 규칙·양의 gain이 없을 때의
-조기 종료를 직접 유도하고, 모든 inner/final 작업량 검사가 첫 embedding 호출보다
-앞서는 이유를 설명한다. 아래 변이는 ridge와 GBM이 공유해야 하는 outer-fold 격리
-불변식을 점검한다.
+조기 종료를 직접 유도하고, 전체 outer/tuning/calibration LODO 호출 그래프
+검사가 첫 embedding·family fit보다 앞서는 이유를 설명한다. 또한 같은 outer
+근거에서 `GBM - bilinear` 차이를 추정해도 그 근거로 winner를 선택하면 bias가
+생기는 이유를 설명한다. 아래 변이는 ridge와 GBM이 공유해야 하는
+outer-fold 격리 불변식을 점검한다.
 
 ```bash
 file="src/tierroute/predictors/training.py"
 test -z "$(git diff --name-only)"
 python -m pytest -q tests/test_bilinear_training.py::test_outer_fold_training_never_observes_held_out_examples
 python -m pytest -q tests/test_gbm_core.py tests/test_gbm_training.py
+python -m pytest -q tests/test_predictor_comparison.py tests/test_predictor_comparison_cli.py
 git apply <<'PATCH'
 diff --git a/src/tierroute/predictors/training.py b/src/tierroute/predictors/training.py
 --- a/src/tierroute/predictors/training.py
@@ -767,7 +773,7 @@ Python/platform:
 | 예산 adapter, replay, call 증거 |  |  |  |  |
 | 완전한 evaluation-scope 식별자 |  |  |  |  |
 | 지표, nested LODO 6종 비교, showcase |  |  |  |  |
-| feature, ridge/GBM 예측기, calibration |  |  |  |  |
+| feature, ridge/GBM 예측기, paired 추정, calibration |  |  |  |  |
 | 정확 lambda tuning과 policy artifact |  |  |  |  |
 | RouterBench 적대적 데이터·로컬 diagnostic |  |  |  |  |
 | atomic I/O, 오프라인, 빌드, 라이선스 |  |  |  |  |

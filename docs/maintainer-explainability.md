@@ -207,8 +207,8 @@ Owner questions:
 stumps, and isotonic calibration use training-side data only. Inner-LODO out-of-fold
 predictions fit calibration; the predictor is then refit on all outer training rows.
 Bilinear artifact v1 is strict schema-bound JSON, and unknown schema/model/solver
-identities fail closed. The GBM phase is in-memory only and has no artifact or CLI
-contract.
+identities fail closed. GBM state remains in-memory and has no artifact or deployment
+CLI contract; the no-selection paired-estimation command is its only shipped CLI path.
 
 - Core: [`features/encoding.py`](../src/tierroute/features/encoding.py),
   [`features/surface.py`](../src/tierroute/features/surface.py),
@@ -221,12 +221,15 @@ contract.
   [`predictors/solvers.py`](../src/tierroute/predictors/solvers.py),
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
   [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py), with limits in
-  [`predictors/resource_limits.py`](../src/tierroute/predictors/resource_limits.py)
+  [`predictors/resource_limits.py`](../src/tierroute/predictors/resource_limits.py),
+  plus [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py)
 - Strongest evidence: [`test_feature_encoding.py`](../tests/test_feature_encoding.py),
   [`test_features_predictors.py`](../tests/test_features_predictors.py),
   [`test_bilinear_training.py`](../tests/test_bilinear_training.py),
   [`test_gbm_core.py`](../tests/test_gbm_core.py),
   [`test_gbm_training.py`](../tests/test_gbm_training.py),
+  [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py),
+  [`test_predictor_comparison_cli.py`](../tests/test_predictor_comparison_cli.py),
   [`test_ridge_solver.py`](../tests/test_ridge_solver.py), and
   [`test_predictor_artifacts.py`](../tests/test_predictor_artifacts.py)
 - Design context: [lambda/training design](lambda-tuning.md)
@@ -247,6 +250,9 @@ Owner questions:
 6. For the GBM core, derive one residual update and split-gain calculation. Explain the
    feature/split tie break, observed right-boundary rule, no-positive-gain early stop,
    and why all inner/final work is preflighted before embedding.
+7. Enumerate the complete paired nested-LODO GBM call graph. Why are the six baselines
+   computed once, why are deltas `GBM - bilinear`, and why can the same outer evidence
+   estimate a difference but not select a winning family without bias?
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -293,7 +299,7 @@ The default prefix replay remains a smoke check. The separate nested-LODO diagno
 requires `--nested-lodo --acknowledge-noassertion`. Human output begins with `LOCAL
 OPTIONAL VALIDATION — NON-OFFICIAL, NON-REPORTABLE`, while JSON carries the same exact
 string in a required warning field. The path performs no network or file writes and
-publishes no performance result.
+authorizes no performance claim or predictor-family selection.
 
 **Diagnostic design.** A digest framed from pinned revision, normalized domain, and
 `sample_id` ranks rows independently of prompt, output, quality, and cost. Each of the
@@ -388,7 +394,8 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Full-dimensional accelerated ridge | Reference solver rejects unaudited large work | Approved non-GPL backend, numerical parity, deterministic solver identity, SBOM, and issue #9 completion |
-| GBM artifact/CLI and matched family comparison | In-memory core only; no result | Separate artifact schema and a preregistered paired evaluation on identical folds/scope |
+| GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
+| Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
 
 An owner must be able to distinguish every row above from implemented behavior. A
@@ -407,7 +414,8 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_budgets.py tests/test_simulator.py tests/test_json_dataset.py \
   tests/test_eval_provenance.py tests/test_eval_schemas.py tests/test_metrics.py \
   tests/test_validation.py tests/test_policies.py tests/test_baseline_evaluation.py \
-  tests/test_benchmark.py tests/test_showcase.py \
+  tests/test_benchmark.py tests/test_predictor_comparison.py \
+  tests/test_predictor_comparison_cli.py tests/test_showcase.py \
   tests/test_feature_encoding.py \
   tests/test_features_predictors.py tests/test_bilinear_training.py \
   tests/test_gbm_core.py tests/test_gbm_training.py \
@@ -422,12 +430,14 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
 test -z "$(find "$hf_home" -mindepth 1 -print -quit)"
 ```
 
-`make verify` reaches the benchmark and showcase through `training-smoke`, and
+`make verify` reaches the benchmark, paired estimation, and showcase through
+`training-smoke`, and
 `reproduce-training` executes that fitting path. `reproduce-inference` intentionally
-does not invoke `tierroute benchmark` or `tierroute demo` and does not fit the bilinear
-predictor/lambda policy; its evaluation fits only the outer-training domain-table
-baseline. The in-memory GBM path is exercised by its pytest modules, not by a CLI smoke
-command.
+does not invoke `tierroute benchmark`, `tierroute compare-predictors`, or
+`tierroute demo` and does not fit the bilinear predictor/lambda policy; its evaluation
+fits only the outer-training domain-table baseline. The in-memory GBM path is exercised
+by its pytest modules and the training-only paired CLI smoke, never by deployment
+routing.
 
 For each boundary, make one temporary local mutation that violates its stated
 invariant, run the named focused test, observe the expected failure, and restore the

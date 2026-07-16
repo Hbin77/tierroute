@@ -9,11 +9,21 @@ the public API is pre-1.0.
 
 ### Added
 
+- A `tierroute compare-predictors --budget-scope per-query [--data ...] [--json]`
+  paired-estimation path for the fixed surface-only calibrated bilinear and GBM
+  families. It preflights the complete nested GBM call graph before either family
+  fits or embeds, computes the six baselines once, requires identical replay/scope/
+  tier/fold/catalogue/search/baseline evidence, and reports full-precision descriptive
+  `GBM - bilinear` global and held-out-domain deltas in JSON. The versioned schema fixes
+  `selection_protocol=none-paired-estimation`, `selected_family=null`, and
+  `performance_claim_allowed=false`; bundled and user-supplied outputs remain
+  `SYNTHETIC-ONLY` and `UNVERIFIED-USER-DATA`, respectively. No winner, deployment
+  recommendation, or performance claim is produced.
 - A dependency-free, deterministic squared-error GBM core using per-model
   regression-stump ensembles, explicit ordering and tie rules, conservative
   pre-embedding work limits, inner-LODO out-of-fold fitting, and per-model isotonic
-  calibration. This phase is library-only and synthetic-test-only; it adds no artifact
-  or CLI path, matched comparison, or performance claim.
+  calibration. Predictor state remains in-memory and has no artifact or deployment CLI
+  path; the paired-estimation command above is descriptive and adds no performance claim.
 - A Korean maintainer mutation walkthrough for the eight contest-critical boundaries,
   with a pinned throwaway-worktree procedure, exact focused test nodes, blank human
   records, and separate code/synthetic versus optional local-artifact RouterBench
@@ -166,15 +176,26 @@ the public API is pre-1.0.
   accounting, after the organizer confirms the official budget semantics.
 - Add a GPL-family-free accelerated ridge backend with numerical parity and resource
   evidence before the full-dimensional bge-m3 experiment.
-- Add a separately versioned GBM artifact and explicit CLI integration.
-- Compare calibrated GBM and bilinear predictors on identical nested-LODO folds and
-  licensed data without selecting a winner on the same evaluation evidence.
+- Add a separately versioned GBM artifact and explicit `train`/`route` integration.
+- Run a preregistered family-selection-aware experiment on licensed data; the current
+  paired runner estimates fixed families but cannot select a winner on the same outer
+  evidence.
 - Add a local-only inference backend for the pinned MIT-licensed bge-m3 revision.
 - Connect official SK Telecom data and scoring only after its schema, weights, and
   redistribution terms are confirmed.
 
 ### Security
 
+- Paired bilinear/GBM evaluation now canonical-snapshots the complete replay schema,
+  rejects unsafe nested inputs and GBM configurations before predictor work, applies
+  closed-form base-fit/row/prompt/minimum-scan guards before fold expansion, and stops
+  exact split-scan enumeration at its aggregate cap. Predictor target columns are
+  transposed in linear `O(N*M)` time, and replay-adapter nested row-visit accounting now
+  matches the complete outer/tuning/calibration call graph. Adversarial HTML, blank-line,
+  primitive-subclass, and oversized-work tests lock these boundaries.
+- Human-readable CLI output escapes terminal control, bidi-formatting, surrogate, and
+  line-separator code points from replay-derived names, prompts, IDs, reasons, and paths.
+  JSON output remains machine-escaped by the JSON serializer.
 - Replay JSON now uses one descriptor-stable, bounded regular-file reader and a lexical
   preflight before strict JSON parsing. Duplicate/unknown/missing fields, nonstandard or
   overflowing numbers, implicit primitive coercions, invalid Unicode, oversized text,
