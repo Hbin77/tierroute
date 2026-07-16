@@ -330,6 +330,13 @@ invented cost-aware model routing:
    license review rather than implicit downloads.
 7. Predictor and policy artifacts bind training/replay content and relevant
    configuration to canonical, strictly validated provenance.
+8. A bounded standard-library prepared reference reuses each canonical training
+   subset once, constructs centered ridge equations from Welford/Chan moments, shares
+   one Cholesky factor across model targets, and emits every graph-ordered raw-score
+   block. On the seven-domain synthetic regression it proves the exact 63-subset,
+   154-block, `22N` row-membership, and `22NM` scalar-score structure. This is an
+   auditable engineering reference, not a claim that moment-based ridge, factor reuse,
+   or batched scoring is novel.
 
 ## Claims tierroute must not make
 
@@ -354,10 +361,21 @@ invented cost-aware model routing:
 - The project-owned C11 sidecar implements one bounded dense ridge solve; it does not
   remove repeated feature work, nested-fold factorizations, or scoring from the complete
   validation graph and is not evidence that a full-dimensional run has completed.
-- The prepared feature-store reference establishes bounded canonical rows,
-  caller-checked content identities, domain moments, and subset isolation only. It does
-  not authenticate dataset/model provenance, run an embedding provider, execute the
-  prepared graph, or prove a speedup.
+- The prepared references establish bounded canonical rows, caller-checked content
+  identities, domain moments, subset isolation, moment-ridge coefficients, and complete
+  raw-score block wiring on synthetic/frozen fixtures. Numerical agreement with an
+  independently refitted row oracle is tolerance-based, not bitwise or a
+  cross-platform digest promise. They do not authenticate dataset/model provenance,
+  run an embedding provider, provide a persistent/native session, reach calibration,
+  lambda tuning, or final reports, execute the planned full RouterBench shape, or prove
+  throughput, memory efficiency, quality, cost savings, or a speedup. Issue #9 remains
+  open.
+- Prepared content digests are deterministic content identities, not authenticity or
+  provenance proofs. Supported builders enforce derivation/topology associations;
+  direct leaf constructors validate only self-declared canonical record content.
+  Substitution detection requires a separately trusted expected digest. Global bundle
+  digest locality is not promised when an excluded domain changes; only the individual
+  unaffected coefficient/raw blocks have locality evidence.
 - The GBM core has no versioned artifact or deployment CLI integration. Its paired
   estimation CLI deliberately cannot select a winner from the same outer evidence and
   supplies no evidence of predictive gain or superiority over the bilinear family.
@@ -423,6 +441,7 @@ pool, data split, cost model, and metric.
 | Paired bilinear/GBM nested-LODO estimation with no family selection | [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py), [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py) |
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
 | Prepared graph and bounded feature/statistics isolation reference | [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py), [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py), [`prepared-feature-store.md`](prepared-feature-store.md), [`test_prepared_store.py`](../tests/test_prepared_store.py) |
+| Bounded prepared moment-ridge and complete raw-score reference | [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py), [`prepared-reference-execution.md`](prepared-reference-execution.md), [`test_prepared_execution.py`](../tests/test_prepared_execution.py) |
 | Optional RouterBench boundary | [`adapters/routerbench.py`](../src/tierroute/adapters/routerbench.py), [`download_routerbench.py`](../scripts/download_routerbench.py) |
 | Reproducibility and license inventory | [`SBOM.md`](../SBOM.md), [`dependency-license-audit.md`](dependency-license-audit.md) |
 
@@ -432,6 +451,14 @@ These are implementation tasks, not questions for the organizer:
 
 1. Add a sequence-level oracle before computing oracle-gap recovery under cumulative
    accounting. The independent per-query plan is valid only for per-query budgets.
+2. Replace the bounded Python prepared reference with an audited scalable session only
+   after an offline local provider exists, then prove coefficient-to-calibration,
+   lambda, and final-report parity including near ties. The current 100,000,000
+   work-unit and 512 MiB modeled numeric-storage admission ceilings intentionally reject
+   the planned RouterBench shape; they count reviewed numeric operations/storage, not
+   Python-object or allocator overhead, caller-owned memory, peak RSS, wall-clock, or
+   speedup. The residual factor 2,048 is an empirical regression guard, not a universal
+   error bound.
 
 Quote-versus-realized error reporting is implemented over executed logged replay calls.
 It preserves offsetting call errors through an absolute-error total and separately
@@ -451,8 +478,8 @@ The following remain official-answer or compliance gates:
 5. The SK Telecom dataset license and redistribution permission.
 6. Whether randomized expected-cost mixtures are legal, which determines whether the
    RouterBench Zero router is a valid additional baseline.
-7. A scalable prepared execution session that extends the bounded leakage-tested
-   domain-statistics reference through coefficients, scores, calibration, and final
+7. A scalable persistent/native prepared execution session that extends the bounded
+   coefficient/raw-score reference through calibration, lambda selection, and final
    reports, plus audited GPL-family-free Linux-musl and Windows-MSVC artifacts, before
    the parity-tested C11 dense solver can support a reportable full-dimensional bge-m3
    experiment.

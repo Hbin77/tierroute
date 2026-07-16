@@ -212,6 +212,18 @@ CLI contract; the no-selection paired-estimation command is its only shipped CLI
 The optional C11 ridge process is a training-only, explicitly authenticated solver; a
 known solver ID never substitutes for its absolute path and exact binary hash.
 
+The separate prepared execution path is a bounded in-memory Python reference, not the
+production trainer or a native/persistent session. For active raw coordinates `a_i`
+and continuous scales `s_i` (one for noncontinuous coordinates), it constructs
+`G_ij = Cxx[a_i,a_j] / (s_i s_j) + ridge * 1[i=j]` and
+`h_i,m = Cxy[a_i,m] / s_i`, performs exactly one Cholesky factorization per unique
+training subset for all model targets, and recovers
+`b_m = mean(y_m) - sum_i mean(z_i) w_i,m`; standardized continuous means are zero and
+the remaining encoded means retain their raw moment means. Scoring standardizes only
+the first three continuous coordinates and uses ordinary Python `sum` in schema order.
+Canonical plan, subset, catalogue, active-coordinate, row, and sorted-model order bind
+target-major coefficient and row-major raw-score records.
+
 - Core: [`features/encoding.py`](../src/tierroute/features/encoding.py),
   [`features/surface.py`](../src/tierroute/features/surface.py),
   [`features/embeddings.py`](../src/tierroute/features/embeddings.py),
@@ -223,6 +235,7 @@ known solver ID never substitutes for its absolute path and exact binary hash.
   [`predictors/solvers.py`](../src/tierroute/predictors/solvers.py),
   [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py),
   [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py),
+  [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py),
   [`predictors/native_ridge.py`](../src/tierroute/predictors/native_ridge.py),
   [`native/tierroute_ridge.c`](../native/tierroute_ridge.c),
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
@@ -240,11 +253,19 @@ known solver ID never substitutes for its absolute path and exact binary hash.
   [`test_predictor_artifacts.py`](../tests/test_predictor_artifacts.py), plus
   [`test_native_ridge.py`](../tests/test_native_ridge.py) and
   [`test_prepared_graph.py`](../tests/test_prepared_graph.py), plus
-  [`test_prepared_store.py`](../tests/test_prepared_store.py)
+  [`test_prepared_store.py`](../tests/test_prepared_store.py) and
+  [`test_prepared_execution.py`](../tests/test_prepared_execution.py)
 - Design context: [lambda/training design](lambda-tuning.md) and
   [prepared graph contract](prepared-session-graph.md), the
-  [prepared feature-store reference](prepared-feature-store.md), plus the
+  [prepared feature-store reference](prepared-feature-store.md), the
+  [prepared execution reference](prepared-reference-execution.md), plus the
   [native ridge protocol](native-ridge-protocol.md)
+
+The prepared implementation began at `f4b07bc`, its primary parity suite at
+`608468b`, and admission/locality security regressions were hardened through
+`2ac1b50`. A focused local run on Darwin arm64 with Python 3.12.11 reports 62 passed.
+That count is local software evidence, not CI, performance, or human sign-off; PR and
+CI evidence are still pending.
 
 Owner questions:
 
@@ -275,9 +296,28 @@ Owner questions:
     blocks, and `22N` scored-row memberships for seven-domain nested evaluation?
 11. Why is the prepared feature cache binary64? Trace the caller-checked source and
     precomputed-embedding digests, fixed 12+E raw layout, per-domain Welford moments,
-    included-domain Chan combination, and dynamic-tag isolation. Why is this not yet
-    bitwise parity with the row trainer, and which provider, persistent-session,
-    coefficient/score/calibrator/lambda/report, and platform gates remain?
+    included-domain Chan combination, dynamic-tag isolation, moment equations above,
+    shared-target factorization, intercept recovery, and schema-ordered dot product.
+    Why is agreement with the independently refitted row oracle tolerance-based rather
+    than bitwise or a cross-platform digest promise?
+12. Derive the seven-domain `22N` row-membership and `22NM` scalar-score counts. Which
+    canonical orders and example-ID join keys make 63 coefficient blocks and 154 raw
+    score blocks deterministic, and why is global bundle-digest locality not promised
+    even though an excluded-domain mutation leaves each unaffected coefficient/raw
+    block unchanged?
+13. Which three builders are the supported derivation path? Explain why direct leaf
+    constructors validate only self-declared per-record canonical content, not origin,
+    aggregate association, or derivation; why a digest is not authentication; and why
+    substitution detection requires comparison with a separately trusted expected
+    digest.
+14. Enumerate the aggregate work and modeled numeric-storage categories before any
+    subset combination/factorization or feature hashing/row scoring. Why are the
+    100,000,000-unit and 512 MiB ceilings admission controls rather than peak-RSS,
+    allocator, Python-object, caller-owned-memory, wall-clock, or speedup guarantees?
+    Why does the residual factor 2,048 remain an empirical frozen-fixture regression
+    guard rather than a universal numerical-error bound? Which provider, persistence,
+    native execution, calibration, lambda, report, platform, and official-data gates
+    keep issue #9 open?
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -419,7 +459,7 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity and macOS link evidence; no binary in the wheel | Explicit local opt-in only; Linux-musl and Windows-MSVC release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph plus a smaller bounded in-memory raw-feature/Welford/Chan reference with caller-checked source/embedding identities and subset-isolation tests exist; no provider, persistent session, solve, score, or scalable execution path exists | Audited offline local provider, scalable persistent prepared session, coefficient and batched-score execution, coefficient-to-report parity including near ties, three-platform audits, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph plus a bounded in-memory raw-feature/Welford/Chan/moment-ridge/raw-score reference exists. Synthetic/frozen tests cover exact `22N` structure and tolerance parity, but no provider, persistent/native session, calibration, lambda, report path, scalable execution, or performance result exists | Audited offline local provider, scalable persistent/native prepared session, calibration/lambda/report parity including near ties, three-platform audits, licensed-data evidence, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
@@ -445,6 +485,8 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_feature_encoding.py \
   tests/test_features_predictors.py tests/test_bilinear_training.py \
   tests/test_gbm_core.py tests/test_gbm_training.py \
+  tests/test_prepared_graph.py tests/test_prepared_store.py \
+  tests/test_prepared_execution.py \
   tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
   tests/test_lambda_tuning.py tests/test_lambda_policy_artifacts.py \
   tests/test_routerbench_adapter.py tests/test_validate_routerbench_script.py \
@@ -480,7 +522,7 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 | Budget adapters, replay, and call evidence |  |  |  |  |
 | Complete evaluation-scope identity |  |  |  |  |
 | Metrics, learned-versus-six-baseline nested LODO, and showcase |  |  |  |  |
-| Features, ridge/GBM predictors, and calibration |  |  |  |  |
+| Features, ridge/GBM predictors, prepared reference execution, and calibration |  |  |  |  |
 | Exact lambda tuning and policy artifacts |  |  |  |  |
 | RouterBench hostile-data and local diagnostic boundary |  |  |  |  |
 | Atomic I/O, offline, build, and licenses |  |  |  |  |
