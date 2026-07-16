@@ -673,6 +673,22 @@ def test_build_helper_rejects_unc_and_device_style_paths_on_every_host(path: str
             build_module[validator_name](path)
 
 
+def test_native_source_checkout_is_pinned_to_lf_bytes_and_sbom() -> None:
+    attributes = (Path(__file__).parents[1] / ".gitattributes").read_text(encoding="utf-8")
+    source_bytes = _NATIVE_SOURCE.read_bytes()
+    source_digest = hashlib.sha256(source_bytes).hexdigest()
+    sbom_rows = [
+        line
+        for line in (_REPOSITORY_ROOT / "SBOM.md").read_text(encoding="utf-8").splitlines()
+        if line.startswith("| `native/tierroute_ridge.c` |")
+    ]
+
+    assert "native/tierroute_ridge.c text eol=lf" in attributes.splitlines()
+    assert b"\r" not in source_bytes
+    assert len(sbom_rows) == 1
+    assert f"SHA-256 `{source_digest}`" in sbom_rows[0]
+
+
 def test_build_helper_refuses_oversized_compiler_output_before_publish(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
