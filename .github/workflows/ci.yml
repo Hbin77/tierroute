@@ -48,6 +48,7 @@ jobs:
           import pathlib
           import re
           import stat
+          import subprocess
           import sys
           import tarfile
           import zipfile
@@ -68,7 +69,9 @@ jobs:
                   or normalized.endswith("/data/routerbench")
                   or "/artifacts/routerbench/" in normalized
                   or normalized.endswith("/artifacts/routerbench")
-                  or normalized.endswith((".pkl", ".part"))
+                  or normalized.endswith(
+                      (".part", ".pkl", ".trprequest", ".trpresult", ".trpstore")
+                  )
                   or normalized.endswith(
                       (
                           ".a",
@@ -89,6 +92,57 @@ jobs:
 
           offenders = [name for name in (*wheel_names, *sdist_names) if forbidden(name)]
           assert not offenders, f"forbidden external/derived data in release archives: {offenders}"
+
+          tracked_output = subprocess.run(
+              ["git", "ls-files", "-z"],
+              cwd=workspace_path,
+              check=True,
+              capture_output=True,
+          ).stdout
+          tracked_names = [
+              name.decode("utf-8") for name in tracked_output.split(b"\0") if name
+          ]
+          tracked_offenders = [name for name in tracked_names if forbidden(name)]
+          assert not tracked_offenders, (
+              f"forbidden data or compiled-artifact path is tracked: {tracked_offenders}"
+          )
+          compiled_magics = (
+              b"\x00asm",
+              b"\x7fELF",
+              b"\xbe\xba\xfe\xca",
+              b"\xbf\xba\xfe\xca",
+              b"MZ",
+              b"\xca\xfe\xba\xbe",
+              b"\xca\xfe\xba\xbf",
+              b"\xce\xfa\xed\xfe",
+              b"\xcf\xfa\xed\xfe",
+              b"\xfe\xed\xfa\xce",
+              b"\xfe\xed\xfa\xcf",
+          )
+          wheel_magic_binaries = []
+          with zipfile.ZipFile(wheel) as archive:
+              for member in wheel_members:
+                  if member.is_dir():
+                      continue
+                  with archive.open(member) as stream:
+                      header = stream.read(4)
+                  if header.startswith(compiled_magics):
+                      wheel_magic_binaries.append(member.filename)
+          assert not wheel_magic_binaries, (
+              f"wheel contains compiled-binary magic: {wheel_magic_binaries}"
+          )
+          tracked_binaries = []
+          for name in tracked_names:
+              path = workspace_path / name
+              if not path.is_file():
+                  continue
+              with path.open("rb") as stream:
+                  header = stream.read(4)
+              if header.startswith(compiled_magics):
+                  tracked_binaries.append(name)
+          assert not tracked_binaries, (
+              f"compiled binaries must not be committed: {tracked_binaries}"
+          )
 
           def normalized_parts(name: str) -> tuple[str, ...]:
               return pathlib.PurePosixPath(name.replace("\\", "/").strip("/")).parts
@@ -127,10 +181,14 @@ jobs:
               if (relative_parts := normalized_parts(sdist_relative(member)))
               and relative_parts[0].casefold() == "native"
           ]
+          expected_native_sources = (
+              "native/tierroute_prepared.c",
+              "native/tierroute_ridge.c",
+          )
           unexpected_native = [
               member.name
               for member in sdist_native
-              if sdist_relative(member) not in {"native", "native/tierroute_ridge.c"}
+              if sdist_relative(member) not in {"native", *expected_native_sources}
           ]
           assert not unexpected_native, (
               f"sdist native tree contains unexpected members: {unexpected_native}"
@@ -138,30 +196,12 @@ jobs:
           native_directories = [
               member for member in sdist_native if sdist_relative(member) == "native"
           ]
+          assert len(native_directories) <= 1, (
+              f"sdist contains duplicate native directory entries: {native_directories}"
+          )
           assert all(member.isdir() for member in native_directories), (
               f"sdist native directory entry has the wrong type: {native_directories}"
           )
-          native_sources = [
-              member
-              for member in sdist_native
-              if sdist_relative(member) == "native/tierroute_ridge.c"
-          ]
-          assert len(native_sources) == 1, (
-              "sdist must contain native/tierroute_ridge.c exactly once: "
-              f"found {[member.name for member in native_sources]}"
-          )
-          native_source = native_sources[0]
-          assert native_source.isfile() and not native_source.issym() and not native_source.islnk(), (
-              f"sdist native source must be a regular non-link file: {native_source.name}"
-          )
-          assert native_source.mode & 0o111 == 0, (
-              f"sdist native source must not be executable: mode={oct(native_source.mode)}"
-          )
-          with tarfile.open(sdist, "r:gz") as archive:
-              extracted = archive.extractfile(native_source)
-              assert extracted is not None
-              archived_source = extracted.read()
-
           native_root = workspace_path / "native"
           native_root_metadata = native_root.lstat()
           assert stat.S_ISDIR(native_root_metadata.st_mode) and not stat.S_ISLNK(
@@ -170,40 +210,70 @@ jobs:
           working_entries = sorted(
               path.relative_to(native_root).as_posix() for path in native_root.rglob("*")
           )
-          assert working_entries == ["tierroute_ridge.c"], (
-              f"working native tree must contain only tierroute_ridge.c: {working_entries}"
+          expected_working_entries = sorted(
+              pathlib.PurePosixPath(name).name for name in expected_native_sources
           )
-          working_source = native_root / "tierroute_ridge.c"
-          working_metadata = working_source.lstat()
-          assert stat.S_ISREG(working_metadata.st_mode) and not stat.S_ISLNK(
-              working_metadata.st_mode
-          ), "working native source must be a regular non-symlink file"
-          assert working_metadata.st_nlink == 1, (
-              f"working native source must not be hard-linked: nlink={working_metadata.st_nlink}"
+          assert working_entries == expected_working_entries, (
+              "working native tree must contain exactly the reviewed sources: "
+              f"{working_entries}"
           )
-          assert stat.S_IMODE(working_metadata.st_mode) & 0o111 == 0, (
-              "working native source must not be executable"
-          )
-          working_payload = working_source.read_bytes()
-          assert archived_source == working_payload, (
-              "sdist native source bytes differ from the working source"
-          )
-
           sbom = (workspace_path / "SBOM.md").read_text(encoding="utf-8")
-          sbom_hashes = re.findall(
-              r"^\| `native/tierroute_ridge\.c` \|[^|\n]*SHA-256 `([0-9a-f]{64})` \|",
-              sbom,
-              flags=re.MULTILINE,
-          )
-          assert len(sbom_hashes) == 1, (
-              f"SBOM must record exactly one native source SHA-256: {sbom_hashes}"
-          )
-          working_hash = hashlib.sha256(working_payload).hexdigest()
-          archived_hash = hashlib.sha256(archived_source).hexdigest()
-          assert working_hash == archived_hash == sbom_hashes[0], (
-              "native source SHA-256 mismatch: "
-              f"working={working_hash}, sdist={archived_hash}, SBOM={sbom_hashes[0]}"
-          )
+          for source_name in expected_native_sources:
+              native_sources = [
+                  member
+                  for member in sdist_native
+                  if sdist_relative(member) == source_name
+              ]
+              assert len(native_sources) == 1, (
+                  f"sdist must contain {source_name} exactly once: "
+                  f"found {[member.name for member in native_sources]}"
+              )
+              native_source = native_sources[0]
+              assert (
+                  native_source.isfile()
+                  and not native_source.issym()
+                  and not native_source.islnk()
+              ), f"sdist native source must be a regular non-link file: {native_source.name}"
+              assert native_source.mode & 0o111 == 0, (
+                  f"sdist native source must not be executable: mode={oct(native_source.mode)}"
+              )
+              with tarfile.open(sdist, "r:gz") as archive:
+                  extracted = archive.extractfile(native_source)
+                  assert extracted is not None
+                  archived_source = extracted.read()
+
+              working_source = workspace_path / source_name
+              working_metadata = working_source.lstat()
+              assert stat.S_ISREG(working_metadata.st_mode) and not stat.S_ISLNK(
+                  working_metadata.st_mode
+              ), "working native source must be a regular non-symlink file"
+              assert working_metadata.st_nlink == 1, (
+                  "working native source must not be hard-linked: "
+                  f"{source_name}, nlink={working_metadata.st_nlink}"
+              )
+              assert stat.S_IMODE(working_metadata.st_mode) & 0o111 == 0, (
+                  f"working native source must not be executable: {source_name}"
+              )
+              working_payload = working_source.read_bytes()
+              assert archived_source == working_payload, (
+                  f"sdist source bytes differ from the working source: {source_name}"
+              )
+
+              sbom_hashes = re.findall(
+                  rf"^\| `{re.escape(source_name)}` \|[^|\n]*"
+                  r"SHA-256 `([0-9a-f]{64})` \|",
+                  sbom,
+                  flags=re.MULTILINE,
+              )
+              assert len(sbom_hashes) == 1, (
+                  f"SBOM must record exactly one {source_name} SHA-256: {sbom_hashes}"
+              )
+              working_hash = hashlib.sha256(working_payload).hexdigest()
+              archived_hash = hashlib.sha256(archived_source).hexdigest()
+              assert working_hash == archived_hash == sbom_hashes[0], (
+                  f"native source SHA-256 mismatch for {source_name}: "
+                  f"working={working_hash}, sdist={archived_hash}, SBOM={sbom_hashes[0]}"
+              )
           PY
           "$clean_venv/bin/python" -m pip install --no-deps "$wheel"
           "$clean_venv/bin/python" -m pip check
@@ -361,57 +431,70 @@ jobs:
             throw "dumpbin.exe is unavailable after VsDevCmd.bat"
           }
 
-      - name: Run native protocol and numerical tests
-        run: python -m pytest tests/test_native_ridge.py tests/test_native_binary_audit.py
+      - name: Run native protocol, persistence, and numerical tests
+        run: >-
+          python -m pytest
+          tests/test_native_ridge.py
+          tests/test_native_binary_audit.py
+          tests/test_prepared_files.py
+          tests/test_native_prepared.py
 
-      - name: Build and audit the macOS candidate locally
+      - name: Build and audit the macOS candidates locally
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          binary="$RUNNER_TEMP/tierroute-ridge-$GITHUB_RUN_ID"
-          manifest="$RUNNER_TEMP/tierroute-ridge-$GITHUB_RUN_ID-build.json"
-          source="$GITHUB_WORKSPACE/native/tierroute_ridge.c"
           compiler="$(python -c 'import pathlib, shutil; p = shutil.which("clang"); assert p; print(pathlib.Path(p).resolve())')"
-          python scripts/build_native_ridge.py \
-            --output "$binary" --compiler "$compiler" > "$manifest"
-          python -m json.tool "$manifest"
-          binary_sha="$(python -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["sha256"])' "$manifest")"
-          source_sha="$(python -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["source_sha256"])' "$manifest")"
-          python scripts/audit_native_binary.py \
-            --platform macos --binary "$binary" --source "$source" \
-            --expected-binary-sha256 "$binary_sha" \
-            --expected-source-sha256 "$source_sha"
+          for candidate in ridge prepared; do
+            binary="$RUNNER_TEMP/tierroute-$candidate-$GITHUB_RUN_ID"
+            manifest="$RUNNER_TEMP/tierroute-$candidate-$GITHUB_RUN_ID-build.json"
+            source="$GITHUB_WORKSPACE/native/tierroute_$candidate.c"
+            python "scripts/build_native_$candidate.py" \
+              --output "$binary" --compiler "$compiler" > "$manifest"
+            python -m json.tool "$manifest"
+            binary_sha="$(python -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["sha256"])' "$manifest")"
+            source_sha="$(python -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["source_sha256"])' "$manifest")"
+            python scripts/audit_native_binary.py \
+              --platform macos --binary "$binary" --source "$source" \
+              --expected-binary-sha256 "$binary_sha" \
+              --expected-source-sha256 "$source_sha"
+          done
 
-      - name: Build and audit the Windows candidate locally
+      - name: Build and audit the Windows candidates locally
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $binary = Join-Path $env:RUNNER_TEMP "tierroute-ridge-$env:GITHUB_RUN_ID.exe"
-          $source = Join-Path $env:GITHUB_WORKSPACE "native\tierroute_ridge.c"
           $compiler = python -c "import os, pathlib, shutil; p = shutil.which('cl'); assert p and os.path.isabs(p), p; print(pathlib.Path(p).resolve())"
           if ($LASTEXITCODE -ne 0) {
             throw "Python could not resolve cl.exe"
           }
-          $manifestText = python scripts/build_native_ridge.py `
-            --output $binary --compiler $compiler.Trim()
-          if ($LASTEXITCODE -ne 0) {
-            throw "native ridge build failed"
+          foreach ($candidate in @("ridge", "prepared")) {
+            $binary = Join-Path $env:RUNNER_TEMP "tierroute-$candidate-$env:GITHUB_RUN_ID.exe"
+            $source = Join-Path $env:GITHUB_WORKSPACE "native\tierroute_$candidate.c"
+            $buildScript = "scripts/build_native_$candidate.py"
+            $manifestText = python $buildScript `
+              --output $binary --compiler $compiler.Trim()
+            if ($LASTEXITCODE -ne 0) {
+              throw "native $candidate build failed"
+            }
+            try {
+              $manifest = $manifestText | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+              throw "native $candidate build did not emit valid JSON: $_"
+            }
+            $binarySha = [string]$manifest.sha256
+            $sourceSha = [string]$manifest.source_sha256
+            if (-not $binarySha -or -not $sourceSha) {
+              throw "native $candidate build manifest omitted required SHA-256 values"
+            }
+            Write-Output $manifestText
+            python scripts/audit_native_binary.py `
+              --platform windows --binary $binary --source $source `
+              --expected-binary-sha256 $binarySha `
+              --expected-source-sha256 $sourceSha
+            if ($LASTEXITCODE -ne 0) {
+              throw "native $candidate binary audit failed"
+            }
           }
-          try {
-            $manifest = $manifestText | ConvertFrom-Json -ErrorAction Stop
-          } catch {
-            throw "native ridge build did not emit valid JSON: $_"
-          }
-          $binarySha = [string]$manifest.sha256
-          $sourceSha = [string]$manifest.source_sha256
-          if (-not $binarySha -or -not $sourceSha) {
-            throw "native ridge build manifest omitted required SHA-256 values"
-          }
-          Write-Output $manifestText
-          python scripts/audit_native_binary.py `
-            --platform windows --binary $binary --source $source `
-            --expected-binary-sha256 $binarySha `
-            --expected-source-sha256 $sourceSha
 
       - name: Verify no model cache was populated
         run: >-

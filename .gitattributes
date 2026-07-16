@@ -1,3 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
 
+native/tierroute_prepared.c text eol=lf
 native/tierroute_ridge.c text eol=lf
