@@ -524,16 +524,10 @@ def _require_four_domains(
         raise ValueError("benchmark examples must not be empty")
     if any(type(example) is not EvaluationExample for example in ordered):
         raise TypeError("benchmark examples must contain exact EvaluationExample values")
-    example_ids = tuple(example.example_id for example in ordered)
-    if len(example_ids) != len(set(example_ids)):
-        raise ValueError("benchmark examples must have unique example IDs")
     if not specs:
         raise ValueError("benchmark tier_specs must not be empty")
     if any(type(spec) is not TierSpec for spec in specs):
         raise TypeError("benchmark tier_specs must contain exact TierSpec values")
-    tiers = tuple(spec.tier for spec in specs)
-    if len(tiers) != len(set(tiers)):
-        raise ValueError("benchmark tier_specs must contain unique tiers")
     # Normalize the full nested schema at the same exact-type, bounded snapshot
     # boundary used by OfflineSimulator, before any predictor preflight or fitting.
     ordered, specs = _snapshot_evaluation_scope(ordered, specs)

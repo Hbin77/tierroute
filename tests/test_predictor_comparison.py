@@ -315,6 +315,10 @@ def test_pair_rejects_schema_subclasses_before_gbm_preflight(
     class ModelSpecSubclass(ModelSpec):
         pass
 
+    class HashDispatchText(str):
+        def __hash__(self) -> int:
+            raise AssertionError("untrusted text hashing dispatched before normalization")
+
     dataset = load_evaluation_dataset()
     first = dataset.examples[0]
     subclass_example = EvaluationExampleSubclass(
@@ -396,6 +400,22 @@ def test_pair_rejects_schema_subclasses_before_gbm_preflight(
     with pytest.raises(TypeError, match="must be a ModelSpec"):
         evaluate_per_query_paired_predictor_comparison(
             (nested_model_example, *dataset.examples[1:]),
+            dataset.tier_specs,
+            gbm_config=_gbm_config(),
+            max_candidates_per_tier=17,
+        )
+
+    nested_text_example = EvaluationExample(
+        example_id=HashDispatchText(first.example_id),
+        prompt=first.prompt,
+        domain=first.domain,
+        outcomes=first.outcomes,
+        candidate_models=first.candidate_models,
+        router_metadata=first.router_metadata,
+    )
+    with pytest.raises(TypeError, match="example_id must be a plain string"):
+        evaluate_per_query_paired_predictor_comparison(
+            (nested_text_example, *dataset.examples[1:]),
             dataset.tier_specs,
             gbm_config=_gbm_config(),
             max_candidates_per_tier=17,
