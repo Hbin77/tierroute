@@ -224,6 +224,18 @@ the first three continuous coordinates and uses ordinary Python `sum` in schema 
 Canonical plan, subset, catalogue, active-coordinate, row, and sorted-model order bind
 target-major coefficient and row-major raw-score records.
 
+The separate prepared policy bridge uses `(training subset, scored domain)` raw blocks
+to fit the same per-model inner-LODO isotonic calibrators as the row path, then delegates
+candidate search, lambda selection, adapter accounting, and global original-order
+replay to the existing policy/simulator code. It retains `C(D,2)+D` calibration records,
+`D^2` calibrated destination identities, trusted source/store/raw expectations, and the
+real `NestedLodoLambdaResult`. Cost-aware outer-fold estimates count all five current
+pair traversals and bound the aggregate lambda candidate/policy-artifact estimate from
+the actual Decimal widths. The result also exposes ridge, solver/scorer, embedding, and ordered
+child-digest configuration. It does not manufacture a second report schema or an
+all-domain deployable artifact. Arbitrary injected ledger callback work and side
+effects are outside the code-owned resource estimate.
+
 - Core: [`features/encoding.py`](../src/tierroute/features/encoding.py),
   [`features/surface.py`](../src/tierroute/features/surface.py),
   [`features/embeddings.py`](../src/tierroute/features/embeddings.py),
@@ -242,6 +254,7 @@ target-major coefficient and row-major raw-score records.
   [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py), with limits in
   [`predictors/resource_limits.py`](../src/tierroute/predictors/resource_limits.py),
   plus [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py)
+  and [`policies/prepared_reference.py`](../src/tierroute/policies/prepared_reference.py)
 - Strongest evidence: [`test_feature_encoding.py`](../tests/test_feature_encoding.py),
   [`test_features_predictors.py`](../tests/test_features_predictors.py),
   [`test_bilinear_training.py`](../tests/test_bilinear_training.py),
@@ -254,14 +267,16 @@ target-major coefficient and row-major raw-score records.
   [`test_native_ridge.py`](../tests/test_native_ridge.py) and
   [`test_prepared_graph.py`](../tests/test_prepared_graph.py), plus
   [`test_prepared_store.py`](../tests/test_prepared_store.py) and
-  [`test_prepared_execution.py`](../tests/test_prepared_execution.py)
+  [`test_prepared_execution.py`](../tests/test_prepared_execution.py), plus
+  [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py)
 - Design context: [lambda/training design](lambda-tuning.md) and
   [prepared graph contract](prepared-session-graph.md), the
   [prepared feature-store reference](prepared-feature-store.md), the
-  [prepared execution reference](prepared-reference-execution.md), plus the
+  [prepared execution reference](prepared-reference-execution.md), the
+  [prepared policy-pipeline reference](prepared-reference-pipeline.md), plus the
   [native ridge protocol](native-ridge-protocol.md)
 
-The prepared implementation began at `f4b07bc`, its primary parity suite at
+The prepared **execution slice** began at `f4b07bc`, its primary parity suite at
 `608468b`, and admission/locality security regressions were hardened through
 `2ac1b50`. A focused local run on Darwin arm64 with Python 3.12.11 reports 62 passed.
 That focused count is local software evidence, not performance or human sign-off.
@@ -270,6 +285,10 @@ That focused count is local software evidence, not performance or human sign-off
 `8ec9cc1`
 passed the dependency-free wheel, macOS/Windows native-source jobs, Python 3.10
 (921 passed, one expected skip), and Python 3.12 (920 passed, two expected skips).
+Those PR #47 counts do not cover the later prepared policy bridge. Its own branch
+implementation is `63e288e` with tests at `3249a3c`; local Darwin arm64 verification
+recorded Python 3.10 with 954 passed and Python 3.12 with 953 passed plus one expected
+compatibility skip. Branch CI must still be recorded separately before submission.
 Automated CI still does not replace the owner walkthrough below.
 
 Owner questions:
@@ -321,8 +340,18 @@ Owner questions:
     allocator, Python-object, caller-owned-memory, wall-clock, or speedup guarantees?
     Why does the residual factor 2,048 remain an empirical frozen-fixture regression
     guard rather than a universal numerical-error bound? Which provider, persistence,
-    native execution, calibration, lambda, report, platform, and official-data gates
-    keep issue #9 open?
+    native execution, all-domain artifact, platform, and official-data gates keep
+    issue #9 open?
+15. For calibrated training set `S`, derive why calibration reads
+    `(S-{c}, c)` for every `c in S` and prediction reads `(S, h)` for `h not in S`.
+    Why are there `C(D,2)+D` calibration records, each with one calibrator per model,
+    `D^2` calibrated destination blocks, and
+    `[C(D,2)+D]N` raw row reads? Explain canonical fit order versus original replay
+    order, trusted digest expectations, why five current pair traversals are counted,
+    how Decimal width bounds the aggregate lambda candidate/policy-artifact estimate,
+    the candidate-cap exhaustive
+    flag, the injected-ledger exclusion, and why stable frozen-result equality is not
+    universal near-tie parity.
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -464,7 +493,7 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity and macOS link evidence; no binary in the wheel | Explicit local opt-in only; Linux-musl and Windows-MSVC release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph plus a bounded in-memory raw-feature/Welford/Chan/moment-ridge/raw-score reference exists. Synthetic/frozen tests cover exact `22N` structure and tolerance parity, but no provider, persistent/native session, calibration, lambda, report path, scalable execution, or performance result exists | Audited offline local provider, scalable persistent/native prepared session, calibration/lambda/report parity including near ties, three-platform audits, licensed-data evidence, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph plus bounded in-memory store/moment-ridge/raw-score and calibration/lambda/final-report references exist. Stable four- and seven-domain frozen fixtures equal the rowwise nested result, but no provider, persistent/native session, all-domain artifact, official-shape parity, scalable execution, or performance result exists | Audited offline local provider, scalable persistent/native prepared session, all-domain artifact, broader near-tie and official-shape parity, three-platform audits, licensed-data evidence, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
@@ -491,7 +520,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_features_predictors.py tests/test_bilinear_training.py \
   tests/test_gbm_core.py tests/test_gbm_training.py \
   tests/test_prepared_graph.py tests/test_prepared_store.py \
-  tests/test_prepared_execution.py \
+  tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \
   tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
   tests/test_lambda_tuning.py tests/test_lambda_policy_artifacts.py \
   tests/test_routerbench_adapter.py tests/test_validate_routerbench_script.py \

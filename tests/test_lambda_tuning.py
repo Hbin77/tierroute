@@ -26,8 +26,10 @@ from tierroute.policies import lambda_tuning
 from tierroute.policies.lambda_threshold import route_from_predictions
 from tierroute.policies.lambda_tuning import (
     CrossFittedPredictionTable,
+    LambdaSearchPreflightEstimate,
     cross_fitted_prediction_table,
     derive_lambda_candidate_set,
+    estimate_lambda_search,
     exact_lambda_candidates,
     fit_tiered_lambda_router_for_fold,
     nested_lodo_lambda_evaluation,
@@ -572,6 +574,95 @@ def test_bounded_preflight_counts_all_pair_scans_without_enumerating_pairs(
             (spec,),
             max_candidates_per_tier=2,
         )
+
+
+def test_lambda_search_estimate_is_deterministic_and_exposes_counts() -> None:
+    models = (
+        ModelSpec("same-a", Decimal("1")),
+        ModelSpec("same-b", Decimal("1.0")),
+        ModelSpec("second", Decimal("2")),
+        ModelSpec("third", Decimal("3")),
+    )
+    examples = tuple(
+        _example(
+            f"estimate-{index}",
+            domain,
+            models,
+            {model.model_id: 0.5 for model in models},
+        )
+        for index, domain in enumerate(("first", "second"))
+    )
+    specs = (
+        TierSpec(BudgetTier.FAST, Decimal("2"), 0.7),
+        TierSpec(BudgetTier.PREMIUM, Decimal("3"), 0.3),
+    )
+
+    first = estimate_lambda_search(
+        examples,
+        specs,
+        max_candidates_per_tier=3,
+    )
+    second = estimate_lambda_search(
+        examples,
+        specs,
+        max_candidates_per_tier=3,
+    )
+
+    assert first == second
+    assert (
+        preflight_lambda_search(
+            examples,
+            specs,
+            max_candidates_per_tier=3,
+        )
+        == first
+    )
+    assert first.example_count == 2
+    assert first.tier_count == 2
+    assert first.model_count == 4
+    assert first.domain_count == 2
+    assert first.pair_scan_occurrences == 12
+    assert first.unequal_cost_pair_occurrences == 10
+    assert first.derived_candidate_upper_bound == 22
+    assert first.candidate_upper_bound == 3
+    assert first.utility_evaluation_upper_bound == 48
+    assert isinstance(first, LambdaSearchPreflightEstimate)
+    with pytest.raises(ValueError, match="pair_scan_occurrences is inconsistent"):
+        replace(first, pair_scan_occurrences=0)
+
+
+def test_lambda_search_estimate_exposes_extreme_cost_fraction_width() -> None:
+    models = (
+        ModelSpec("tiny", Decimal("1e-100000")),
+        ModelSpec("huge", Decimal("1e99999")),
+    )
+    examples = (
+        _example(
+            "extreme-width",
+            "general",
+            models,
+            {"tiny": 0.0, "huge": 1.0},
+        ),
+    )
+    specs = (
+        TierSpec(BudgetTier.FAST, Decimal("1e99999"), 0.6),
+        TierSpec(BudgetTier.BALANCED, Decimal("1e99999"), 0.3),
+        TierSpec(BudgetTier.PREMIUM, Decimal("1e99999"), 0.1),
+    )
+
+    estimate = estimate_lambda_search(
+        examples,
+        specs,
+        max_candidates_per_tier=2,
+    )
+
+    assert estimate.pair_scan_occurrences == 1
+    assert estimate.unequal_cost_pair_occurrences == 1
+    assert estimate.maximum_cost_fraction_digits == 100_002
+    assert estimate.maximum_root_numerator_digits == 100_632
+    assert estimate.maximum_root_denominator_digits == 200_325
+    assert estimate.maximum_candidate_fraction_characters == 701_609
+    assert estimate.estimated_policy_artifact_bytes > 6_000_000
 
 
 def test_preflight_rejects_candidate_evidence_that_cannot_fit_policy_artifact() -> None:

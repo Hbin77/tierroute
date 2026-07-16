@@ -368,15 +368,17 @@ This slice does not implement:
 - embedding-provider execution, model download, or any runtime network access;
 - snapshot persistence, loading, mmap, cache eviction, locking, or path-race defense;
 - a native prepared-session protocol or a new protocol magic/version;
-- isotonic calibration, lambda tuning, routing, or reports;
+- calibration, lambda tuning, routing, or reports inside the store layer itself;
 - a final all-domain deployable predictor; or
 - GBM preparation or the routing baselines.
 
 The separate bounded
 [prepared reference execution](prepared-reference-execution.md) now implements the
 previously open coefficient and raw-score steps for small synthetic/frozen fixtures.
-It does not add persistence, native execution, scalable RouterBench execution, or any
-calibration, lambda, or final-report result.
+The bounded [prepared policy pipeline](prepared-reference-pipeline.md) consumes those
+scores through calibration, lambda tuning, and final replay on frozen fixtures. Neither
+successor adds persistence, native execution, scalable RouterBench execution, an
+all-domain artifact, or a reportable performance result.
 
 The default bilinear training and evaluation path remains unchanged. Before a
 prepared execution path can replace any repeated fit, the complete parity gate must
@@ -387,9 +389,9 @@ use a frozen corpus and independently reviewed tolerances to compare, in order:
    reference, not yet by a scalable replacement;
 3. every prepared raw-score block — now exercised by the bounded reference, not yet
    by a persistent or native session;
-4. isotonic calibration, including ties and constant-score cases;
-5. exact lambda candidate/tie selection and tier decisions; and
-6. final per-fold and aggregate evaluation reports.
+4. isotonic calibration, exact lambda candidate/tie selection, tier decisions, and
+   final per-fold/aggregate reports — now equal on stable bounded four- and seven-
+   domain fixtures, not yet an official-shape scalable replacement.
 
 The corpus must include ordinary data, high-dynamic-range numerical cases, zero
 variance columns, permutations, and near-tie decisions. Any field claimed to be

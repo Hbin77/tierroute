@@ -9,6 +9,25 @@ the public API is pre-1.0.
 
 ### Added
 
+- A bounded prepared reference policy pipeline that maps canonical raw-score contexts
+  through the existing per-model isotonic calibration, exact/bounded tier-lambda
+  search, and `OfflineSimulator`, returning the existing `NestedLodoLambdaResult`.
+  Versioned target-shard, calibration, and calibrated-score evidence binds the exact
+  `C(D,2)+D` calibration contexts and `D^2` destinations. Trusted source/store/raw digest
+  expectations, bounded child counts before recursive leaf reconstruction, every-fold
+  cost-width-aware search estimates, all five current pair traversals, aggregate
+  work/storage/report/candidate-evidence guards, original-order replay, and derived
+  exhaustive-search labeling fail closed. Returned evidence also exposes the ridge,
+  versioned prepared solver/scorer IDs, embedding configuration, and ordered raw child
+  digest catalogues. Bundled four-domain, intermediate five/six-domain, and uneven
+  seven-domain frozen
+  fixtures equal the authoritative rowwise fold, candidate, lambda, decision,
+  accounting, and final-report results; constant/duplicate, one-ULP, quote/realized-
+  mismatch, per-query, and cumulative-ledger tests preserve the reviewed boundaries.
+  Caller-supplied ledger callback work and side effects remain outside the resource
+  estimate. This is synthetic bounded wiring evidence, not universal near-
+  tie parity, a cross-platform numeric-digest promise, CLI/native/persistent integration,
+  an all-domain artifact, or a performance/quality/cost claim. Issue #9 remains open.
 - A bounded, standard-library-only prepared moment execution reference that consumes
   the immutable prepared store/statistics, sequentially combines, solves, and discards
   each canonical training subset, and shares one Cholesky factor across all model
@@ -26,9 +45,10 @@ the public API is pre-1.0.
   reviewed work/storage admission estimate excludes Python objects, allocator overhead,
   caller-owned input, and other process memory and is not a peak-RSS or wall-time
   estimate. Earlier store/statistics and execution caps reject the complete pinned
-  RouterBench/bge-m3 shape. This reference adds no dependency and has no calibration,
-  lambda, report, CLI, native-protocol, or persistent-artifact integration; it makes no
-  performance, quality, or cost-reduction claim, and Issue #9 remains open.
+  RouterBench/bge-m3 shape. The separate bounded policy bridge now supplies frozen-
+  fixture calibration/lambda/report integration, but neither reference adds a CLI,
+  native/persistent session, all-domain artifact, or performance, quality, or cost-
+  reduction claim; Issue #9 remains open.
 - A bounded, standard-library-only prepared feature-store reference that canonicalizes
   fit-relevant source rows and caller-precomputed embeddings into immutable
   little-endian binary64 payloads, requires caller-supplied expected source/embedding
@@ -42,8 +62,8 @@ the public API is pre-1.0.
   noninterference, signed-zero/non-finite/truncated/tampered payloads, semantic digest
   fields, direct constructors, and fail-before-traversal resource limits. By itself,
   this feature-store layer performs no provider inference, file I/O, solve, scoring,
-  calibration, or routing; no prepared coefficient-to-report integration or
-  performance claim has been established.
+  calibration, or routing itself; downstream bounded coefficient-to-report wiring now
+  exists only for synthetic/frozen fixtures, with no scalable or performance claim.
 - An experimental, standard-library-only prepared nested-LODO graph contract that
   canonicalizes domain/count pairs, enumerates the exact unique base-training subsets
   and held-out score blocks, and rejects closed-form count, byte, and work estimates

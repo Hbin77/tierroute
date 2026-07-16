@@ -23,7 +23,7 @@ Later rows record material assisted work outside that retrospective snapshot.
 |---|---|
 | Service | OpenAI Codex coding agent; the current development environment identifies a GPT-5 basis |
 | Exact model revision | The exact historical model ID/checkpoint was not exposed or retained; no reproducible revision is claimed |
-| Period covered | Repository work from 2026-07-15 through 2026-07-17, including issue #9's prepared-graph, prepared feature-store, and bounded prepared execution reference slices |
+| Period covered | Repository work from 2026-07-15 through 2026-07-17, including issue #9's prepared-graph, prepared feature-store, bounded prepared execution, and prepared calibration/lambda/report reference slices |
 | Material assistance | Requirement decomposition, implementation and refactoring proposals, test design, adversarial review, documentation drafting, local verification commands, and issue/branch/PR workflow |
 | Human-supplied decisions | Contest scope, architecture, package/license choices, one-shot default, LODO requirement, baseline set, offline/network prohibition, dependency policy, and approval gates |
 | Runtime role | None. Codex is not imported, packaged, called, or required by tierroute at build, training, evaluation, or inference time |
@@ -100,14 +100,16 @@ every owner walkthrough is **PENDING**.
 | Issue #9 prepared nested-LODO graph slice | branch source, tests, and review evidence; **REPO** | Combinatorial call-graph derivation, immutable graph/resource-contract design, adversarial tests, binary64 parity-boundary review, documentation, and repository workflow | Independent logical-call oracle; exact 63-subset/154-block/`22N` seven-domain regression; pre-enumeration count/modeled-buffer/numeric-work refusal; no prepared execution, performance, bge-m3, or official-data claim | **PENDING** |
 | Issue #9 prepared feature-store reference slice | branch source, tests, and review evidence; **REPO** | Fixed raw-layout and digest design, caller-checked source/precomputed-embedding boundary, bounded immutable store, Welford/Chan sufficient-statistics implementation, leakage and direct-constructor adversarial tests, documentation, claim review, and repository workflow | Canonical source/embedding golden identities; training-only tag/scaling and direct-matrix moment oracles; uneven-domain and excluded-domain noninterference; fail-before-traversal caps; no provider, file, solve, scoring, performance, bge-m3, or official-data claim; coefficient-to-report parity remains open | **PENDING** |
 | [PR #47](https://github.com/Hbin77/tierroute/pull/47) — Issue #9 bounded prepared execution reference slice | implementation `f4b07bc`, tests `608468b`, admission/locality hardening `2ac1b50`, and branch documentation; **REPO** and **ASSISTANCE_RECORD** | AI-assisted implementation, adversarial and security-regression test generation, numerical/trust-boundary review, evidence and maintainer-document drafting, verification planning, and repository workflow for the bounded moment-ridge/coefficient/raw-score reference | Independent row-refit tolerance oracle; one Cholesky factor per subset shared across targets; exact 63-coefficient/154-score-block/`22N`/`22NM` regression; target-free scoring, lineage/locality, canonical-payload, exact-type, cap-boundary, residual, and little-endian golden tests; focused local Darwin arm64/Python 3.12.11: 62 passed; [implementation/spec-head CI run `29524753168`](https://github.com/Hbin77/tierroute/actions/runs/29524753168) at `8ec9cc1` passed Python 3.10/3.12, dependency-free wheel, and macOS/Windows native-source jobs. No provider, persistence, native execution, calibration, lambda, final-report, performance, bge-m3, RouterBench, or official-data claim; issue #9 remains open | **PENDING** |
+| Issue #9 bounded prepared calibration/lambda/report bridge slice | implementation `63e288e`, tests `3249a3c`, branch documentation and review evidence; **REPO** and **ASSISTANCE_RECORD** | AI-assisted exact graph mapping, resource-estimate and evidence-schema implementation, adversarial test generation, same-runtime parity debugging, algorithm/security/test review, documentation drafting, verification planning, and repository workflow for the bounded raw-score-to-report bridge | Existing isotonic/lambda/simulator reuse; exact `C(D,2)+D` calibration and `D^2` destination coverage; D4–D7 full learned-result parity; cap/tie/1-ULP/quote-realized/cumulative/replay-order/lineage checks; cost-width, five-pass pair-work, digit-cap, child-amplification, and fail-order guards; local Python 3.10 954 passed and Python 3.12 953 passed/1 expected skip. No human review is implied. No provider, persistence, native/scalable session, all-domain artifact, prepared six-baseline wrapper, performance, bge-m3, RouterBench, or official-data claim; issue #9 remains open | **PENDING** |
 
-The prepared execution row records generated code, tests, and documentation as
-AI-assisted work. It makes no claim that those lines were written without assistance,
-that automated or AI-agent review proves understanding, or that the entrant has
-completed the walkthrough. The human owner must independently derive the moment
-equations and `22N` structure, trace builder versus direct-constructor trust, explain
-the numeric admission estimate and empirical 2,048 residual factor, run a predicted
-failure mutation, and record a reviewed commit before changing **PENDING**.
+The two prepared execution/policy rows record generated code, tests, and documentation
+as AI-assisted work. They make no claim that those lines were written without
+assistance, that automated or AI-agent review proves understanding, or that the entrant
+has completed the walkthrough. The human owner must independently derive the moment
+equations and `22N` structure; trace builder versus direct-constructor trust; explain
+the calibration graph, five lambda pair traversals, cost-width admission, and empirical
+2,048 residual factor; run predicted failure mutations; and record reviewed commits
+before changing **PENDING**.
 
 Future material AI-assisted changes must add or update one ledger row in the same PR.
 Pure typo or formatting changes may state the assistance in the PR without adding a

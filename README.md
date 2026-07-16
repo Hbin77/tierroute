@@ -338,28 +338,46 @@ numerical-tolerance parity with an independently fitted row reference. Moment re
 uses a different operation order, so this is not bitwise parity and the numeric payload
 digests are not promised to match across Python/platform arithmetic implementations.
 
+The bounded
+[prepared policy-pipeline reference](docs/prepared-reference-pipeline.md) now maps those
+raw blocks through the existing per-model isotonic calibrator, exact/bounded lambda
+search, and `OfflineSimulator`. It retains canonical target, calibration, and calibrated-
+score lineage while returning the existing `NestedLodoLambdaResult` rather than a new
+budget/report schema. The bundled four-domain replay and an uneven seven-domain fixture
+produce the same complete nested result as the authoritative rowwise path, including
+candidate evidence, exact selected lambdas, decisions, accounting, and final report.
+The seven-domain fixture exercises all 63 coefficient blocks, 154 raw-score blocks,
+`22N` raw memberships, 28 calibrated subsets, and 49 calibrated destinations.
+
 Only the public builder functions are supported derivation paths. Direct leaf-dataclass
 construction validates a self-declared canonical record; it is not an aggregate loader,
 proof that the record was derived from its claimed inputs, or provenance attestation.
 The versioned SHA-256 values are content identities, not authentication, and substitution
 detection requires comparison with a trusted expected digest. The reference preflight
-counts reviewed numeric admission units and modeled numeric payload/storage, but excludes
-Python object graphs, allocator overhead, caller-owned inputs, and other process memory;
-it is neither a peak-RSS estimate nor a wall-time promise. The complete pinned
+counts every current lambda pair traversal and derives an aggregate lambda
+candidate/policy-artifact byte bound from the actual Decimal cost widths. It also
+counts reviewed numeric
+admission units and modeled numeric payload/storage, but excludes Python object graphs,
+allocator overhead, caller-owned inputs, other process memory, and arbitrary work or
+side effects inside a caller-supplied ledger factory; it is neither a peak-RSS estimate
+nor a wall-time promise. The complete pinned
 RouterBench/bge-m3 shape remains rejected by the bounded feature-store, statistics, and
 reference-execution caps.
 
-This slice performs no provider inference or file I/O and makes no performance, quality,
-or cost-reduction claim. It is not integrated with calibration, lambda tuning, report
-generation, the CLI, the native protocol, or persistent prepared artifacts, and it does
-not replace the default trainer. [Issue #9](https://github.com/Hbin77/tierroute/issues/9)
-therefore remains open.
+These references perform no provider inference or file I/O and make no performance,
+quality, or cost-reduction claim. The policy bridge is bounded in-memory proof code, not
+CLI/runtime integration, a native protocol, a persistent/scalable session, an all-domain
+deployable artifact, or a replacement for the default trainer. Tolerance-close raw
+scores are not guaranteed to preserve every PAV partition or exact decision; official-
+data parity must compare and fail closed rather than introduce an epsilon. Numeric
+digests remain local evidence, not a cross-platform promise. [Issue
+#9](https://github.com/Hbin77/tierroute/issues/9) therefore remains open.
 
 Full training with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total
 features) remains gated on an audited offline local provider, a scalable authenticated
-persistent prepared session integrated through calibration, lambda tuning, reporting,
-and CLI reproduction, end-to-end parity, plus audited Linux-musl and Windows-MSVC
-artifacts. tierroute will not silently reduce or discard embedding dimensions. The
+persistent prepared session and CLI reproduction, official-shape end-to-end parity,
+plus audited Linux-musl and Windows-MSVC artifacts. tierroute will not silently reduce
+or discard embedding dimensions. The
 existing row-training path keeps its conservative operation guard, static reviewed
 solver ID, pre-embedding preflight, and unknown-ID rejection; inference remains
 dependency-free because it uses only stored coefficients.
@@ -429,6 +447,12 @@ dependency-free because it uses only stored coefficients.
   For seven domains its tested structure is exactly 63 subsets, 154 blocks, `22N`
   row memberships, and `22NM` score cells. It is synthetic structural and
   numerical-tolerance evidence only, not a scalable experiment or performance result.
+- A bounded prepared policy bridge derives `C(D,2)+D` inner-LODO calibration contexts and
+  `D^2` calibrated destination blocks, then reuses the existing lambda tuner and
+  simulator. Four- and seven-domain frozen fixtures match the complete rowwise nested
+  result; trusted digest checks, aggregate preflight, original-order replay, both budget
+  adapters, and held-out-target noninterference fail closed under tests. It is not a
+  deployable prepared artifact or a universal exact-parity claim.
 - A report-shaped per-query benchmark CLI compares that nested-LODO learned router
   against all six baselines on one identical evaluation scope and publishes compact,
   versioned outer-fold membership digests.

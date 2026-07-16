@@ -10,9 +10,11 @@ sufficient statistics, and the immutable
 per unique training subset and emits every graph-prescribed raw-score block.
 
 This is executable structural and numerical-parity evidence for small synthetic and
-frozen fixtures. It is not a scalable prepared session, a persistent cache, a native
-protocol, or a completed predictor-training/reporting path. It does not change the
-default trainer, evaluator, CLI, or routing policy. Issue #9 remains open.
+frozen fixtures. The separate bounded
+[prepared policy pipeline](prepared-reference-pipeline.md) now consumes these raw
+scores through calibration, lambda tuning, and final replay. Neither reference is a
+scalable prepared session, persistent cache, native protocol, deployable all-domain
+artifact, or default trainer/CLI replacement. Issue #9 remains open.
 
 ## Supported workflow
 
@@ -229,19 +231,18 @@ file I/O, persistence, mmap, locking, subprocess, or native-code execution. It d
 not implement or prove:
 
 - scalable/full-dimensional prepared execution or a persistent prepared session;
-- isotonic calibration, lambda tuning/selection, near-tie policy decisions, or final
-  all-domain artifact assembly;
-- final evaluation-report parity or any benchmark quality, cost, oracle-gap, or
-  routing result;
+- final all-domain artifact assembly or universal near-tie parity beyond the frozen
+  policy-pipeline fixtures;
+- any reportable benchmark quality, cost, oracle-gap, or routing result;
 - runtime/CLI integration, a native prepared protocol, or cross-platform artifacts;
 - bge-m3 execution, RouterBench execution, official SK Telecom data, or data
   redistribution rights; or
 - GBM comparison, production readiness, wall-time speedup, or memory savings.
 
-The next replacement gate starts at the raw-score outputs established here and must
-prove calibration, exact lambda candidate/tie selection, routing decisions, and final
-fold/aggregate reports on a frozen corpus. A scalable implementation additionally
-needs authenticated offline embedding preparation, persistence/session semantics,
-new protocol identities, fail-closed loading and resource controls, and three-platform
-artifact/link audits. Until those gates pass, Issue #9 remains open and the current
-rowwise training path remains authoritative.
+The bounded successor gate now proves calibration, exact candidate/lambda selection,
+routing decisions, and final fold/aggregate report equality on stable four- and seven-
+domain frozen corpora. Replacement still requires authenticated offline embedding
+preparation, scalable persistence/session semantics, all-domain artifact assembly, new
+protocol identities, fail-closed loading, official-shape parity, resource controls,
+and three-platform artifact/link audits. Until those gates pass, Issue #9 remains open
+and the current rowwise training path remains authoritative.
