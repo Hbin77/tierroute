@@ -100,6 +100,7 @@ commit and rerun every cited check before using any record in the final report.
 | `I-GBM-C649150` | Dependency-free per-model squared-error regression-stump boosting uses deterministic split/tie rules, immutable bounded state, pre-embedding work/catalogue guards, inner-LODO OOF predictions, and per-model isotonic calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) at `c649150` | [`test_gbm_core.py`](../tests/test_gbm_core.py), [`test_gbm_training.py`](../tests/test_gbm_training.py), [PR #41 CI run `29490146160`](https://github.com/Hbin77/tierroute/actions/runs/29490146160) | This proves deterministic, leakage-controlled in-memory wiring only; no artifact, deployment CLI, or predictive-gain evidence |
 | `I-PAIR-3E20792` | Fixed surface-only bilinear and GBM families are estimated on identical nested-LODO evidence after a complete pre-fit GBM-work guard; one shared six-baseline object and raw `GBM - bilinear` global/domain deltas are emitted in machine-readable JSON with family selection and performance claims disabled | [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) hardened through `786c418`, [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py) implemented at `63df628` and hardened at `786c418`, [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) identity-hardened at `b307684`, [`cli.py`](../src/tierroute/cli.py) implemented at `3e20792` and hardened at `db12ff8` | [`test_gbm_training.py`](../tests/test_gbm_training.py), [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py), [`test_predictor_comparison_cli.py`](../tests/test_predictor_comparison_cli.py), [PR #43](https://github.com/Hbin77/tierroute/pull/43) | Descriptive paired estimation is not unbiased family selection and supplies no official-data, superiority, quality-gain, or savings result |
 | `I-PREPARED-552B62D` | A bounded standard-library reference canonicalizes caller-precomputed `12 + E` surface/embedding fit rows, binds caller-checked source and embedding content identities, derives per-domain Welford moments, and combines only included training domains with Chan's formula for prepared nested-LODO subsets | [`features/surface.py`](../src/tierroute/features/surface.py) at `1425d11`, [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py) through `552b62d`, and [the trust-boundary specification](prepared-feature-store.md) at `9bc0b8b` | [`test_features_predictors.py`](../tests/test_features_predictors.py), [`test_prepared_store.py`](../tests/test_prepared_store.py), [PR #46](https://github.com/Hbin77/tierroute/pull/46), [implementation/spec-head push CI run `29518686144`](https://github.com/Hbin77/tierroute/actions/runs/29518686144) | Content digests do not authenticate origin or provenance; numerical store/stat digests are not promised across platforms; no provider, persistence, solve, score, performance, bge-m3, or official-data claim |
+| `I-PREPARED-EXEC-608468B` | A bounded in-memory Python reference combines each canonical prepared subset, solves centered ridge from moments with one Cholesky factor shared by all model targets, and emits every graph-ordered raw-score block; the seven-domain regression proves 63 coefficient blocks, 154 score blocks, exactly `22N` row memberships, and `22NM` scalar scores | [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py) at implementation commit `f4b07bc`, hardened through `2ac1b50`, and [the execution contract](prepared-reference-execution.md) | [`test_prepared_execution.py`](../tests/test_prepared_execution.py) at test commit `608468b`, with admission/locality hardening at `2ac1b50`; focused local Darwin arm64/Python 3.12.11: 62 passed; [PR #47](https://github.com/Hbin77/tierroute/pull/47); [implementation/spec-head CI run `29524753168`](https://github.com/Hbin77/tierroute/actions/runs/29524753168) at `8ec9cc1`: Python 3.10 921 passed/1 expected skip, Python 3.12 920 passed/2 expected skips, dependency-free wheel and macOS/Windows native-source jobs passed | Synthetic/frozen-fixture numerical parity is tolerance-based, not bitwise or a cross-platform digest promise. Builders are the supported derivation path; direct leaf constructors provide only self-declared canonical record identities. Digests are not authentication, and substitution detection needs a trusted expected digest. The admission estimate is reviewed numeric work/storage accounting, not peak RSS or wall-clock. No provider, persistence, native execution, calibration, lambda, final-report, performance, bge-m3, RouterBench, or official-data claim; issue #9 remains open |
 | `I-POLICY-129A230` | Each fixed-lambda decision uses exact arithmetic; tuning records whether retained candidates are exhaustive or approximate | [`policies/lambda_threshold.py`](../src/tierroute/policies/lambda_threshold.py), [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py), [`policies/lambda_artifacts.py`](../src/tierroute/policies/lambda_artifacts.py) | [`test_policies.py`](../tests/test_policies.py), [`test_lambda_tuning.py`](../tests/test_lambda_tuning.py), [`test_lambda_policy_artifacts.py`](../tests/test_lambda_policy_artifacts.py) | Exact decisions do not make a truncated candidate search exhaustive or globally optimal |
 | `I-OFFLINE-129A230` | The base wheel has no runtime dependency, shipped built-in runtime paths pass with networking denied, and CI audits licenses plus wheel/sdist data exclusion | [`ci.yml`](../.github/workflows/ci.yml), [`SBOM.md`](../SBOM.md), [`check_licenses.py`](../scripts/check_licenses.py) | [`test_offline_runtime.py`](../tests/test_offline_runtime.py), [`test_license_gate.py`](../tests/test_license_gate.py), [`test_package.py`](../tests/test_package.py), CI run `29483000949` | Package installation can require pre-cached or fetched build/dev wheels; the no-network claim begins after installation |
 
@@ -140,6 +141,7 @@ optimization over every policy.
 | Same-scope GBM-versus-bilinear paired estimation | `IMPLEMENTED — DESCRIPTIVE ONLY` | `I-PAIR-3E20792` |
 | Project-owned C11 backend for one authenticated bounded dense ridge solve | `IMPLEMENTED — EXPERIMENTAL` | protocol/parity/platform-source evidence; no full-run claim |
 | Bounded prepared feature-store and training-side sufficient-statistics reference | `IMPLEMENTED — EXPERIMENTAL` | `I-PREPARED-552B62D`; no provider, solve, score, or performance claim |
+| Bounded prepared moment-solve and complete raw-score reference | `IMPLEMENTED — SYNTHETIC/FROZEN FIXTURES ONLY` | `I-PREPARED-EXEC-608468B`; no scalable session, calibration, policy, report, or performance claim |
 | Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | `I-POLICY-129A230` |
 | Local bge-m3 provider and controlled feature ablation | `PLANNED` | model manifest, provider tests, ablation record |
 | Licensed family-selection-aware GBM-versus-bilinear experiment | `PLANNED` | preregistration plus untouched selection/scoring evidence |
@@ -227,6 +229,13 @@ flowchart LR
 - The paired predictor runner is `IMPLEMENTED` for descriptive estimation only. It
   fixes `selected_family=null` and `performance_claim_allowed=false`; selecting a
   family requires untouched evidence or an additional selection-aware validation layer.
+- The prepared execution module is a bounded standard-library reference outside the
+  production training/report path. From the prepared store's moments it builds one
+  schema per canonical training subset, solves all model targets with a shared
+  Cholesky factor, and emits raw scores in exact graph order. Its synthetic/frozen
+  tests establish tolerance-based numerical and exact `22N` structural parity only;
+  they do not establish calibration, lambda tuning, final-report parity, native
+  execution, persistence, throughput, memory efficiency, or real-data quality.
 - Uncalled outputs and held-out quality labels stay outside `RouterState`.
 - `adapters/` owns unresolved per-query-versus-cumulative budget interpretation.
 - The default policy makes one model choice. The typed action/history contract permits
@@ -355,6 +364,7 @@ runtime requires no network and leaves the empty model cache untouched.
 | Budget objective | routing and cascade literature | fixed-lambda exact cost-utility comparison is `IMPLEMENTED`; bounded tuning stays approximate; official weights are gated | `I-ACCOUNT-129A230`, `I-POLICY-129A230` |
 | Distribution shift | random-split and transfer findings | true nested LODO orchestration is `IMPLEMENTED` for the generic bundled synthetic benchmark; no official-data result exists, and the complete PR #35 RouterBench diagnostic is not an end-to-end domain-shift experiment | `I-SCOPE-129A230`, `I-PREDICTOR-129A230` |
 | Calibration | predictor reliability literature | per-model isotonic layer is `IMPLEMENTED`; empirical gain is `TBD-MEASURED` | `I-PREDICTOR-129A230` |
+| Prepared nested execution | engineering reuse of identical training subsets | a bounded Python moment-solve/raw-score reference is `IMPLEMENTED` on synthetic/frozen fixtures, including exact 63/154/`22N` structure; scalability and end-to-end benefit are unmeasured | `I-PREPARED-552B62D`, `I-PREPARED-EXEC-608468B` |
 | Offline/compliance | deployment constraint | dependency-free core and network-free shipped built-in paths are `IMPLEMENTED`; injected extensions need separate offline proof | `I-OFFLINE-129A230`, `I-REPRO-129A230` |
 
 Avoid saying tierroute invented LLM routing, budget-aware selection, cascades, LODO, or
@@ -375,12 +385,15 @@ protocol.
   Its `NOASSERTION` license and global all-domain quote/tier calibration prevent using
   it as a public result, an end-to-end domain-shift claim, or a paper reproduction.
 - A project-owned C11 sidecar for one bounded dense ridge solve is implemented and
-  parity-tested. A smaller bounded in-memory reference now canonicalizes fit rows,
-  computes per-domain Welford moments, and leakage-tests included-domain Chan
-  combinations, but it neither runs an embedding provider nor solves or scores the
-  prepared graph. A local bge-m3 provider and scalable persistent prepared execution
-  session are still not shipped. Neither the sidecar nor the reference alone is
-  evidence of a full-dimensional RouterBench experiment.
+  parity-tested. A separate bounded in-memory Python reference now canonicalizes fit
+  rows, computes per-domain Welford moments, combines included domains, solves each
+  unique prepared subset, and emits every raw-score block. Its parity evidence is
+  numerical-with-tolerance on synthetic/frozen fixtures; it is neither bitwise parity
+  nor a cross-platform digest promise. It has no local embedding provider, persistent
+  or native prepared session, calibration, lambda, or final-report integration. The
+  complete planned RouterBench shape is rejected by the store/statistics/reference
+  admission caps. Neither reference is evidence of a full-dimensional RouterBench run,
+  a speedup, quality, cost savings, or official-data performance; issue #9 remains open.
 - A cumulative-budget comparison needs a sequence-level oracle; summing independent
   per-query oracle choices is invalid.
 - Cascade remains disabled until sequential calls and their accounting are confirmed.
@@ -393,7 +406,7 @@ protocol.
 | Official data and written license arrive | adapter-local mapping, checksum, EDA, baseline replay | committing unlicensed data |
 | Budget scope is confirmed cumulative | budget-adaptive policy and sequence-level planner | relabeling per-query oracle results |
 | Sequential calls are explicitly allowed | separately evaluated cascade experiment | enabling cascade from interface capability alone |
-| Prepared full-dimensional session and platform artifacts pass deep audit | bge-m3 bilinear/GBM ablation | treating one dense solve as an end-to-end training result or weakening the GPL-family policy silently |
+| Prepared full-dimensional session and platform artifacts pass deep audit | bge-m3 bilinear/GBM ablation | treating the bounded Python reference or one dense solve as an end-to-end training result, or weakening the GPL-family policy silently |
 | P0 fails to beat credible baselines | prioritize reliability, docs, and reproducibility | hiding or cherry-picking failed folds |
 
 ### Reflection slot

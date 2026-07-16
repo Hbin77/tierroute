@@ -12,6 +12,12 @@ The implementation is `tierroute.predictors.prepared_store`. It performs no netw
 operation, embedding inference, file I/O, native execution, ridge solve, scoring,
 calibration, or lambda selection.
 
+A separate bounded
+[prepared reference execution](prepared-reference-execution.md) now consumes these
+records to solve all unique graph subsets and emit all raw-score blocks on small
+fixtures. That downstream evidence does not enlarge this store module's scope or make
+either module a scalable or persistent prepared session.
+
 ## Public workflow
 
 The intended construction order is:
@@ -27,6 +33,11 @@ The intended construction order is:
 5. Call `build_prepared_domain_statistics(store)` once.
 6. Call `combine_prepared_subset_statistics(bundle, subset_index)` for any training
    subset enumerated by the graph.
+7. Optionally pass the exact store/statistics pair to
+   `build_prepared_coefficient_bundle(...)` from the prepared execution module.
+8. Optionally pass the exact store/coefficient pair to
+   `build_prepared_raw_score_bundle(...)`; its separate contract and tighter
+   cumulative caps apply.
 
 The builders and result types are:
 
@@ -195,7 +206,10 @@ constructors enforce bounded canonical structure and bind every supplied semanti
 field, but they cannot prove that a self-declared source digest, domain-content digest,
 or moment tuple was derived from trusted rows. Consumers must not treat a directly
 assembled record as builder/provenance evidence merely because its self-computed digest
-is internally consistent.
+is internally consistent. Direct leaves are self-declared per-record canonical values,
+not aggregate loaders, derivation proofs, provenance proofs, or evidence that a
+builder's cumulative admission ran. Substitution detection requires comparison with a
+separately trusted expected digest; hashes are not authentication.
 
 Little-endian framing is canonical for the binary64 values actually stored. The
 fit-source and precomputed-embedding fixtures have portable framing goldens because
@@ -264,8 +278,11 @@ and tests compare them approximately. They are not a bitwise-parity promise agai
 the existing row trainer. Welford, Chan, `statistics.fmean`, per-row standardization,
 and dot-product accumulation use different binary64 operation orders. Centered
 moments do not retain the old path's intermediate rounding history, so equal real
-arithmetic can still produce different least-significant bits. No cross-path public
-tolerance is declared by this experimental API.
+arithmetic can still produce different least-significant bits. The downstream
+[prepared execution contract](prepared-reference-execution.md) records reviewed
+fixture-specific coefficient, intercept, and raw-score tolerances. Those gates are
+regression evidence only, not bitwise equality, a cross-platform numerical-digest
+promise, or a universal error bound.
 
 ## Leakage invariants
 
@@ -338,7 +355,11 @@ These are admission guards, not peak-RSS guarantees. They omit Python object,
 allocator, temporary-list, hashing, and caller-owned input memory. In particular, a
 shape admitted by `prepared_graph` can still be rejected by this smaller Python
 reference. The graph document's RouterBench-sized modeled shape is not a claim that
-the reference statistics builder admits or executes that shape.
+the reference statistics builder admits or executes that shape. The planned embedded
+RouterBench construction exceeds this store workflow's combined 512 MiB admission,
+and its statistics construction exceeds the 50,000,000-unit cap. The later prepared
+execution layer also has its own 100,000,000-unit aggregate cap, so that planned shape
+is rejected before full-dimensional reference execution.
 
 ## Exact exclusions and next parity gate
 
@@ -347,18 +368,25 @@ This slice does not implement:
 - embedding-provider execution, model download, or any runtime network access;
 - snapshot persistence, loading, mmap, cache eviction, locking, or path-race defense;
 - a native prepared-session protocol or a new protocol magic/version;
-- ridge coefficient solving from the combined moments;
-- prepared raw-score blocks, isotonic calibration, lambda tuning, routing, or reports;
+- isotonic calibration, lambda tuning, routing, or reports;
 - a final all-domain deployable predictor; or
 - GBM preparation or the routing baselines.
 
+The separate bounded
+[prepared reference execution](prepared-reference-execution.md) now implements the
+previously open coefficient and raw-score steps for small synthetic/frozen fixtures.
+It does not add persistence, native execution, scalable RouterBench execution, or any
+calibration, lambda, or final-report result.
+
 The default bilinear training and evaluation path remains unchanged. Before a
-prepared execution path can replace any repeated fit, the next parity gate must use a
-frozen corpus and independently reviewed tolerances to compare, in order:
+prepared execution path can replace any repeated fit, the complete parity gate must
+use a frozen corpus and independently reviewed tolerances to compare, in order:
 
 1. selected feature coordinates, training-only schemas, and sufficient statistics;
-2. per-subset ridge coefficients and intercepts;
-3. every prepared raw-score block;
+2. per-subset ridge coefficients and intercepts — now exercised by the bounded
+   reference, not yet by a scalable replacement;
+3. every prepared raw-score block — now exercised by the bounded reference, not yet
+   by a persistent or native session;
 4. isotonic calibration, including ties and constant-score cases;
 5. exact lambda candidate/tie selection and tier decisions; and
 6. final per-fold and aggregate evaluation reports.
@@ -371,6 +399,7 @@ required, the design must either replay the required row operations or move both
 paths to one newly versioned arithmetic contract; the current centered moments alone
 cannot reconstruct prior intermediate rounding.
 
-Until that gate passes, this module is evidence for canonicalization and isolation,
-not evidence of speedup, cost reduction, quality retention, full RouterBench-scale
-execution, or production readiness.
+Until that gate passes, these modules are evidence for canonicalization, isolation,
+and bounded coefficient/raw-score parity. They are not evidence of speedup, cost
+reduction, quality retention, calibration/lambda/final-report parity, full
+RouterBench-scale execution, or production readiness. Issue #9 remains open.

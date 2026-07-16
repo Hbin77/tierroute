@@ -4,8 +4,10 @@
 
 Status: experimental graph enumeration and resource preflight. A separate bounded
 [in-memory feature-store and sufficient-statistics reference](prepared-feature-store.md)
-now exercises this graph, but no native session protocol, persistent cache, or
-prepared execution path is implemented.
+and [prepared reference execution](prepared-reference-execution.md) now exercise this
+graph through every unique coefficient solve and raw-score block on bounded fixtures.
+No native session protocol, persistent cache, or scalable prepared execution path is
+implemented.
 
 ## Scope
 
@@ -27,6 +29,12 @@ adds canonical in-memory fit rows, training-only dynamic tags and population sca
 and per-domain Welford/Chan moments. It does not change the planner or default training
 path; its exact trust boundary and smaller Python reference caps are documented
 separately.
+
+`tierroute.predictors.prepared_execution` is the next experimental consumer. It
+combines and discards one subset moment object at a time, shares one Cholesky
+factorization across that subset's model targets, and emits target-free feature-shard
+identities plus row-major raw scores for every graph block. Its distinct arithmetic,
+lineage, cumulative-admission, and nonclaim boundaries are documented separately.
 
 This scope supports four through seven domains and covers nested evaluation only.
 Training one final deployable predictor on all domains would add one all-domain base
@@ -78,8 +86,9 @@ N * (D * (D - 1) + 1)
 ```
 
 raw-score rows. At `D = 7`, those are `186N` and `43N`. The graph contract does not
-claim that these visits have already been removed; it only makes the reusable target
-graph machine-checkable and testable.
+claim a measured reduction: the bounded reference now materializes the deduplicated
+target structure on small fixtures, but there is no scalable execution, wall-time,
+peak-memory, quality, or cost result.
 
 ## Resource estimate
 
@@ -112,7 +121,12 @@ calibration, and lambda tuning. For the planned RouterBench shape (`D=7`, `N=34,
 `d=1,036`, `M=11`), the graph has 765,116 prepared score rows,
 99,446,578,402 modeled numeric-work units, and 412,529,936 modeled numeric-buffer
 bytes. This is an admitted preflight shape, not a completed benchmark or a performance
-claim.
+claim. It is admitted by this graph-only compact-buffer model, but the subsequent
+prepared store/statistics and execution-reference ceilings reject the planned
+full-dimensional workflow before it runs: the embedded-store construction has a
+combined 512 MiB admission, statistics have a 50,000,000-unit work cap, and execution
+has a 100,000,000-unit aggregate work cap. Graph admission is therefore not execution
+admission.
 
 The reviewed graph-only ceilings are seven domains, 1,000,000 examples, 4,096
 features, 256 targets, 63 subsets, 154 score blocks, 16,000,000 score-row memberships,
@@ -132,16 +146,19 @@ prove training-data isolation by itself. The
 fit-content identity and subset isolation, but its digests are not authenticity or
 provenance evidence.
 
-A future prepared execution session still needs all of the following:
+A future scalable prepared execution session still needs all of the following:
 
 - a persistent descriptor/session protocol and cache bound to the in-memory reference
   identities;
-- coefficient solving and batched scoring from the prepared subset statistics;
-- coefficient, raw-score, isotonic-calibrator, lambda, and final-report parity against
-  the existing nested path, including near-tie adversarial cases;
+- scalable coefficient solving and batched scoring from the prepared subset
+  statistics; the bounded Python reference is evidence only for small fixtures;
+- isotonic-calibrator, exact lambda/tie selection, routing-decision, and final-report
+  parity against the existing nested path, including near-tie adversarial cases;
 - a separate protocol identity and magic rather than overloading `TRRIDG01` version 1;
 - timeout, malformed-frame, digest, path-race, and three-platform artifact/link audits.
 
 The graph contains no network operation, dependency, model asset, dataset, executable,
-or build tool. It does not make bge-m3, official SK Telecom data, cost savings, quality
-retention, or full-dimensional training an implemented claim.
+or build tool. Neither it nor the bounded execution reference makes bge-m3,
+RouterBench execution, official SK Telecom data, calibration/lambda/final-report
+parity, cost savings, quality retention, or full-dimensional training an implemented
+claim. Issue #9 remains open.
