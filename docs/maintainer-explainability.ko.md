@@ -464,8 +464,13 @@ provider·persistence·native execution·calibration·lambda·최종 report·성
 prepared 구현은 `f4b07bc`, 주요 parity test는 `608468b`에서 시작했고
 admission/locality security regression은 `2ac1b50`까지 hardening했다. Darwin
 arm64, Python 3.12.11 로컬 전용 실행에서 62개가 통과했다. 이 숫자는
-로컬 소프트웨어 근거일 뿐 CI·성능·사람 서명이 아니며 PR·CI 근거는 아직
-pending이다.
+로컬 소프트웨어 근거일 뿐 성능·사람 서명이 아니다.
+[PR #47](https://github.com/Hbin77/tierroute/pull/47)의 implementation/spec-head
+`8ec9cc1` 대상
+[CI run `29524753168`](https://github.com/Hbin77/tierroute/actions/runs/29524753168)은
+dependency-free wheel, macOS/Windows native-source job, Python 3.10(921 passed,
+expected skip 1), Python 3.12(920 passed, expected skip 2)를 통과했다. 자동 CI는
+아래 owner walkthrough를 대신하지 않는다.
 
 ```bash
 file="src/tierroute/predictors/training.py"

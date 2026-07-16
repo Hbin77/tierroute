@@ -264,8 +264,13 @@ target-major coefficient and row-major raw-score records.
 The prepared implementation began at `f4b07bc`, its primary parity suite at
 `608468b`, and admission/locality security regressions were hardened through
 `2ac1b50`. A focused local run on Darwin arm64 with Python 3.12.11 reports 62 passed.
-That count is local software evidence, not CI, performance, or human sign-off; PR and
-CI evidence are still pending.
+That focused count is local software evidence, not performance or human sign-off.
+[PR #47](https://github.com/Hbin77/tierroute/pull/47) implementation/spec-head
+[CI run `29524753168`](https://github.com/Hbin77/tierroute/actions/runs/29524753168) at
+`8ec9cc1`
+passed the dependency-free wheel, macOS/Windows native-source jobs, Python 3.10
+(921 passed, one expected skip), and Python 3.12 (920 passed, two expected skips).
+Automated CI still does not replace the owner walkthrough below.
 
 Owner questions:
 
