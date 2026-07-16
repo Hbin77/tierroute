@@ -605,6 +605,11 @@ planned, and gated claims are recorded in
 [docs/literature-and-novelty.md](docs/literature-and-novelty.md). Read it before reusing
 performance, OOD, or novelty language in a report or presentation.
 
+The claim-gated five-page submission structure, architecture-diagram source, metric
+evidence record, and final render checklist are maintained in
+[docs/submission-report-outline.md](docs/submission-report-outline.md). Its placeholders
+are not contest results and must never be filled with synthetic demo values.
+
 Material development-assistant use, evidence limits, and human review status are
 recorded in [docs/ai-assistance-audit.md](docs/ai-assistance-audit.md). The critical
 invariant walkthrough packet and owner sign-off table are in
