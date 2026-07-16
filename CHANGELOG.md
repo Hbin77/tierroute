@@ -51,6 +51,8 @@ the public API is pre-1.0.
   submission-disclosure draft, and contest-critical
   [maintainer explainability packet](docs/maintainer-explainability.md), with all human
   walkthroughs explicitly pending until a named entrant performs and records them.
+- A documented version-1 replay JSON resource contract sized from the planned
+  RouterBench mapping, including outer and nested LODO amplification limits.
 
 ### Changed
 
@@ -116,6 +118,13 @@ the public API is pre-1.0.
 
 ### Security
 
+- Replay JSON now uses one descriptor-stable, bounded regular-file reader and a lexical
+  preflight before strict JSON parsing. Duplicate/unknown/missing fields, nonstandard or
+  overflowing numbers, implicit primitive coercions, invalid Unicode, oversized text,
+  excessive collections, and outer/nested LODO work fail closed before command-specific
+  route/evaluate/train work. This intentionally rejects formerly ignored or coerced
+  pre-1.0 inputs while preserving the bundled synthetic bytes and optional
+  `quoted_cost` fallback.
 - Authenticate RouterBench bytes before structural decoding; referenced pickle globals
   remain inert and no callable named by the payload is imported or invoked.
 - Predictor artifacts accept strict JSON only; duplicate keys, unknown fields,

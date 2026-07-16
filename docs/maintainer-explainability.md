@@ -40,7 +40,8 @@ Owner questions:
 
 ## 2. Budget adapters, replay, and executed-call evidence
 
-**Invariant.** The simulator never performs a live model call. It consumes a logged
+**Invariant.** The simulator never performs a live model call. Replay JSON first passes
+one descriptor-stable, strict, finite adapter boundary. The simulator consumes a logged
 outcome only after a valid `CallModel`, charges the injected ledger with the realized
 cost, and records that executed call even when the ledger rejects an overspend. Budget
 scope remains adapter-owned; the shared core does not guess per-query versus cumulative
@@ -51,12 +52,15 @@ semantics.
   [`eval/budgets.py`](../src/tierroute/eval/budgets.py), and
   [`adapters/budgets.py`](../src/tierroute/adapters/budgets.py), with orchestration in
   [`eval/protocols.py`](../src/tierroute/eval/protocols.py) and
-  [`eval/planning.py`](../src/tierroute/eval/planning.py)
+  [`eval/planning.py`](../src/tierroute/eval/planning.py). Replay ingestion is in
+  [`adapters/json_dataset.py`](../src/tierroute/adapters/json_dataset.py), with limits in
+  [`adapters/resource_limits.py`](../src/tierroute/adapters/resource_limits.py)
 - Strongest evidence: [`test_simulator.py`](../tests/test_simulator.py),
   [`test_budgets.py`](../tests/test_budgets.py), and quote/accounting cases in
-  [`test_metrics.py`](../tests/test_metrics.py)
+  [`test_metrics.py`](../tests/test_metrics.py), plus the hostile-input matrix in
+  [`test_json_dataset.py`](../tests/test_json_dataset.py)
 - Design context: [evaluation-scope trust boundary](evaluation-scope.md) and
-  [README evaluation section](../README.md#evaluation)
+  [replay JSON boundary](replay-json.md)
 
 Owner questions:
 
@@ -67,6 +71,9 @@ Owner questions:
    differ between the two bundled ledger adapters?
 4. Why is the shipped default one-shot even though the interface can represent another
    call or a prior-output selection?
+5. Trace a `--data` file through descriptor checks, lexical preflight, strict schema,
+   collection/text limits, and outer/nested LODO work bounds. Why is there no unlimited
+   override, and how would an incompatible official schema be added?
 
 ## 3. Complete evaluation-scope identity
 
