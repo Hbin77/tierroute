@@ -499,6 +499,9 @@ python scripts/download_routerbench.py \
   --output data/routerbench/routerbench_0shot.pkl
 ```
 
+On POSIX systems the downloader creates the partial file and normalizes the verified
+destination to owner-only mode `0600`; inability to enforce that mode fails closed.
+
 The upstream file uses the pickle wire format, but tierroute does **not** call
 `pickle.load`, `pickle.Unpickler`, or `pandas.read_pickle`. The adapter first requires
 the exact pinned size and SHA-256, then uses a project-owned, non-dispatching standard-
@@ -528,12 +531,57 @@ benchmark claim. The current
 `evaluate --data` option remains JSON-only and does not accept this pickle directly.
 Because RouterBench stores post-response realized costs, validation fits model-level
 pre-call quotes on a separate calibration prefix and never exposes the routed row's
-realized charge to a policy.
+realized charge to a policy. That artifact-order prefix contains only `arc-challenge`
+rows, so the default command is a structural smoke check: its replay performance and
+cost values are suppressed and its quotes are not representative cross-domain evidence.
+The balanced diagnostic below replaces that prefix for learned-policy wiring checks.
 
 The authenticated wire table is materialized in memory. Allow at least 512 MiB of
 headroom; the default prefix validation measured about 290 MB maximum RSS on the
 reference Python 3.12 environment. `--limit` bounds typed replay retention, while
 `--limit 0` intentionally replays all post-calibration rows.
+
+The prefix replay above remains the default smoke path. A separate, explicitly
+acknowledged local diagnostic exercises the learned policy and all six canonical
+baselines without changing that default:
+
+```bash
+HF_HUB_OFFLINE=1 python scripts/validate_routerbench.py \
+  --nested-lodo --acknowledge-noassertion
+
+# Emit the same provenance/structure evidence as one JSON document.
+HF_HUB_OFFLINE=1 python scripts/validate_routerbench.py \
+  --nested-lodo --acknowledge-noassertion --json
+```
+
+Human output starts with **`LOCAL OPTIONAL VALIDATION — NON-OFFICIAL,
+NON-REPORTABLE`**; JSON records that exact banner in its required warning field. This
+is a network-free diagnostic over external RouterBench data whose license remains
+`NOASSERTION`; it is not SK Telecom data, an official challenge score, or reportable
+contest evidence. The acknowledgement flag is mandatory.
+
+Selection is deterministic and content-independent. Within each of the pinned seven
+normalized domains, rows are ranked by a framed digest of the pinned revision, domain,
+and `sample_id`; the first 64 form a calibration pool and the next 8 form the evaluation
+pool. Evaluation is restored to source order, producing 448 calibration rows and one
+shared 56-row evaluation scope. The row grain is `sample_id`. A per-model pre-call
+quote is the maximum realized charge observed only in that model's calibration pool,
+and every evaluation charge is checked against its fixed quote before fitting begins.
+
+The three diagnostic tier budgets are mechanically selected from the minimum, median,
+and maximum of the sorted model quotes and use weights `0.5`, `0.3`, and `0.2`. These
+are diagnostic parameters, not official budget tiers. The surface-feature-only
+bilinear policy (no `bge-m3`) uses true nested LODO and an explicitly approximate
+lambda search capped at 32 candidates per tier; it and the six baselines are replayed
+on the same 56 rows.
+
+Human and `--json` output expose only aggregate provenance, structure, configuration,
+and completion evidence. Prompt/output text, sample IDs, row decisions, and
+performance, realized-cost, or oracle-gap results are suppressed. The validator does
+not write a converted dataset, predictions, learned artifact, or result file. Do not
+commit redirected output or any RouterBench-derived artifact. Domain imbalance and
+heterogeneous upstream evaluators remain material limitations, so this bounded local
+diagnostic is not a reproduction of the RouterBench paper.
 
 ### bge-m3 (planned, local-only)
 

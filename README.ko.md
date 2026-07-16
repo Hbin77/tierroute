@@ -474,6 +474,9 @@ python scripts/download_routerbench.py \
   --output data/routerbench/routerbench_0shot.pkl
 ```
 
+POSIX 환경에서는 downloader가 partial file을 만들 때부터 검증된 최종 파일까지
+소유자 전용 `0600` 권한을 강제하며, 이 권한을 보장할 수 없으면 실패 처리합니다.
+
 upstream 파일은 pickle wire format을 사용하지만 tierroute는 `pickle.load`,
 `pickle.Unpickler`, `pandas.read_pickle`을 호출하지 않습니다. 어댑터는 먼저 정확히
 고정된 크기와 SHA-256을 요구한 뒤, 프로젝트가 작성한 non-dispatching 표준
@@ -502,12 +505,55 @@ HF_HUB_OFFLINE=1 python scripts/validate_routerbench.py --limit 200
 `evaluate --data`는 이
 pickle이 아니라 replay JSON만 입력받습니다. RouterBench 비용은 응답 후 실현 비용이므로
 검증 스크립트는 별도 calibration prefix에서 모델별 호출 전 견적을 맞추고, 라우팅할
-행의 실제 청구액은 정책에 노출하지 않습니다.
+행의 실제 청구액은 정책에 노출하지 않습니다. 다만 artifact 순서의 이 prefix는 전부
+`arc-challenge` 행이므로 기본 명령은 구조 smoke check일 뿐입니다. replay 성능·비용
+값은 출력하지 않고, 이 견적을 cross-domain 근거로 사용하지 않습니다. 아래의 균형
+diagnostic은 학습 정책 배선을 점검할 때 이 prefix를 대체합니다.
 
 인증된 wire table은 메모리에 materialize됩니다. 최소 512 MiB 여유를 권장하며 기준
 Python 3.12 환경에서 기본 prefix 검증의 최대 RSS는 약 290 MB였습니다. `--limit`는
 typed replay 보유량을 제한하고, `--limit 0`은 의도적으로 calibration 이후 전체 행을
 replay합니다.
+
+위 prefix replay는 기본 smoke 경로로 그대로 유지됩니다. 학습 정책과 canonical
+베이스라인 6종을 점검하는 로컬 diagnostic은 다음처럼 명시적으로 동의해야만
+실행됩니다.
+
+```bash
+HF_HUB_OFFLINE=1 python scripts/validate_routerbench.py \
+  --nested-lodo --acknowledge-noassertion
+
+# 같은 provenance/구조 근거를 하나의 JSON 문서로 출력합니다.
+HF_HUB_OFFLINE=1 python scripts/validate_routerbench.py \
+  --nested-lodo --acknowledge-noassertion --json
+```
+
+일반 출력은 **`LOCAL OPTIONAL VALIDATION — NON-OFFICIAL, NON-REPORTABLE`**
+배너로 시작하고 JSON은 필수 warning field에 동일한 문구를 기록합니다. 이는
+데이터셋 라이선스가 `NOASSERTION`인 외부 RouterBench 데이터를 대상으로 하는
+network-free diagnostic이며, SK텔레콤 데이터나 공식 대회 점수, 보고 가능한 대회
+근거가 아닙니다. 동의 플래그는 필수입니다.
+
+선택은 결정론적이며 행 내용과 독립적입니다. 고정된 7개 normalized domain마다
+고정 revision, domain, `sample_id`를 framing한 digest로 행의 순위를 매깁니다.
+처음 64개는 calibration pool, 다음 8개는 evaluation pool이며 evaluation은 다시
+원본 순서로 복원됩니다. 따라서 calibration 448행과 공유 evaluation scope 56행을
+사용하며 행 grain은 `sample_id`입니다. 모델별 호출 전 견적은 해당 모델의
+calibration pool에서만 관측한 실현 비용의 최댓값으로 고정하고, 학습을 시작하기 전에
+모든 evaluation 비용이 이 견적 이하인지 사전 검사합니다.
+
+진단용 tier budget 3개는 정렬한 모델 견적의 최솟값·중앙값·최댓값으로 기계적으로
+선택하고 가중치 `0.5`, `0.3`, `0.2`를 사용합니다. 이 값은 공식 budget tier가
+아닙니다. 표면 특징만 쓰는 bilinear 정책(`bge-m3` 미사용)은 true nested LODO와
+tier당 후보 32개로 제한한 명시적 approximate lambda search를 사용합니다. 이 학습
+정책과 베이스라인 6종은 모두 같은 56행에서 replay됩니다.
+
+일반 출력과 `--json` 출력은 집계 provenance, 구조, 설정, 완료 근거만 노출합니다.
+prompt/output 문자열, sample ID, 행별 결정, 성능·실현 비용·oracle gap 결과는 숨깁니다.
+validator는 변환 데이터셋, 예측, 학습 artifact, 결과 파일을 쓰지 않습니다. 리다이렉트한
+출력을 포함한 RouterBench 유래 artifact를 커밋하지 마십시오. domain 불균형과 upstream
+evaluator의 이질성은 중요한 제약으로 남으므로, 이 제한된 로컬 diagnostic은 RouterBench
+논문 재현이 아닙니다.
 
 ### bge-m3(계획, local-only)
 

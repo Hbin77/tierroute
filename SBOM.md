@@ -55,10 +55,14 @@ benchmark result.
 | Asset | Revision / checksum | License | Source | Purpose | Repository status |
 |---|---|---|---|---|---|
 | tierroute synthetic smoke dataset | `src/tierroute/data/synthetic.json` | Apache-2.0 | Project-authored | Clone-without-download quickstart and CI | Distributed; sidecar SPDX license included |
-| RouterBench 0-shot | HF revision `784021482c3f320c6619ed4b3bb3b41a21424fcb`; artifact SHA-256 `ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e65d36d`; decoded semantic SHA-256 `7b4749ad5c4bdb338c2317b306c382680b1a23dc83c73e29ab805b8f7e472e87` | NOASSERTION | https://huggingface.co/datasets/withmartian/routerbench/tree/784021482c3f320c6619ed4b3bb3b41a21424fcb | Optional external harness validation | Never committed or redistributed; upstream license clarification required |
+| RouterBench 0-shot | HF revision `784021482c3f320c6619ed4b3bb3b41a21424fcb`; artifact SHA-256 `ba4f77f19517610a707c374e99322d7750c30fc4ae7ff5527888595a1e65d36d`; decoded semantic SHA-256 `7b4749ad5c4bdb338c2317b306c382680b1a23dc83c73e29ab805b8f7e472e87` | NOASSERTION | https://huggingface.co/datasets/withmartian/routerbench/tree/784021482c3f320c6619ed4b3bb3b41a21424fcb | Optional external harness validation | Never committed or redistributed; upstream license clarification required; local POSIX copy is owner-only `0600` |
+| RouterBench-derived local diagnostic artifacts and output | Derived only from the pinned artifact above | NOASSERTION | Local opt-in validation | Temporary selection, provenance, and diagnostic evidence | Not distributed and never committed, including converted rows, features, predictions, learned files, redirected output, or results |
 
 RouterBench's GitHub code repository is MIT-licensed, but that declaration does not
 license the separate Hugging Face dataset. tierroute contains no copied RouterBench code.
+The opt-in nested-LODO diagnostic uses only the Python standard library and existing
+project code; it adds no software dependency. Its provenance-only terminal/JSON output
+does not change the `NOASSERTION` status of any RouterBench-derived local material.
 
 ## CI actions
 

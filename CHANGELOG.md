@@ -9,6 +9,16 @@ the public API is pre-1.0.
 
 ### Added
 
+- An explicitly acknowledged, local-only RouterBench nested-LODO diagnostic that keeps
+  the default prefix smoke entry point while suppressing its performance and cost
+  values. The diagnostic deterministically selects 64 calibration and
+  8 evaluation rows per pinned domain, derives calibration-only maximum quotes and
+  diagnostic min/median/max quote tiers, preflights evaluation costs, and compares a
+  surface-only bilinear policy with all six baselines on one shared scope. The bounded
+  32-candidate lambda search is approximate; output suppresses performance, cost, gap,
+  row, and content results and emits only provenance/structure/completion evidence.
+  RouterBench remains `NOASSERTION`, non-SKT, non-official, non-reportable, unbundled,
+  and excluded from committed artifacts; its local POSIX download is owner-only `0600`.
 - A claim-gated five-page contest report outline with a reusable Mermaid architecture
   source, per-number evidence records, measured-result placeholders, attachment
   disclosure slots, and a final render checklist that prohibits synthetic demo values
