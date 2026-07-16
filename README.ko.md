@@ -366,11 +366,16 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
 Darwin 로컬 근거는 작은 surface-only fixture의 실제 D4-D7 coefficient/raw-score가
 전체 Python reference와 같은지 검증하고, 12개 surface와 1,024개 embedding
 coordinate를 투영 없이 모두 사용한 `D4/N8/d1036/M1` 합성 corpus의 완료를
-확인합니다. 로컬 store/native 전용 실행은 native-session case 35개를 포함해
-58 passed를 기록했지만, 이는 소프트웨어 근거일 뿐 성능 측정이 아닙니다.
+확인합니다. 로컬 store/native 전용 실행은 native-session case 38개를 포함해
+64 passed를 기록했지만, 이는 소프트웨어 근거일 뿐 성능 측정이 아닙니다.
 고정 `D7/N34778/d1036/M11` shape는 exact aggregate preflight만
-통과했으며 전체 store/session을 실행하지 않았습니다. 새 소스의 macOS/Windows
-CI 근거도 아직 pending입니다.
+통과했으며 전체 store/session을 실행하지 않았습니다.
+[PR #50](https://github.com/Hbin77/tierroute/pull/50)은 구현을
+`ffa8b8059985298df9d1cf0feec20374589afc1c`로 병합했고,
+[PR-head CI](https://github.com/Hbin77/tierroute/actions/runs/29537455566)와
+[merged-main CI](https://github.com/Hbin77/tierroute/actions/runs/29537633261)는 macOS와
+Windows에서 임시 source-built candidate를 compile·test·link/import audit했습니다.
+이는 source portability 근거이지 배포 가능한 release artifact 승인이 아닙니다.
 
 지원하는 derivation 경로는 public builder 함수뿐입니다. Leaf dataclass 생성자를
 직접 호출하면 스스로 선언한 canonical record만 검증합니다. 이는 aggregate loader,
@@ -401,8 +406,8 @@ calibration/lambda/report bridge, all-domain artifact, prepared 6-baseline wrapp
 
 계획된 1,024차원 bge-m3 임베딩과 표면 특징을 합친 최대 1,036차원 전체 학습은 감사된
 offline local provider, authenticated prepared session의 all-domain artifact·CLI 통합,
-official-shape end-to-end 실행/parity, 그리고 감사된 macOS·Linux-musl·Windows-MSVC
-근거가 있을 때까지 gate로 남습니다. 임베딩 차원을
+official-shape end-to-end 실행/parity, 그리고 macOS·Linux-musl·Windows-MSVC의
+감사된 release artifact·고정 toolchain 근거가 있을 때까지 gate로 남습니다. 임베딩 차원을
 조용히 줄이거나 버리지 않습니다. 기존 row-training 경로의 보수적 연산량 guard,
 정적 reviewed solver ID, pre-embedding preflight, unknown-ID 거부는 그대로며, 추론은
 저장된 coefficient만 사용하므로 의존성이 없습니다.
@@ -474,8 +479,9 @@ official-shape end-to-end 실행/parity, 그리고 감사된 macOS·Linux-musl·
 - 실험적 인증 file-backed prepared store와 단일 호출 C11 solve/score adapter는 result
   payload를 Python tuple로 펼치지 않고 허용된 전체 coefficient/raw-score graph를
   생성합니다. D4-D7 surface-only reference parity와 투영하지 않은 1,036-feature
-  합성 완료는 Darwin 로컬 근거뿐입니다. Official-shape 실행, policy/CLI 통합,
-  3플랫폼 감사, 성능 주장은 구현되지 않았습니다.
+  합성 완료는 Darwin 로컬 수치 근거이며, PR #50은 macOS/Windows의 임시 source
+  compile·test·link 감사를 통과했습니다. Official-shape 실행, policy/CLI 통합,
+  Linux-musl·배포 release artifact 감사, 성능 주장은 구현되지 않았습니다.
 - true nested-LODO 학습 라우터와 베이스라인 6종을 동일한 평가 scope에서 비교하고,
   버전이 지정된 compact outer-fold membership digest를 공개하는 쿼리별 보고 형태의
   benchmark CLI
@@ -785,7 +791,7 @@ artifact를 커밋하지 마십시오. domain 불균형과 upstream evaluator의
 않고 런타임 downloader도 없습니다. 계획된 provider는 미리 준비한 로컬 경로만 받고,
 `HF_HUB_OFFLINE=1`에서 Hub ID를 조회하지 않고 즉시 실패하도록 구현합니다.
 최대 1,036개 전체 특징 학습은 위 provider, all-domain prepared/policy 통합,
-official-shape 실행, 3플랫폼 검사가 끝날 때까지 gate로 남습니다. Native prepared
+official-shape 실행, 3플랫폼 release-artifact 검사가 끝날 때까지 gate로 남습니다. Native prepared
 slice는 작은 D4-D7 surface-only parity와 투영하지 않은 1,036-feature 합성
 완료를 입증하지만, 공식 전체 tuple은 preflight-only입니다. 어느 쪽도 전체
 nested 실험을 실행했다는 근거가 아니며, 임베딩 차원을 조용히 투영해

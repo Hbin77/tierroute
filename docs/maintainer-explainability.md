@@ -327,15 +327,20 @@ at `cfa0c72` and
 both passed Python 3.10/3.12, dependency-free wheel, and macOS/Windows native-source
 jobs. Automated CI still does not replace the owner walkthrough below.
 
-The later focused file-backed/native-session run reports 58 passed locally on Darwin,
-including 35 native-session cases. They include actual compiled D4-D7
+The later focused file-backed/native-session run reports 64 passed locally on Darwin,
+including 38 native-session cases. They include actual compiled D4-D7
 coefficient/raw-score parity with the complete Python reference on small surface-only
 fixtures and one `D4/N8/d1036/M1` completion using 12
 surface plus 1,024 synthetic embedding coordinates without projection. The official
 `D7/N34778/d1036/M11` tuple has exact aggregate preflight only: no full store/session or
 official/RouterBench data was run. Those tests are local software evidence, not a
-speed, memory-efficiency, throughput, quality, or cost result. macOS/Windows CI for the
-new prepared source remains pending, and no human sign-off is implied.
+speed, memory-efficiency, throughput, quality, or cost result.
+[PR #50](https://github.com/Hbin77/tierroute/pull/50) merged at
+`ffa8b8059985298df9d1cf0feec20374589afc1c`; its
+[PR-head CI](https://github.com/Hbin77/tierroute/actions/runs/29537455566) and
+[merged-main CI](https://github.com/Hbin77/tierroute/actions/runs/29537633261) passed
+macOS/Windows ephemeral source compile, protocol/parity, and link/import audits. This is
+not release-artifact approval, and no human sign-off is implied.
 
 Owner questions:
 
@@ -409,8 +414,8 @@ Owner questions:
 18. Why do result payloads remain mmap-backed? Explain ownership of the descriptor and
     private workspace, why the same reentrant lock must serialize read and close, why
     close with an exported view must be retryable, and which
-    accesses fail after a successful close. Which Windows cleanup hardening is code
-    evidence versus platform-CI evidence still pending?
+    accesses fail after a successful close. Which Windows cleanup paths are exercised
+    by the source-portability CI, and why is that still not release-artifact approval?
 19. Distinguish the D4-D7 small surface-only parity fixtures, the unprojected
     `D4/N8/d1036/M1` synthetic completion, and the aggregate-only
     `D7/N34778/d1036/M11` preflight. Why does none establish bge-m3, RouterBench,
@@ -555,8 +560,8 @@ Owner questions:
 | Cascade/sequential escalation | Interface can represent it; shipped policy remains one-shot | Written simulator semantics for sequential calls, budget accumulation, history schema, and final output selection |
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
-| Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity and macOS link evidence; no binary in the wheel | Explicit local opt-in only; Linux-musl and Windows-MSVC release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. Small surface-only D4-D7 fixtures have actual compiled reference parity, and one local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, policy/all-domain artifact, CLI, prepared six-baseline wrapper, official data, cross-platform result, or performance claim exists | Audited offline local provider, all-domain policy/artifact and CLI integration, full official-shape execution/parity, broader near-tie checks, three-platform audits, licensed-data evidence, prepared six-baseline wrapper, and issue #9 completion |
+| Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity, and macOS/Windows ephemeral source-portability evidence; no binary in the wheel | Explicit local opt-in only; macOS/Linux-musl/Windows-MSVC distributable release artifacts still need link/import approval |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. Small surface-only D4-D7 fixtures have actual compiled reference parity, one local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates, and macOS/Windows ephemeral source-portability CI passes. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, policy/all-domain artifact, CLI, prepared six-baseline wrapper, official data, Linux-musl/distributable cross-platform release artifact, or performance claim exists | Audited offline local provider, all-domain policy/artifact and CLI integration, full official-shape execution/parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, prepared six-baseline wrapper, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |

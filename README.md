@@ -378,11 +378,16 @@ This is a Python API/test path, not a `tierroute train`, benchmark, or routing C
 Local Darwin evidence establishes actual D4-D7 coefficient/raw-score parity with the
 complete Python reference on small surface-only fixtures and completion of a
 `D4/N8/d1036/M1` synthetic corpus containing all 12 surface and 1,024 embedding
-coordinates without projection. The focused local store/native run reports 58 passed,
-including 35 native-session cases; it is software evidence, not a performance
+coordinates without projection. The focused local store/native run reports 64 passed,
+including 38 native-session cases; it is software evidence, not a performance
 measurement. The pinned
 `D7/N34778/d1036/M11` shape has exact aggregate preflight only; the full store/session
-was not executed. macOS/Windows CI evidence for this new source is still pending.
+was not executed. [PR #50](https://github.com/Hbin77/tierroute/pull/50) merged the
+implementation at `ffa8b8059985298df9d1cf0feec20374589afc1c`; its
+[PR-head CI](https://github.com/Hbin77/tierroute/actions/runs/29537455566) and
+[merged-main CI](https://github.com/Hbin77/tierroute/actions/runs/29537633261) compile,
+test, and link/import-audit ephemeral source-built candidates on macOS and Windows.
+Those jobs are source-portability evidence, not distributable release-artifact approval.
 
 Only the public builder functions are supported derivation paths. Direct leaf-dataclass
 construction validates a self-declared canonical record; it is not an aggregate loader,
@@ -415,8 +420,8 @@ claim. [Issue
 Full training with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total
 features) remains gated on an audited offline local provider, integration of the
 authenticated prepared session with all-domain artifacts and CLI reproduction,
-official-shape end-to-end execution/parity, plus audited macOS, Linux-musl, and
-Windows-MSVC evidence. tierroute will not silently reduce
+official-shape end-to-end execution/parity, plus audited release artifacts and pinned
+toolchain evidence for macOS, Linux-musl, and Windows-MSVC. tierroute will not silently reduce
 or discard embedding dimensions. The
 existing row-training path keeps its conservative operation guard, static reviewed
 solver ID, pre-embedding preflight, and unknown-ID rejection; inference remains
@@ -496,9 +501,10 @@ dependency-free because it uses only stored coefficients.
 - An experimental authenticated file-backed prepared store and single-invocation C11
   solve/score adapter emit the complete admitted coefficient/raw-score graph without
   loading result payloads into Python tuples. D4-D7 surface-only reference parity and
-  one unprojected 1,036-feature synthetic completion are local Darwin evidence only.
-  Official-shape execution, policy/CLI integration, three-platform audits, and
-  performance claims are not implemented.
+  one unprojected 1,036-feature synthetic completion are local Darwin evidence; PR #50
+  also passes ephemeral source compile/test/link audits on macOS and Windows.
+  Official-shape execution, policy/CLI integration, Linux-musl and distributable
+  release-artifact audits, and performance claims are not implemented.
 - A report-shaped per-query benchmark CLI compares that nested-LODO learned router
   against all six baselines on one identical evaluation scope and publishes compact,
   versioned outer-fold membership digests.
@@ -826,7 +832,8 @@ The embedding contract pins `BAAI/bge-m3` at revision
 runtime downloader exists. The planned provider will accept only a prepared local path
 and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model ID.
 Full training at up to 1,036 total features remains gated on the provider, all-domain
-prepared/policy integration, official-shape execution, and three-platform checks above.
+prepared/policy integration, official-shape execution, and three-platform release-
+artifact checks above.
 The native prepared slice proves small D4-D7 surface-only parity and one unprojected
 1,036-feature synthetic completion, while the full official tuple is preflight-only;
 none is evidence that the complete nested experiment has run. Embedding dimensions
