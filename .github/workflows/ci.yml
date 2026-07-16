@@ -43,16 +43,23 @@ jobs:
           sdist="$(find "$wheelhouse" -maxdepth 1 -name 'tierroute-*.tar.gz' -print -quit)"
           test -n "$wheel"
           test -n "$sdist"
-          python - "$wheel" "$sdist" <<'PY'
+          python - "$wheel" "$sdist" "$GITHUB_WORKSPACE" <<'PY'
+          import hashlib
+          import pathlib
+          import re
+          import stat
           import sys
           import tarfile
           import zipfile
 
-          wheel, sdist = sys.argv[1:]
+          wheel, sdist, workspace = sys.argv[1:]
+          workspace_path = pathlib.Path(workspace)
           with zipfile.ZipFile(wheel) as archive:
-              wheel_names = archive.namelist()
+              wheel_members = archive.infolist()
+              wheel_names = [member.filename for member in wheel_members]
           with tarfile.open(sdist, "r:gz") as archive:
-              sdist_names = archive.getnames()
+              sdist_members = archive.getmembers()
+              sdist_names = [member.name for member in sdist_members]
 
           def forbidden(name: str) -> bool:
               normalized = "/" + name.replace("\\", "/").lower().strip("/")
@@ -62,10 +69,141 @@ jobs:
                   or "/artifacts/routerbench/" in normalized
                   or normalized.endswith("/artifacts/routerbench")
                   or normalized.endswith((".pkl", ".part"))
+                  or normalized.endswith(
+                      (
+                          ".a",
+                          ".bin",
+                          ".dll",
+                          ".dylib",
+                          ".exe",
+                          ".lib",
+                          ".node",
+                          ".o",
+                          ".obj",
+                          ".pyd",
+                          ".so",
+                          ".wasm",
+                      )
+                  )
               )
 
           offenders = [name for name in (*wheel_names, *sdist_names) if forbidden(name)]
           assert not offenders, f"forbidden external/derived data in release archives: {offenders}"
+
+          def normalized_parts(name: str) -> tuple[str, ...]:
+              return pathlib.PurePosixPath(name.replace("\\", "/").strip("/")).parts
+
+          wheel_native = [
+              member.filename
+              for member in wheel_members
+              if any(part.casefold() == "native" for part in normalized_parts(member.filename))
+          ]
+          assert not wheel_native, f"native tree leaked into dependency-free wheel: {wheel_native}"
+          wheel_executables = [
+              member.filename
+              for member in wheel_members
+              if not member.is_dir() and ((member.external_attr >> 16) & 0o111)
+          ]
+          assert not wheel_executables, (
+              f"wheel contains executable-mode members: {wheel_executables}"
+          )
+
+          archive_roots = {
+              normalized_parts(member.name)[0]
+              for member in sdist_members
+              if normalized_parts(member.name)
+          }
+          assert len(archive_roots) == 1, f"sdist must have one root: {sorted(archive_roots)}"
+          archive_root = next(iter(archive_roots))
+
+          def sdist_relative(member: tarfile.TarInfo) -> str:
+              parts = normalized_parts(member.name)
+              assert parts and parts[0] == archive_root, member.name
+              return "/".join(parts[1:])
+
+          sdist_native = [
+              member
+              for member in sdist_members
+              if (relative_parts := normalized_parts(sdist_relative(member)))
+              and relative_parts[0].casefold() == "native"
+          ]
+          unexpected_native = [
+              member.name
+              for member in sdist_native
+              if sdist_relative(member) not in {"native", "native/tierroute_ridge.c"}
+          ]
+          assert not unexpected_native, (
+              f"sdist native tree contains unexpected members: {unexpected_native}"
+          )
+          native_directories = [
+              member for member in sdist_native if sdist_relative(member) == "native"
+          ]
+          assert all(member.isdir() for member in native_directories), (
+              f"sdist native directory entry has the wrong type: {native_directories}"
+          )
+          native_sources = [
+              member
+              for member in sdist_native
+              if sdist_relative(member) == "native/tierroute_ridge.c"
+          ]
+          assert len(native_sources) == 1, (
+              "sdist must contain native/tierroute_ridge.c exactly once: "
+              f"found {[member.name for member in native_sources]}"
+          )
+          native_source = native_sources[0]
+          assert native_source.isfile() and not native_source.issym() and not native_source.islnk(), (
+              f"sdist native source must be a regular non-link file: {native_source.name}"
+          )
+          assert native_source.mode & 0o111 == 0, (
+              f"sdist native source must not be executable: mode={oct(native_source.mode)}"
+          )
+          with tarfile.open(sdist, "r:gz") as archive:
+              extracted = archive.extractfile(native_source)
+              assert extracted is not None
+              archived_source = extracted.read()
+
+          native_root = workspace_path / "native"
+          native_root_metadata = native_root.lstat()
+          assert stat.S_ISDIR(native_root_metadata.st_mode) and not stat.S_ISLNK(
+              native_root_metadata.st_mode
+          ), "working native path must be a real directory"
+          working_entries = sorted(
+              path.relative_to(native_root).as_posix() for path in native_root.rglob("*")
+          )
+          assert working_entries == ["tierroute_ridge.c"], (
+              f"working native tree must contain only tierroute_ridge.c: {working_entries}"
+          )
+          working_source = native_root / "tierroute_ridge.c"
+          working_metadata = working_source.lstat()
+          assert stat.S_ISREG(working_metadata.st_mode) and not stat.S_ISLNK(
+              working_metadata.st_mode
+          ), "working native source must be a regular non-symlink file"
+          assert working_metadata.st_nlink == 1, (
+              f"working native source must not be hard-linked: nlink={working_metadata.st_nlink}"
+          )
+          assert stat.S_IMODE(working_metadata.st_mode) & 0o111 == 0, (
+              "working native source must not be executable"
+          )
+          working_payload = working_source.read_bytes()
+          assert archived_source == working_payload, (
+              "sdist native source bytes differ from the working source"
+          )
+
+          sbom = (workspace_path / "SBOM.md").read_text(encoding="utf-8")
+          sbom_hashes = re.findall(
+              r"^\| `native/tierroute_ridge\.c` \|[^|\n]*SHA-256 `([0-9a-f]{64})` \|",
+              sbom,
+              flags=re.MULTILINE,
+          )
+          assert len(sbom_hashes) == 1, (
+              f"SBOM must record exactly one native source SHA-256: {sbom_hashes}"
+          )
+          working_hash = hashlib.sha256(working_payload).hexdigest()
+          archived_hash = hashlib.sha256(archived_source).hexdigest()
+          assert working_hash == archived_hash == sbom_hashes[0], (
+              "native source SHA-256 mismatch: "
+              f"working={working_hash}, sdist={archived_hash}, SBOM={sbom_hashes[0]}"
+          )
           PY
           "$clean_venv/bin/python" -m pip install --no-deps "$wheel"
           "$clean_venv/bin/python" -m pip check
@@ -138,3 +276,144 @@ jobs:
 
       - name: Verify no model cache was populated
         run: test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"
+
+  native-source-portability:
+    name: Native source portability (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS
+          - os: windows-latest
+            label: Windows
+    env:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONHASHSEED: "0"
+
+    # This is a source-portability candidate gate. It uploads no binaries and
+    # does not approve a release artifact or make any Linux-musl claim.
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+
+      - name: Prepare empty offline model cache
+        run: >-
+          python -c "import os, pathlib; p = pathlib.Path(os.environ['RUNNER_TEMP']) /
+          'tierroute-empty-hf-home'; p.mkdir(); assert not any(p.iterdir());
+          pathlib.Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8').write(f'HF_HOME={p}\n')"
+
+      - name: Install locked development environment
+        run: |
+          python -m pip uninstall --yes setuptools
+          python -m pip install --no-deps --requirement requirements-dev.lock
+          python -m pip install --no-build-isolation --no-deps -e .
+
+      - name: Enter the installed MSVC x64 environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+            throw "vswhere.exe is unavailable"
+          }
+          $installation = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $installation) {
+            throw "vswhere.exe did not find an MSVC x64 toolchain"
+          }
+          $vsdevcmd = Join-Path $installation.Trim() "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path -LiteralPath $vsdevcmd -PathType Leaf)) {
+            throw "VsDevCmd.bat is unavailable: $vsdevcmd"
+          }
+          $command = "call `"$vsdevcmd`" -no_logo -arch=x64 -host_arch=x64 && set"
+          $configured = & cmd.exe /d /s /c $command
+          if ($LASTEXITCODE -ne 0) {
+            throw "VsDevCmd.bat failed with status $LASTEXITCODE"
+          }
+          foreach ($line in $configured) {
+            if ($line -match '^([^=]+)=(.*)$') {
+              [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], "Process")
+            }
+          }
+          $required = @("PATH", "INCLUDE", "LIB", "LIBPATH")
+          foreach ($name in $required) {
+            $value = [Environment]::GetEnvironmentVariable($name, "Process")
+            if (-not $value) {
+              throw "VsDevCmd.bat did not set $name"
+            }
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value "$name=$value" -Encoding utf8
+          }
+          python -c "import os, shutil; p = shutil.which('cl'); assert p and os.path.isabs(p), p; print(p)"
+          if (-not (Get-Command dumpbin.exe -CommandType Application -ErrorAction SilentlyContinue)) {
+            throw "dumpbin.exe is unavailable after VsDevCmd.bat"
+          }
+
+      - name: Run native protocol and numerical tests
+        run: python -m pytest tests/test_native_ridge.py tests/test_native_binary_audit.py
+
+      - name: Build and audit the macOS candidate locally
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          binary="$RUNNER_TEMP/tierroute-ridge-$GITHUB_RUN_ID"
+          manifest="$RUNNER_TEMP/tierroute-ridge-$GITHUB_RUN_ID-build.json"
+          source="$GITHUB_WORKSPACE/native/tierroute_ridge.c"
+          compiler="$(python -c 'import pathlib, shutil; p = shutil.which("clang"); assert p; print(pathlib.Path(p).resolve())')"
+          python scripts/build_native_ridge.py \
+            --output "$binary" --compiler "$compiler" > "$manifest"
+          python -m json.tool "$manifest"
+          binary_sha="$(python -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["sha256"])' "$manifest")"
+          source_sha="$(python -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["source_sha256"])' "$manifest")"
+          python scripts/audit_native_binary.py \
+            --platform macos --binary "$binary" --source "$source" \
+            --expected-binary-sha256 "$binary_sha" \
+            --expected-source-sha256 "$source_sha"
+
+      - name: Build and audit the Windows candidate locally
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = Join-Path $env:RUNNER_TEMP "tierroute-ridge-$env:GITHUB_RUN_ID.exe"
+          $source = Join-Path $env:GITHUB_WORKSPACE "native\tierroute_ridge.c"
+          $compiler = python -c "import os, pathlib, shutil; p = shutil.which('cl'); assert p and os.path.isabs(p), p; print(pathlib.Path(p).resolve())"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Python could not resolve cl.exe"
+          }
+          $manifestText = python scripts/build_native_ridge.py `
+            --output $binary --compiler $compiler.Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "native ridge build failed"
+          }
+          try {
+            $manifest = $manifestText | ConvertFrom-Json -ErrorAction Stop
+          } catch {
+            throw "native ridge build did not emit valid JSON: $_"
+          }
+          $binarySha = [string]$manifest.sha256
+          $sourceSha = [string]$manifest.source_sha256
+          if (-not $binarySha -or -not $sourceSha) {
+            throw "native ridge build manifest omitted required SHA-256 values"
+          }
+          Write-Output $manifestText
+          python scripts/audit_native_binary.py `
+            --platform windows --binary $binary --source $source `
+            --expected-binary-sha256 $binarySha `
+            --expected-source-sha256 $sourceSha
+
+      - name: Verify no model cache was populated
+        run: >-
+          python -c "import os, pathlib; p = pathlib.Path(os.environ['HF_HOME']);
+          assert p.is_dir() and not any(p.iterdir()), tuple(p.iterdir())"
