@@ -137,6 +137,7 @@ optimization over every policy.
 | Surface-feature bilinear predictor with per-model isotonic calibration | `IMPLEMENTED` | `I-PREDICTOR-129A230` |
 | In-memory deterministic stump-GBM core with per-model isotonic calibration | `IMPLEMENTED — IN-MEMORY` | `I-GBM-C649150` |
 | Same-scope GBM-versus-bilinear paired estimation | `IMPLEMENTED — DESCRIPTIVE ONLY` | `I-PAIR-3E20792` |
+| Project-owned C11 backend for one authenticated bounded dense ridge solve | `IMPLEMENTED — EXPERIMENTAL` | protocol/parity/platform-source evidence; no full-run claim |
 | Exact-arithmetic one-shot lambda-threshold decision | `IMPLEMENTED` | `I-POLICY-129A230` |
 | Local bge-m3 provider and controlled feature ablation | `PLANNED` | model manifest, provider tests, ablation record |
 | Licensed family-selection-aware GBM-versus-bilinear experiment | `PLANNED` | preregistration plus untouched selection/scoring evidence |
@@ -371,8 +372,11 @@ protocol.
   predictor-family selection.
   Its `NOASSERTION` license and global all-domain quote/tier calibration prevent using
   it as a public result, an end-to-end domain-shift claim, or a paper reproduction.
-- A local bge-m3 provider and full-dimensional accelerated training are not shipped at
-  the time of this outline.
+- A project-owned C11 sidecar for one bounded dense ridge solve is implemented and
+  parity-tested, but a local bge-m3 provider and the prepared session needed to reuse
+  domain statistics/factorizations across the complete nested run are not shipped at
+  the time of this outline. The sidecar alone is not evidence of a full-dimensional
+  RouterBench experiment.
 - A cumulative-budget comparison needs a sequence-level oracle; summing independent
   per-query oracle choices is invalid.
 - Cascade remains disabled until sequential calls and their accounting are confirmed.
@@ -385,7 +389,7 @@ protocol.
 | Official data and written license arrive | adapter-local mapping, checksum, EDA, baseline replay | committing unlicensed data |
 | Budget scope is confirmed cumulative | budget-adaptive policy and sequence-level planner | relabeling per-query oracle results |
 | Sequential calls are explicitly allowed | separately evaluated cascade experiment | enabling cascade from interface capability alone |
-| Permissive full-dimensional backend passes deep audit | bge-m3 bilinear/GBM ablation | weakening the GPL-family policy silently |
+| Prepared full-dimensional session and platform artifacts pass deep audit | bge-m3 bilinear/GBM ablation | treating one dense solve as an end-to-end training result or weakening the GPL-family policy silently |
 | P0 fails to beat credible baselines | prioritize reliability, docs, and reproducibility | hiding or cherry-picking failed folds |
 
 ### Reflection slot
