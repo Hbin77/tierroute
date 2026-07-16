@@ -57,13 +57,13 @@ class PreparedTrainingSubset:
             raise TypeError("domain_indices must be an exact tuple")
         if not self.domain_indices:
             raise ValueError("domain_indices must not be empty")
+        if len(self.domain_indices) > MAX_PREPARED_DOMAINS:
+            raise ValueError("domain_indices exceed the reviewed domain limit")
         if any(
             type(index) is not int or not 0 <= index < MAX_PREPARED_DOMAINS
             for index in self.domain_indices
         ):
             raise ValueError("domain_indices must contain bounded non-negative exact integers")
-        if len(self.domain_indices) > MAX_PREPARED_DOMAINS:
-            raise ValueError("domain_indices exceed the reviewed domain limit")
         if tuple(sorted(self.domain_indices)) != self.domain_indices or len(
             set(self.domain_indices)
         ) != len(self.domain_indices):

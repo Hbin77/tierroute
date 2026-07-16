@@ -463,6 +463,8 @@ def test_node_constructors_reject_noncanonical_fields() -> None:
         PreparedTrainingSubset((1, 0), 2)
     with pytest.raises(ValueError, match="strictly increasing"):
         PreparedTrainingSubset((0, 0), 2)
+    with pytest.raises(ValueError, match="domain limit"):
+        PreparedTrainingSubset((0, 1, 2, 3, 4, 5, 6, 6), 8)
     with pytest.raises(TypeError, match="exact integer"):
         PreparedScoreBlock(True, 0, 1)
     with pytest.raises(ValueError, match="positive"):
@@ -481,7 +483,7 @@ def test_node_constructors_reject_noncanonical_fields() -> None:
     ("field_name", "invalid_value", "message"),
     [
         ("domain_count", 3, "domain_count"),
-        ("domain_count", 65, "domain_count"),
+        ("domain_count", 8, "domain_count"),
         ("example_count", 1_000_001, "example_count"),
         ("feature_count", 4_097, "feature_count"),
         ("target_count", 257, "target_count"),
