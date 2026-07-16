@@ -802,13 +802,34 @@ def test_build_helper_fallback_reauthenticates_and_removes_mismatched_output(
     assert not output.exists()
 
 
-def test_build_helper_closes_fds_but_preserves_replacement_when_destination_fstat_fails(
+@pytest.mark.parametrize(
+    ("replacement_payload", "expected_payload"),
+    (
+        pytest.param(None, b"", id="owned-placeholder"),
+        pytest.param(
+            b"replacement-owner-data",
+            b"replacement-owner-data",
+            id="racing-replacement",
+            marks=pytest.mark.skipif(
+                os.name == "nt",
+                reason=(
+                    "Windows does not provide the POSIX unlink-and-replace semantics "
+                    "for an open destination handle"
+                ),
+            ),
+        ),
+    ),
+)
+def test_build_helper_fstat_failure_closes_fds_and_preserves_output_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    replacement_payload: bytes | None,
+    expected_payload: bytes,
 ) -> None:
     build_module = runpy.run_path(str(_BUILD_SCRIPT), run_name="tierroute_native_build_test")
     compile_candidate = build_module["_compile"]
     output = tmp_path / "published-ridge"
+    source_descriptor: int | None = None
     destination_descriptor: int | None = None
     failed_destination_fstat = False
 
@@ -825,18 +846,21 @@ def test_build_helper_closes_fds_but_preserves_replacement_when_destination_fsta
     real_fstat = os.fstat
 
     def track_destination_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
-        nonlocal destination_descriptor
+        nonlocal destination_descriptor, source_descriptor
         descriptor = real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
         if os.fspath(path) == os.fspath(output):
             destination_descriptor = descriptor
+        elif Path(os.fspath(path)).name == "verified-tierroute-ridge":
+            source_descriptor = descriptor
         return descriptor
 
     def fail_destination_fstat(descriptor: int) -> os.stat_result:
         nonlocal failed_destination_fstat
         if descriptor == destination_descriptor and not failed_destination_fstat:
             failed_destination_fstat = True
-            output.unlink()
-            output.write_bytes(b"replacement-owner-data")
+            if replacement_payload is not None:
+                output.unlink()
+                output.write_bytes(replacement_payload)
             raise OSError("simulated destination fstat failure")
         return real_fstat(descriptor)
 
@@ -852,11 +876,13 @@ def test_build_helper_closes_fds_but_preserves_replacement_when_destination_fsta
             compiler=Path(sys.executable),
         )
 
+    assert source_descriptor is not None
     assert destination_descriptor is not None
-    with pytest.raises(OSError):
-        real_fstat(destination_descriptor)
+    for descriptor in (source_descriptor, destination_descriptor):
+        with pytest.raises(OSError):
+            real_fstat(descriptor)
     assert failed_destination_fstat is True
-    assert output.read_bytes() == b"replacement-owner-data"
+    assert output.read_bytes() == expected_payload
 
 
 def test_build_helper_removes_authenticated_output_when_destination_lstat_fails(

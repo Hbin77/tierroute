@@ -304,6 +304,13 @@ def test_snapshot_rejects_build_manifest_hash_mismatch(tmp_path: Path) -> None:
     assert not destination.exists()
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason=(
+        "Windows denies renaming the open source handle; this original-path "
+        "replacement race requires POSIX rename semantics"
+    ),
+)
 def test_snapshot_rejects_original_path_replacement_during_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
