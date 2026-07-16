@@ -23,7 +23,7 @@ Later rows record material assisted work outside that retrospective snapshot.
 |---|---|
 | Service | OpenAI Codex coding agent; the current development environment identifies a GPT-5 basis |
 | Exact model revision | The exact historical model ID/checkpoint was not exposed or retained; no reproducible revision is claimed |
-| Period covered | Repository work on 2026-07-15 and 2026-07-16 through PR #23 |
+| Period covered | Repository work on 2026-07-15 and 2026-07-16 through PR #25 |
 | Material assistance | Requirement decomposition, implementation and refactoring proposals, test design, adversarial review, documentation drafting, local verification commands, and issue/branch/PR workflow |
 | Human-supplied decisions | Contest scope, architecture, package/license choices, one-shot default, LODO requirement, baseline set, offline/network prohibition, dependency policy, and approval gates |
 | Runtime role | None. Codex is not imported, packaged, called, or required by tierroute at build, training, evaluation, or inference time |

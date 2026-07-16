@@ -286,7 +286,7 @@ trap 'rm -rf "$hf_home"' EXIT HUP INT TERM
 HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_core.py tests/test_integer_text.py \
   tests/test_budgets.py tests/test_simulator.py tests/test_json_dataset.py \
-  tests/test_eval_provenance.py tests/test_metrics.py \
+  tests/test_eval_provenance.py tests/test_eval_schemas.py tests/test_metrics.py \
   tests/test_validation.py tests/test_policies.py tests/test_baseline_evaluation.py \
   tests/test_feature_encoding.py \
   tests/test_features_predictors.py tests/test_bilinear_training.py \

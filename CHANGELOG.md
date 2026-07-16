@@ -29,7 +29,7 @@ the public API is pre-1.0.
   fit/save/load/route smoke test.
 - Separate locked `reproduce-inference` and `reproduce-training` paths for fast
   installed inference review and the complete bundled-data pipeline; `reproduce`
-  remains the complete-path alias.
+  remains the complete-path alias, and dual-Python CI executes both public targets.
 - A static ridge-solver boundary that resolves once per calibrated fit, preflights
   before dense embedding allocation, and carries the same reviewed implementation
   through every inner-LODO fit and final refit without changing version-1 artifact

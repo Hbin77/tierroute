@@ -14,7 +14,7 @@ help:
 	@echo "  install-dev          install the exact dev lock and editable tierroute"
 	@echo "  verify               run static checks, tests, licenses, and offline smoke"
 	@echo "  reproduce            alias for the complete reproduction pipeline"
-	@echo "  reproduce-inference  install and run the fast offline inference pipeline"
+	@echo "  reproduce-inference  install and run the fast offline command pipeline"
 	@echo "  reproduce-training   install and run the complete offline training pipeline"
 	@echo "  training-smoke       fit predictor, tune exact policy, and route offline"
 	@echo "  download-routerbench explicitly download pinned RouterBench data (network)"
@@ -72,7 +72,7 @@ reproduce-inference: install-dev
 	trap 'rm -rf "$$hf_home"' EXIT HUP INT TERM; \
 	export PATH="$$python_bin:$$PATH"; \
 	export HF_HOME="$$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1; \
-	$(MAKE) --no-print-directory check-install PYTHON="$(PYTHON)"; \
+	$(MAKE) check-install PYTHON="$(PYTHON)"; \
 	$(PYTHON) scripts/smoke.py
 
 reproduce-training: install-dev
@@ -82,7 +82,7 @@ reproduce-training: install-dev
 	trap 'rm -rf "$$hf_home"' EXIT HUP INT TERM; \
 	export PATH="$$python_bin:$$PATH"; \
 	export HF_HOME="$$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1; \
-	$(MAKE) --no-print-directory lint spdx test licenses check-install PYTHON="$(PYTHON)"; \
+	$(MAKE) lint spdx test licenses check-install PYTHON="$(PYTHON)"; \
 	$(PYTHON) scripts/smoke.py; \
 	$(PYTHON) scripts/training_smoke.py
 

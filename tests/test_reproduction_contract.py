@@ -20,7 +20,7 @@ def test_reproduce_keeps_complete_backward_compatible_alias() -> None:
     assert "reproduce: reproduce-training\n" in MAKEFILE
 
 
-def test_inference_reproduction_excludes_fitting_and_full_verification() -> None:
+def test_inference_reproduction_excludes_bilinear_and_lambda_training() -> None:
     recipe = _between(
         "reproduce-inference: install-dev\n",
         "\nreproduce-training: install-dev\n",
@@ -30,6 +30,9 @@ def test_inference_reproduction_excludes_fitting_and_full_verification() -> None
     assert "check-install" in recipe
     assert "scripts/smoke.py" in recipe
     assert "scripts/training_smoke.py" not in recipe
+    assert "tierroute train" not in recipe
+    assert "pytest" not in recipe
+    assert "ruff" not in recipe
     assert " lint " not in recipe
     assert " test " not in recipe
     assert " licenses " not in recipe

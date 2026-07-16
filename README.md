@@ -466,12 +466,14 @@ make reproduce-training PYTHON=python   # complete: checks, tests, training, and
 ```
 
 Both create an empty temporary Hugging Face cache and force offline mode. The fast lane
-does not fit a predictor or policy; it exercises installed synthetic prediction,
-artifact loading, routing, evaluation, and the demo. The complete lane additionally
-runs lint, SPDX, tests, license and install checks, then fits and consumes synthetic
-predictor and policy artifacts. `make reproduce` remains an alias for the complete
-lane. Run these install targets only in a dedicated virtual environment because they
-replace it with the exact reviewed development lock.
+skips `tierroute train` and the bilinear/lambda-policy training smoke; it exercises
+installed synthetic prediction, artifact loading, routing, evaluation, and the demo.
+Evaluation and demo still fit the required outer-LODO domain-table baseline. The
+complete lane additionally runs lint, SPDX, tests, license and install checks, then
+fits and consumes synthetic predictor and policy artifacts. `make reproduce` remains
+an alias for the complete lane. These targets install the pinned reviewed development
+packages but do not remove every unrelated distribution. Start from a fresh dedicated
+virtual environment so unrelated packages cannot contaminate the reproduction claim.
 
 CI runs linting, tests, a
 dependency-free wheel install, both CLI smoke paths, offline-mode checks, and a
