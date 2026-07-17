@@ -75,6 +75,17 @@ the public API is pre-1.0.
   **PENDING**. This slice adds no dependency and establishes no external-data,
   all-domain artifact, command, trainer, quality, cost-reduction, or performance result.
   Issue #9 remains open.
+- A current-state evidence synchronization tracked by
+  [Issue #53](https://github.com/Hbin77/tierroute/issues/53). Submission, novelty,
+  graph, reference, protocol, README, changelog, maintainer, and assistance documents
+  now distinguish the historical PR #47/#48/#50 slice boundaries from PR #52's merged
+  native-result-to-fixed-per-query learned-plus-six-baseline bridge. The submission
+  source adds immutable `I-PREPARED-NATIVE-POLICY-85393E2` evidence and an architecture
+  sink separate from the bilinear-versus-GBM paired-delta path. It also records the
+  store/result/evaluation/tier inputs, configured bounded-search semantics, exact
+  three-module 89-case source, merged-main CI, and pending human walkthrough. This is a
+  documentation-only correction with no source, dependency, SBOM-inventory, external-
+  data, release-artifact, quality, cost, or performance change; Issue #9 remains open.
 - A bounded prepared reference policy pipeline that maps canonical raw-score contexts
   through the existing per-model isotonic calibration, exact/bounded tier-lambda
   search, and `OfflineSimulator`, returning the existing `NestedLodoLambdaResult`.
