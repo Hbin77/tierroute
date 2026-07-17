@@ -585,16 +585,19 @@ payload-free 반환 graph를 고정한다. Focused native 실행은 89 passed다
 suite에서 Python 3.10.19·pip 26.1.2는 1,044 passed·skip 없음, Python 3.12.10·pip
 26.1.2는 1,043 passed와 잠긴 Python 3.10 `typing_extensions` 호환성 의존성 관련
 expected skip 1을 기록했다.
-[Branch-push CI run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699)과
-[PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)은
-head `9ed400d580e288bb9648a300a8de12a5c2200fff`에서 각각 Python 3.10, Python
-3.12, dependency-free wheel, Native source portability macOS, Native source
-portability Windows의 5개 job을 모두 통과했다.
-[PR #52](https://github.com/Hbin77/tierroute/pull/52)에서 해당 테스트 head까지 CI가
-검증한 구현·명세 commit 4개는 `f159e04`, `85393e2`, `a8e0896`, `9ed400d`다. 이는
-branch push와 PR-head CI이며 merged-main 근거가 아니다. PR #50의 이전 platform job은
-별도의 session-layer 근거로 남는다. 사람 walkthrough는 **PENDING**이고 배포 가능한
-release artifact를 승인하지 않으며, 이 근거로 issue #9가 완료되지는 않는다.
+[구현·명세 branch-push CI `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699)은
+`9ed400d580e288bb9648a300a8de12a5c2200fff`에서,
+[최종 PR-head CI `29543435978`](https://github.com/Hbin77/tierroute/actions/runs/29543435978)은
+`304decd0a591fcfc5e5a1e04f35bf20b22c17cea`에서,
+[merged-main CI `29543610611`](https://github.com/Hbin77/tierroute/actions/runs/29543610611)은
+`c7b717ce1226fcfd70d696d0124aa8df294033c8`에서 각각 Python 3.10, Python 3.12,
+dependency-free wheel, Native source portability macOS, Native source portability
+Windows의 5개 job을 모두 통과했다.
+[PR #52](https://github.com/Hbin77/tierroute/pull/52)는 구현·명세 commit `f159e04`,
+`85393e2`, `a8e0896`, `9ed400d`와 evidence commit `77e5c47`, `304decd`를
+병합했다. PR #50의 이전 platform job은 별도의 session-layer 근거로 남는다. 사람
+walkthrough는 **PENDING**이고 배포 가능한 release artifact를 승인하지 않으며, 이
+근거로 issue #9가 완료되지는 않는다.
 
 변이 전에 `TRPSTO01`의 exclusive 0600 staging→section serialization→header/payload/
 whole-file hash→publish→lstat/open/fstat 안정성→private copy를 추적한다. receipt의

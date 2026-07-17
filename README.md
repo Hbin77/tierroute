@@ -420,16 +420,19 @@ and a returned object graph without mapped views or score payloads. The focused 
 run recorded 89 passes. In the locked full suite, Python 3.10.19 with pip 26.1.2 recorded
 1,044 passes with no skip; Python 3.12.10 with pip 26.1.2 recorded 1,043 passes and one
 expected skip for the locked Python 3.10 `typing_extensions` compatibility dependency.
-[Branch-push CI run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699)
-and [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
-at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
+[Implementation/spec branch-push CI `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699)
+at `9ed400d580e288bb9648a300a8de12a5c2200fff`,
+[final PR-head CI `29543435978`](https://github.com/Hbin77/tierroute/actions/runs/29543435978)
+at `304decd0a591fcfc5e5a1e04f35bf20b22c17cea`, and
+[merged-main CI `29543610611`](https://github.com/Hbin77/tierroute/actions/runs/29543610611)
+at `c7b717ce1226fcfd70d696d0124aa8df294033c8` each passed all five jobs: Python
 3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
-source portability Windows. The four CI-covered implementation/spec commits through
-that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
-`f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head
-evidence, not merged-main evidence; the human walkthrough remains **PENDING**, and no
-distributable release artifact is approved. This is bounded software evidence over
-project-authored fixtures, not an external benchmark result.
+source portability Windows. [PR #52](https://github.com/Hbin77/tierroute/pull/52)
+merged implementation/spec commits `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`,
+plus evidence commits `77e5c47` and `304decd`. This is branch, PR, and merged-main
+source-portability evidence, not distributable release-artifact approval; the human
+walkthrough remains **PENDING**. It is bounded software evidence over project-authored
+fixtures, not an external benchmark result.
 
 Only the public builder functions are supported derivation paths. Direct leaf-dataclass
 construction validates a self-declared canonical record; it is not an aggregate loader,
