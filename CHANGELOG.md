@@ -9,6 +9,15 @@ the public API is pre-1.0.
 
 ### Added
 
+- A separately versioned canonical GBM predictor artifact v1 at the Python library
+  boundary. It persists the feature schema, deterministic stump ensembles, per-model
+  isotonic calibrators, training configuration, and training-scope identity in bounded
+  strict JSON and supports atomic save, bounded load, and predictor reconstruction
+  without pickle or automatic network execution. It is not wired into `train`, `route`,
+  showcase, or policy artifacts. Existing bilinear predictor artifact v1 canonical
+  bytes are unchanged. This change adds no dependency or SBOM inventory entry and
+  establishes no external/official-data, bge-m3 provider/asset, deployment, performance,
+  quality-gain, or cost-savings result.
 - An experimental authenticated file-backed prepared-session vertical slice. The fixed
   little-endian `TRPSTO01` store binds the graph, source-fit content, logical prepared
   store, optional precomputed-embedding snapshot/identity, model catalogue, payload, and
@@ -180,8 +189,9 @@ the public API is pre-1.0.
 - A dependency-free, deterministic squared-error GBM core using per-model
   regression-stump ensembles, explicit ordering and tie rules, conservative
   pre-embedding work limits, inner-LODO out-of-fold fitting, and per-model isotonic
-  calibration. Predictor state remains in-memory and has no artifact or deployment CLI
-  path; the paired-estimation command above is descriptive and adds no performance claim.
+  calibration. Predictor state also has a separately versioned canonical library
+  artifact v1. CLI and policy-artifact integration remain absent; the paired-estimation
+  command above is descriptive and adds no performance claim.
 - A Korean maintainer mutation walkthrough for the eight contest-critical boundaries,
   with a pinned throwaway-worktree procedure, exact focused test nodes, blank human
   records, and separate code/synthetic versus optional local-artifact RouterBench
@@ -210,7 +220,7 @@ the public API is pre-1.0.
   domain-shift or performance claim.
 - Fitted prompt-feature schemas and deterministic per-model ridge training.
 - Inner-LODO out-of-fold prediction with a separate isotonic calibrator per model.
-- Canonical, fail-closed JSON predictor artifacts and `tierroute train`/
+- Canonical, fail-closed JSON bilinear predictor artifacts and `tierroute train`/
   `tierroute route --artifact` CLI paths.
 - Exact rational one-shot utility shared by runtime routing and offline evaluation,
   including deterministic behavior for non-float-representable `Decimal` costs.
@@ -306,10 +316,10 @@ the public API is pre-1.0.
   addition to `pip-licenses` output.
 - Replace the optional NumPy training path with a project-owned deterministic
   centered-ridge Cholesky reference solver, and remove the `training` extra and lock.
-- Record the exact ridge solver ID in strict predictor artifacts and CLI training
-  output. Full bge-m3-scale fitting remains gated on a reviewed accelerated backend
-  with numerical parity tests; a conservative work guard rejects accidental oversized
-  reference-solver jobs before Gram construction.
+- Record the exact ridge solver ID in strict bilinear predictor artifacts and CLI
+  training output. Full bge-m3-scale fitting remains gated on a reviewed accelerated
+  backend with numerical parity tests; a conservative work guard rejects accidental
+  oversized reference-solver jobs before Gram construction.
 - Replace the pandas/NumPy RouterBench reader with a dependency-free,
   non-dispatching standard-library decoder for the exact pinned artifact.
 - Remove the `routerbench` optional extra, `requirements-routerbench.lock`,
@@ -335,7 +345,8 @@ the public API is pre-1.0.
 - Complete the remaining issue #9 gates beyond the bounded native per-query Python
   bridge: audited data/provider input, all-domain artifact and reproducible command
   integration, full-shape end-to-end parity, and three-platform artifact/link evidence.
-- Add a separately versioned GBM artifact and explicit `train`/`route` integration.
+- Integrate the existing separately versioned GBM artifact v1 with explicit
+  `train`/`route`/showcase and policy-artifact flows.
 - Run a preregistered family-selection-aware experiment on licensed data; the current
   paired runner estimates fixed families but cannot select a winner on the same outer
   evidence.
@@ -345,6 +356,12 @@ the public API is pre-1.0.
 
 ### Security
 
+- GBM predictor artifacts use a distinct artifact kind and bind algorithm identity,
+  feature schema, training configuration and content identity, deterministic stump
+  state, and per-model calibrators. Construction, parsing, serialization, and save/load
+  enforce exact primitive types, canonical finite binary64 values, signed-zero
+  normalization, bounded metadata, at most 256 models, 65,536 total stumps, and 800,000
+  numeric scalars before predictor reconstruction.
 - Paired bilinear/GBM evaluation now canonical-snapshots the complete replay schema,
   rejects unsafe nested inputs and GBM configurations before predictor work, applies
   closed-form base-fit/row/prompt/minimum-scan guards before fold expansion, and stops
@@ -365,7 +382,7 @@ the public API is pre-1.0.
   synthetic bytes and optional `quoted_cost` fallback.
 - Authenticate RouterBench bytes before structural decoding; referenced pickle globals
   remain inert and no callable named by the payload is imported or invoked.
-- Predictor artifacts accept strict JSON only; duplicate keys, unknown fields,
+- Bilinear predictor artifacts accept strict JSON only; duplicate keys, unknown fields,
   non-finite numbers, invalid dimensions, and pickle bytes fail closed. Bounded binary
   reads and a pre-decode lexical pass now enforce a 32 MiB document limit plus bounded
   nesting, strings, structure, and numeric tokens. Single-snapshot direct input,

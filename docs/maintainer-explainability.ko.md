@@ -378,11 +378,17 @@ test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"
 
 **불변식.** feature schema·scaling·tag vocabulary, ridge·GBM stump, isotonic
 calibration은 outer training에서만 fit한다. 보정은 inner-LODO OOF 예측을 쓰고,
-예측기는 outer training 전체로 다시 fit한다. bilinear artifact v1만 엄격한 직렬화
-계약을 가지며 GBM 상태는 인메모리 전용이다. 제공하는 CLI 중에는 계열을 선택하지 않는
-paired-estimation 명령만 GBM을 실행하며 artifact·배포 라우팅 계약은 없다. 현재
-embedding 경계는 provider 주입을 지원하지만 `bge-m3` 가중치·추론 provider를
-배포한다고 주장하지 않는다. 선택적 C11 ridge process는 명시적으로 인증한
+예측기는 outer training 전체로 다시 fit한다. bilinear artifact v1 계약은
+그대로 유지된다. GBM은 별도의 `tierroute-gbm-predictor` artifact kind와
+version 1을 사용하며, library 계약은 bounded canonical
+`to_dict`/`from_dict`·`to_json`/`from_json`, atomic local `save`, bounded local
+`load`, 정확한 embedding identity를 검사하는 offline `build_predictor`를 제공한다.
+그러나 GBM train/route CLI, lambda-policy binding, predictor-family 선택,
+배포 계약은 없고, 계열을 선택하지 않는 paired-estimation 명령만 GBM을
+실행하는 제공 CLI다. 현재 embedding 경계는 provider 주입을 지원하지만
+`bge-m3` 가중치·추론 provider·asset을 배포한다고 주장하지 않는다. 이
+library artifact만으로는 공식·외부 data, 배포, 성능, 품질, 비용 절감
+근거나 위의 CLI·policy 게이트가 닫히지 않는다. 선택적 C11 ridge process는 명시적으로 인증한
 학습 전용 solver이며, known solver ID는 절대 실행 경로와 바이너리 hash를
 대신하지 않는다.
 
@@ -460,6 +466,7 @@ bookkeeping 32단위를 잡은 `192 * T * N`이며 측정 CPU work가 아니다.
 
 - 소유 심볼: [`fit_calibrated_bilinear_for_fold`](../src/tierroute/predictors/training.py),
   [`fit_calibrated_gbm_for_fold`](../src/tierroute/predictors/gbm_training.py),
+  [`GbmPredictorArtifact`](../src/tierroute/predictors/gbm_artifacts.py),
   [`RegressionStump`](../src/tierroute/predictors/gbm.py),
   [`PairedPredictorComparison`](../src/tierroute/policies/predictor_comparison.py),
   [`PromptFeatureSchema`](../src/tierroute/features/encoding.py),
@@ -477,6 +484,8 @@ bookkeeping 32단위를 잡은 `192 * T * N`이며 측정 CPU work가 아니다.
   [`NativeRidgeAdapter`](../src/tierroute/predictors/native_ridge.py),
   [`tierroute_ridge.c`](../native/tierroute_ridge.c),
   [`tierroute_prepared.c`](../native/tierroute_prepared.c)
+- GBM artifact 근거: [`test_gbm_artifacts.py`](../tests/test_gbm_artifacts.py),
+  [`test_gbm_artifact_hardening.py`](../tests/test_gbm_artifact_hardening.py)
 - 임시 변이: outer 학습에 held-out test 행을 합쳐 embedding provider에 노출한다.
 
 변이 전에는 residual 갱신·split gain·feature/split 동률 규칙·양의 gain이 없을 때의
@@ -629,7 +638,8 @@ python scripts/build_native_prepared.py \
 file="src/tierroute/predictors/training.py"
 test -z "$(git diff --name-only)"
 python -m pytest -q tests/test_bilinear_training.py::test_outer_fold_training_never_observes_held_out_examples
-python -m pytest -q tests/test_gbm_core.py tests/test_gbm_training.py
+python -m pytest -q tests/test_gbm_core.py tests/test_gbm_training.py \
+  tests/test_gbm_artifacts.py tests/test_gbm_artifact_hardening.py
 python -m pytest -q tests/test_predictor_comparison.py tests/test_predictor_comparison_cli.py
 python -m pytest -q tests/test_prepared_graph.py tests/test_prepared_store.py \
   tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \

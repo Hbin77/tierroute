@@ -15,11 +15,12 @@ The project is being developed for the student division of the 2026 Open Source
 Developer Competition, SK Telecom challenge **“Efficient LLM Routing Challenge.”**
 It is currently pre-alpha: the routing contracts, replay simulator, six baselines,
 quality and exact quote-error metrics, leakage-aware calibrated bilinear training,
-an in-memory deterministic GBM reference trainer, paired descriptive family estimation,
-exact tier-lambda tuning, strict v1 bilinear-predictor/policy artifacts, a bounded
-prepared moment-solve/raw-score reference, an experimental authenticated file-backed
-prepared C11 solve/score session with a bounded per-query policy-benchmark bridge, and
-an external-data-free demo are implemented.
+a deterministic stump-GBM trainer with a separate canonical library-level v1 artifact,
+paired descriptive family estimation, exact tier-lambda tuning, strict v1
+bilinear-predictor/policy artifacts, a bounded prepared moment-solve/raw-score reference,
+an experimental authenticated file-backed prepared C11 solve/score session with a
+bounded per-query policy-benchmark bridge, and an external-data-free demo are
+implemented.
 The CLI selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
@@ -130,19 +131,25 @@ the full population with its three selected rows. Each JSON step exposes `budget
 Training and inference use no third-party numerical package. A project-owned,
 deterministic centered-ridge Cholesky solver fits every model target against one shared
 factorization and leaves the intercept unregularized. The resulting surface-feature
-artifact is strict canonical JSON and records the solver ID used to produce it:
+bilinear artifact is strict canonical JSON and records the solver ID used to produce it.
 
-The deployment commands below remain bilinear-only. GBM state is still in-memory only:
-it has no versioned artifact or `train`/`route`/showcase integration. The separate
-`compare-predictors` command evaluates both fixed families but never selects one and
-does not authorize a performance claim.
+The deployment commands below remain bilinear-only. GBM now has a separate canonical v1
+JSON artifact at the Python library boundary. It persists the feature schema,
+deterministic stump ensembles, per-model isotonic calibrators, training configuration,
+and training-scope identity, and can rebuild a predictor without pickle or network
+execution. It has no `train`/`route`/showcase or policy-artifact integration. The
+separate `compare-predictors` command evaluates both fixed families but never selects
+one. This persistence contract changes no bilinear predictor artifact v1 bytes and
+establishes no external/official-data, bge-m3, deployment, performance, quality-gain, or
+cost-savings claim.
 
 ```python
 from tierroute.adapters import load_evaluation_dataset
-from tierroute.predictors import GbmTrainingConfig, fit_calibrated_gbm
+from tierroute.predictors import GbmTrainingConfig, fit_calibrated_gbm_artifact
 
 examples = load_evaluation_dataset().examples
-predictor = fit_calibrated_gbm(examples, config=GbmTrainingConfig())
+artifact = fit_calibrated_gbm_artifact(examples, config=GbmTrainingConfig())
+predictor = artifact.build_predictor()
 model_ids = tuple(model.model_id for model in examples[0].candidate_models)
 scores = predictor.predict_many("Explain why binary search is logarithmic.", model_ids)
 ```
@@ -502,6 +509,9 @@ dependency-free because it uses only stored coefficients.
   pre-embedding resource guards, inner-LODO out-of-fold prediction, and per-model
   isotonic calibration. A complete nested-work preflight and paired descriptive runner
   cover modest surface-only replays; synthetic tests establish algorithm wiring only.
+  A separately versioned canonical GBM predictor artifact v1 persists this state through
+  a bounded, strict JSON library API. It is not consumed by the CLI or policy artifacts,
+  and existing bilinear predictor artifact v1 canonical bytes are unchanged.
 - Canonical, strictly validated JSON bilinear predictor artifacts v1; pickle is never
   accepted for predictor loading. Reads, parsing, serialization, saving, and policy hashing share a
   32 MiB UTF-8 limit. Version-1 structure is capped at 4,096 models, training domains,
@@ -577,10 +587,13 @@ dependency-free because it uses only stored coefficients.
 - Strict JSON loading plus an opt-in, pinned RouterBench boundary adapter.
 
 Without `--artifact`, the no-download CLI uses a transparent synthetic demo predictor.
-The deterministic GBM state remains in-memory; the paired-estimation runner is the only
-shipped CLI path that fits it. A local `bge-m3` embedding backend, GBM
-artifacts and deployment CLI integration, and a licensed reportable family-selection
-experiment remain planned. No predictor-family superiority claim is made.
+The paired-estimation runner remains the only shipped CLI path that fits GBM. A
+canonical GBM artifact v1 is available through the Python library only; CLI, policy,
+and deployment integration, a local bge-m3 backend and assets, and a licensed reportable
+family-selection experiment remain planned. It adds no external or official data,
+dependency, or SBOM inventory entry and supports no performance, quality-gain, or
+cost-savings claim. No predictor-family superiority claim is made, and bilinear
+predictor artifact v1 bytes are unchanged.
 
 ## Router contract and architecture
 
@@ -619,7 +632,7 @@ prompt ─> fitted feature encoder ─> calibrated predictor ─> policy <─ bu
 
 core/        stable state, action, model, and validation contracts
 features/    offline surface features, fitted schema, local embedding contract
-predictors/  bilinear training/artifacts, in-memory deterministic GBM, calibration
+predictors/  bilinear and GBM training/canonical artifacts, per-model calibration
 policies/    exact one-shot lambda policy, tuning/artifacts, baselines, paired estimation
 eval/        replay, accounting protocol, metrics, planning, and LODO
 adapters/    budget-scope and external-dataset uncertainty boundaries

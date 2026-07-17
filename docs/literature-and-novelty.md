@@ -288,7 +288,7 @@ does not assert that no external implementation could add it.
 | Primary role | Learned binary strong/weak router | Multi-model benchmark and reference routers | Cost-saving framework and learned API cascade | Theory and algorithms unifying routing and cascading | Challenge-facing, offline-first multi-model router library |
 | Decision timing | One model call | Logged single-choice routing is central | Sequential calls with response-based stopping | One-shot, cascade, or dynamically ordered cascade routing | **Implemented:** one call, then select it; adaptive reuse of history is **planned** |
 | Cost control | Win-probability threshold controls strong-model call share; no hard dollar budget or named tier | Willingness-to-pay and cost-quality frontier | Explicit expected-budget service selection | Lambda for an expected-cost budget | **Implemented:** deterministically tuned per-tier lambda under the configured replay plus per-query/cumulative ledgers |
-| Quality signal | Preference win probability; several router models including MF | Logged scores and learned performance estimates | Query/response reliability score | Ex-ante and post-hoc estimators with uncertainty | **Implemented:** surface-feature bilinear scores and an in-memory deterministic stump-GBM core, each with per-model isotonic calibration, plus a paired descriptive runner. **Planned:** local bge-m3 and a licensed family-selection-aware experiment |
+| Quality signal | Preference win probability; several router models including MF | Logged scores and learned performance estimates | Query/response reliability score | Ex-ante and post-hoc estimators with uncertainty | **Implemented:** surface-feature bilinear and deterministic stump-GBM scores, each with per-model isotonic calibration; GBM also has a separately versioned canonical library artifact. The paired runner remains descriptive. **Planned:** local bge-m3 and a licensed family-selection-aware experiment |
 | Distribution-shift evidence | Conditional MMLU/GSM8K OOD weakness and in-domain recovery | Main predictive setup uses within-task 70/30 splits and also reports held-out-task plots | Main setup uses random 50/50 splits, calls out same/similar distributions, and studies synthetic label shift | Multiple benchmarks and estimator-noise studies; no tierroute-style nested LODO reported | **Implemented for both fixed surface-only families:** nested LODO covers predictor fit, calibration, lambda selection, and outer scoring on identical folds. **Not implemented:** a reportable licensed-data result or unbiased family selection |
 | Primary reporting | Call-share/performance curves, PGR/APGR/CPT | AIQ over a shared cost-quality frontier and oracle | Quality under budget and cost savings | Area under cost-quality curve | **Implemented:** configured tier-weighted quality, per-query oracle-gap formula, same-outer-fold six-baseline report, and exact quote-error evidence. **Planned:** cumulative sequence oracle. |
 | Offline replay | Can evaluate learned routes, but live provider integration is in scope | Core benefit of pre-generated outcomes | Built around commercial API calls in the paper | Mix of logged and real benchmark experiments | **Implemented:** no-network runtime, labels isolated from router state, executed-call cost evidence, synthetic clone-first demo |
@@ -328,8 +328,12 @@ invented cost-aware model routing:
 6. Runtime inference, the bundled demo, and CI operate without network access. External
    data and model assets use explicit preparation boundaries, fixed identities, and
    license review rather than implicit downloads.
-7. Predictor and policy artifacts bind training/replay content and relevant
-   configuration to canonical, strictly validated provenance.
+7. Predictor and policy artifacts bind training/replay content identities and relevant
+   configuration to canonical, strictly validated scope metadata. The bilinear artifact v1
+   contract is unchanged; GBM uses the distinct `tierroute-gbm-predictor` artifact kind
+   at version 1, with bounded canonical `to_dict`/`from_dict` and `to_json`/`from_json`,
+   atomic local `save`, bounded local `load`, and offline `build_predictor`. This is a
+   library reconstruction boundary, not policy or deployment integration.
 8. A bounded standard-library prepared reference reuses each canonical training
    subset once, constructs centered ridge equations from Welford/Chan moments, shares
    one Cholesky factor across model targets, and emits every graph-ordered raw-score
@@ -401,9 +405,12 @@ invented cost-aware model routing:
   Substitution detection requires a separately trusted expected digest. Global bundle
   digest locality is not promised when an excluded domain changes; only the individual
   unaffected coefficient/raw blocks have locality evidence.
-- The GBM core has no versioned artifact or deployment CLI integration. Its paired
-  estimation CLI deliberately cannot select a winner from the same outer evidence and
-  supplies no evidence of predictive gain or superiority over the bilinear family.
+- The GBM core has a distinct, separately versioned canonical library artifact; the
+  existing bilinear artifact v1 remains unchanged. GBM still has no reviewed
+  train/route deployment CLI, lambda-policy binding, or predictor-family deployment
+  selection. Its paired estimation CLI deliberately cannot select a winner from the
+  same outer evidence and supplies no evidence of predictive gain or superiority over
+  the bilinear family.
 - bge-m3 is a planned controlled feature ablation, not the core novelty or an assured
   performance gain. More candidate models likewise do not guarantee a better frontier;
   model-subset curation must be measured.
@@ -462,7 +469,8 @@ pool, data split, cost model, and metric.
 | Exact quote-error aggregation and CLI report | [`eval/metrics.py`](../src/tierroute/eval/metrics.py), [`cli.py`](../src/tierroute/cli.py) |
 | Complete evaluation-scope identity and immutable metadata snapshot | [`evaluation-scope.md`](evaluation-scope.md), [`eval/provenance.py`](../src/tierroute/eval/provenance.py), [`eval/simulator.py`](../src/tierroute/eval/simulator.py) |
 | Bilinear fit and isotonic calibration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py) |
-| In-memory deterministic GBM and inner-LODO calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) |
+| Deterministic GBM and inner-LODO calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) |
+| Canonical library GBM artifact v1, bounded persistence, and offline reconstruction | [`predictors/gbm_artifacts.py`](../src/tierroute/predictors/gbm_artifacts.py), [`test_gbm_artifacts.py`](../tests/test_gbm_artifacts.py), [`test_gbm_artifact_hardening.py`](../tests/test_gbm_artifact_hardening.py) |
 | Paired bilinear/GBM nested-LODO estimation with no family selection | [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py), [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py) |
 | Local embedding identity, provider still absent | [`features/embeddings.py`](../src/tierroute/features/embeddings.py) |
 | Prepared graph and bounded feature/statistics isolation reference | [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py), [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py), [`prepared-feature-store.md`](prepared-feature-store.md), [`test_prepared_store.py`](../tests/test_prepared_store.py) |
@@ -495,7 +503,7 @@ realized charge differs.
 
 ## Open evidence gates
 
-The following remain official-answer or compliance gates:
+The following remain official-answer, implementation, or compliance gates:
 
 1. Whether a budget resets per query or applies to an ordered stream.
 2. Whether sequential calls are permitted and which call-history fields are visible.
@@ -510,6 +518,9 @@ The following remain official-answer or compliance gates:
    and an all-domain artifact, plus audited GPL-family-free Linux-musl and Windows-MSVC artifacts, before
    the parity-tested C11 dense solver can support a reportable full-dimensional bge-m3
    experiment.
+8. Reviewed GBM train/route CLI and lambda-policy binding, plus licensed-data,
+   selection-aware evidence before choosing a predictor family for deployment. The
+   library artifact alone does not close this gate.
 
 Until those gates close, new semantics remain in `adapters/`, cascade remains disabled,
 SK Telecom data remains outside the repository, and synthetic results remain labeled

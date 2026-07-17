@@ -206,9 +206,16 @@ Owner questions:
 **Invariant.** Feature schema fitting, scaling, tag vocabulary, ridge coefficients, GBM
 stumps, and isotonic calibration use training-side data only. Inner-LODO out-of-fold
 predictions fit calibration; the predictor is then refit on all outer training rows.
-Bilinear artifact v1 is strict schema-bound JSON, and unknown schema/model/solver
-identities fail closed. GBM state remains in-memory and has no artifact or deployment
-CLI contract; the no-selection paired-estimation command is its only shipped CLI path.
+The bilinear artifact v1 contract remains unchanged: it is strict schema-bound JSON,
+and unknown schema/model/solver identities fail closed. GBM has a separate
+`tierroute-gbm-predictor` artifact kind at version 1. Its library contract provides
+bounded canonical `to_dict`/`from_dict` and `to_json`/`from_json`, atomic local `save`,
+bounded local `load`, and offline `build_predictor` with exact embedding identity
+checks. This does not add a GBM train/route CLI, lambda-policy binding, family-selection
+decision, or deployment claim; the no-selection paired-estimation command remains its
+only shipped CLI path. No `bge-m3` inference provider or asset bundle is shipped, and
+the library artifact alone adds no external/official-data, performance, quality, or
+cost-savings evidence.
 The optional C11 ridge process is a training-only, explicitly authenticated solver; a
 known solver ID never substitutes for its absolute path and exact binary hash.
 
@@ -292,6 +299,7 @@ bookkeeping units per retained tier/query row (`192 * T * N`), not measured CPU 
   [`predictors/training.py`](../src/tierroute/predictors/training.py),
   [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py),
   [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py),
+  [`predictors/gbm_artifacts.py`](../src/tierroute/predictors/gbm_artifacts.py),
   [`predictors/_ridge.py`](../src/tierroute/predictors/_ridge.py),
   [`predictors/solvers.py`](../src/tierroute/predictors/solvers.py),
   [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py),
@@ -313,6 +321,8 @@ bookkeeping units per retained tier/query row (`192 * T * N`), not measured CPU 
   [`test_bilinear_training.py`](../tests/test_bilinear_training.py),
   [`test_gbm_core.py`](../tests/test_gbm_core.py),
   [`test_gbm_training.py`](../tests/test_gbm_training.py),
+  [`test_gbm_artifacts.py`](../tests/test_gbm_artifacts.py),
+  [`test_gbm_artifact_hardening.py`](../tests/test_gbm_artifact_hardening.py),
   [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py),
   [`test_predictor_comparison_cli.py`](../tests/test_predictor_comparison_cli.py),
   [`test_ridge_solver.py`](../tests/test_ridge_solver.py), and
@@ -399,9 +409,13 @@ Owner questions:
 2. Describe the centered-ridge normal equations and Cholesky solve; why does the
    reference solver have a conservative work guard and a fixed solver ID?
 3. Why is isotonic calibration fitted from out-of-fold rather than in-sample predictions?
-4. Which identities make a silent schema, catalogue, solver, or training-data change
-   fail closed? Trace the predictor byte, numeric-token, structure, metadata, and
-   calibration limits through construction, parsing, loading, saving, and policy hash.
+4. Which identities make a silent schema, catalogue, solver, embedding, or training-data
+   change fail closed? Distinguish the unchanged bilinear artifact v1 from the separate
+   `tierroute-gbm-predictor` v1 contract. Trace the predictor byte, numeric-token,
+   structure, metadata, stump, and calibration limits through construction,
+   `to_dict`/`from_dict`, `to_json`/`from_json`, atomic saving, bounded loading, and
+   offline reconstruction. Why does GBM library reconstruction not imply policy-hash,
+   train/route CLI, or deployment integration?
 5. What is implemented today at the embedding boundary? Explain that no inference
    provider or asset path is shipped, then name the revision, license, asset-manifest,
    and offline checks required before `bge-m3` can be claimed.
@@ -618,7 +632,7 @@ Owner questions:
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity, and macOS/Windows ephemeral source-portability evidence; no binary in the wheel | Explicit local opt-in only; macOS/Linux-musl/Windows-MSVC distributable release artifacts still need link/import approval |
 | Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer now produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. One local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates. PR #50's earlier session-only macOS/Windows source-portability CI passes; final PR #52 head CI run `29543435978` at `304decd0a591fcfc5e5a1e04f35bf20b22c17cea` and merged-main CI run `29543610611` at `c7b717ce1226fcfd70d696d0124aa8df294033c8` cover the current policy benchmark test and all five jobs. These are merged-main source-portability evidence, not distributable release-artifact approval, and the human walkthrough remains pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, all-domain artifact, shipped command/trainer integration, official data, Linux-musl/distributable cross-platform release artifact, or performance claim exists | Audited offline local provider, all-domain artifact and command integration, full official-shape execution/parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, human walkthrough, and issue #9 completion |
-| GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
+| GBM artifact deployment integration | Distinct canonical `tierroute-gbm-predictor` artifact v1 is implemented at library level with bounded JSON, atomic save, bounded load, and offline reconstruction; bilinear v1 is unchanged. There is no GBM train/route selection or lambda-policy binding | Reviewed `train`/`route` and policy binding plus unbiased family-selection and deployment evidence |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
 
@@ -643,6 +657,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_feature_encoding.py \
   tests/test_features_predictors.py tests/test_bilinear_training.py \
   tests/test_gbm_core.py tests/test_gbm_training.py \
+  tests/test_gbm_artifacts.py tests/test_gbm_artifact_hardening.py \
   tests/test_prepared_graph.py tests/test_prepared_store.py \
   tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \
   tests/test_prepared_files.py tests/test_native_prepared.py \
@@ -673,9 +688,9 @@ python scripts/build_native_prepared.py \
 `reproduce-training` executes that fitting path. `reproduce-inference` intentionally
 does not invoke `tierroute benchmark`, `tierroute compare-predictors`, or
 `tierroute demo` and does not fit the bilinear predictor/lambda policy; its evaluation
-fits only the outer-training domain-table baseline. The in-memory GBM path is exercised
-by its pytest modules and the training-only paired CLI smoke, never by deployment
-routing.
+fits only the outer-training domain-table baseline. GBM training and library-artifact
+paths are exercised by their pytest modules, while the paired CLI smoke remains
+training-only; neither path performs deployment routing or GBM policy selection.
 
 For each boundary, make one temporary local mutation that violates its stated
 invariant, run the named focused test, observe the expected failure, and restore the

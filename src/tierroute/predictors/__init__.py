@@ -18,6 +18,13 @@ from tierroute.predictors.calibration import (
     PerModelCalibratedQualityPredictor,
 )
 from tierroute.predictors.gbm import GbmModel, GbmQualityPredictor, RegressionStump
+from tierroute.predictors.gbm_artifacts import (
+    GBM_PREDICTOR_ARTIFACT_KIND,
+    GBM_PREDICTOR_ARTIFACT_VERSION,
+    GbmPredictorArtifact,
+    fit_calibrated_gbm_artifact,
+    fit_calibrated_gbm_artifact_for_fold,
+)
 from tierroute.predictors.gbm_training import (
     GBM_ALGORITHM_ID,
     GbmNestedLodoWorkEstimate,
@@ -43,6 +50,8 @@ from tierroute.predictors.training import (
 
 __all__ = [
     "GBM_ALGORITHM_ID",
+    "GBM_PREDICTOR_ARTIFACT_KIND",
+    "GBM_PREDICTOR_ARTIFACT_VERSION",
     "KNOWN_RIDGE_SOLVER_IDS",
     "NATIVE_C11_RIDGE_SOLVER_ID",
     "PREDICTOR_ARTIFACT_VERSION",
@@ -54,6 +63,7 @@ __all__ = [
     "CalibratedQualityPredictor",
     "GbmModel",
     "GbmNestedLodoWorkEstimate",
+    "GbmPredictorArtifact",
     "GbmQualityPredictor",
     "GbmTrainingConfig",
     "IsotonicCalibrator",
@@ -66,6 +76,8 @@ __all__ = [
     "fit_calibrated_bilinear",
     "fit_calibrated_bilinear_for_fold",
     "fit_calibrated_gbm",
+    "fit_calibrated_gbm_artifact",
+    "fit_calibrated_gbm_artifact_for_fold",
     "fit_calibrated_gbm_for_fold",
     "preflight_gbm_fit",
     "preflight_nested_lodo_gbm",

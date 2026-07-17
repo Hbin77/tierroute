@@ -8,18 +8,21 @@ model, dataset, font, media asset, or CI action is added or upgraded.
 The core `tierroute` runtime has no third-party Python dependency. The pinned
 RouterBench artifact is decoded with the Python standard library; development tools are
 isolated from the offline routing path. Predictor training uses the project-owned
-standard-library centered-ridge solver and adds no distribution dependency. Two
-experimental project-owned C11 sidecars are source-only and optional; no native binary
-or compiler is part of the base wheel or routing runtime. The prepared nested-LODO
-graph, bounded in-memory feature-store/statistics reference, prepared moment solve,
-target-free feature shards, full admitted-width raw scoring, authenticated file-backed
-store, and one-invocation prepared solve/score adapter use only the Python standard
-library plus the project-owned source below. The native prepared per-query policy
-benchmark bridge likewise uses only the standard library and existing project modules
-for authentication, isotonic calibration, lambda evaluation, and the six baselines; it
-adds no package, model, data, action, or binary inventory entry. The dependency inventory
-is unchanged by this bridge. The persistent/native slice adds no model, dataset,
-distributed binary, executable, or third-party dependency. Caller-pinned
+standard-library centered-ridge and deterministic stump-GBM implementations and adds no
+distribution dependency. The canonical GBM artifact v1 serializer and loader likewise
+use only the Python standard library and project code; no package, externally sourced
+model asset, dataset, binary, or CI action is added to this inventory. Two experimental
+project-owned C11 sidecars are source-only and optional; no native binary or compiler is
+part of the base wheel or routing runtime. The prepared nested-LODO graph, bounded
+in-memory feature-store/statistics reference, prepared moment solve, target-free feature
+shards, full admitted-width raw scoring, authenticated file-backed store, and
+one-invocation prepared solve/score adapter use only the Python standard library plus the
+project-owned source below. The native prepared per-query policy benchmark bridge
+likewise uses only the standard library and existing project modules for authentication,
+isotonic calibration, lambda evaluation, and the six baselines; it adds no package,
+model, data, action, or binary inventory entry. Neither the bridge nor the canonical GBM
+artifact changes the dependency inventory. The persistent/native slice adds no model,
+dataset, distributed binary, executable, or third-party dependency. Caller-pinned
 digests authenticate exact bytes against separately trusted expectations; they do not
 prove origin, provenance, toolchain behavior, or network absence. Resource estimates
 are admission accounting, not peak-RSS or wall-time estimates.
@@ -77,9 +80,9 @@ Exact versions are recorded in `requirements-dev.lock`.
 |---|---|---|---|---|---|
 | BAAI/bge-m3 | `5617a9f61b028005a4858fdac845db406aefb181` | MIT | https://huggingface.co/BAAI/bge-m3/tree/5617a9f61b028005a4858fdac845db406aefb181 | Planned multilingual prompt embeddings | Not downloaded or distributed in W1; runtime contract accepts local paths only |
 
-No LLM weights or commercial API client is bundled. The default CLI predictor and the
-optional fitted bilinear artifact use project-authored logic; neither is an LLM nor a
-benchmark result.
+No LLM weights or commercial API client is bundled. The default CLI predictor and
+optionally fitted bilinear and GBM artifacts use project-authored logic; no fitted GBM
+artifact is distributed by the repository. None is an LLM or benchmark result.
 
 ## Data assets
 
