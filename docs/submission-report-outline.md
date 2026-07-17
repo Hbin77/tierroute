@@ -88,8 +88,9 @@ The `I-*` records below prove implemented behavior, not model quality, cost savi
 a competition score. The original records are bound to pre-submission baseline commit
 `129a23022a78300a44de2305368a75707043a8e0` and current-main CI run
 [`29483000949`](https://github.com/Hbin77/tierroute/actions/runs/29483000949).
-Later records carry their own exact implementation commit and CI reference. Update the
-commit and rerun every cited check before using any record in the final report.
+Later records carry their own exact implementation commits and either an immutable CI
+reference or an explicit pending state. Update the commit and rerun every cited check
+before using any record in the final report.
 
 | Evidence ID | Exact implemented claim | Source | Verification | Boundary |
 | --- | --- | --- | --- | --- |
@@ -98,6 +99,7 @@ commit and rerun every cited check before using any record in the final report.
 | `I-SCOPE-129A230` | Learned router and six baselines use an identical, versioned, digest-bound evaluation-scope identity and fail closed on mismatch | [`eval/provenance.py`](../src/tierroute/eval/provenance.py), [`policies/baseline_evaluation.py`](../src/tierroute/policies/baseline_evaluation.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_eval_provenance.py`](../tests/test_eval_provenance.py), [`test_baseline_evaluation.py`](../tests/test_baseline_evaluation.py), [`test_benchmark.py`](../tests/test_benchmark.py) | Scope digests detect mismatch; they do not authenticate an untrusted dataset |
 | `I-PREDICTOR-129A230` | Surface-feature bilinear quality fitting uses training-side ridge and per-model isotonic calibration inside nested/outer LODO orchestration | [`predictors/training.py`](../src/tierroute/predictors/training.py), [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) | [`test_bilinear_training.py`](../tests/test_bilinear_training.py), [`test_features_predictors.py`](../tests/test_features_predictors.py), [`test_benchmark.py`](../tests/test_benchmark.py) | This proves leakage-control wiring on the cited replay, not predictive gain on official data |
 | `I-GBM-C649150` | Dependency-free per-model squared-error regression-stump boosting uses deterministic split/tie rules, immutable bounded state, pre-embedding work/catalogue guards, inner-LODO OOF predictions, and per-model isotonic calibration | [`predictors/gbm.py`](../src/tierroute/predictors/gbm.py), [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) at `c649150` | [`test_gbm_core.py`](../tests/test_gbm_core.py), [`test_gbm_training.py`](../tests/test_gbm_training.py), [PR #41 CI run `29490146160`](https://github.com/Hbin77/tierroute/actions/runs/29490146160) | This proves deterministic, leakage-controlled in-memory wiring only; no artifact, deployment CLI, or predictive-gain evidence |
+| `I-GBM-ARTIFACT-5D1D727` | Canonical GBM predictor artifact v1 snapshots a validated feature schema, per-model regression-stump heads, per-model isotonic calibrators, and training identity/configuration; its library API provides bounded fit/fold-fit, canonical strict-JSON serialization, exact-type save, bounded load, and offline predictor reconstruction | [`predictors/gbm_artifacts.py`](../src/tierroute/predictors/gbm_artifacts.py) implemented at `5d1d727` and hardened at `4de98de`, with trust-boundary support in [`features/encoding.py`](../src/tierroute/features/encoding.py) and [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) | [`test_gbm_artifacts.py`](../tests/test_gbm_artifacts.py) and adversarial [`test_gbm_artifact_hardening.py`](../tests/test_gbm_artifact_hardening.py) at `5be3642`; [Issue #55](https://github.com/Hbin77/tierroute/issues/55); [PR #56](https://github.com/Hbin77/tierroute/pull/56); implementation-head [push CI `29547428173`](https://github.com/Hbin77/tierroute/actions/runs/29547428173) and [PR CI `29547447826`](https://github.com/Hbin77/tierroute/actions/runs/29547447826) at `5be3642` passed; documentation/final-head CI and merge are **PENDING** | `IMPLEMENTED — LIBRARY ONLY`. The bilinear v1 artifact bytes are unchanged. There is no GBM CLI/policy integration, external or official-data result, local bge-m3 backend or asset, deployment/performance/quality/savings evidence, dependency change, or SBOM-inventory change |
 | `I-PAIR-3E20792` | Fixed surface-only bilinear and GBM families are estimated on identical nested-LODO evidence after a complete pre-fit GBM-work guard; one shared six-baseline object and raw `GBM - bilinear` global/domain deltas are emitted in machine-readable JSON with family selection and performance claims disabled | [`predictors/gbm_training.py`](../src/tierroute/predictors/gbm_training.py) hardened through `786c418`, [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py) implemented at `63df628` and hardened at `786c418`, [`policies/benchmark.py`](../src/tierroute/policies/benchmark.py) identity-hardened at `b307684`, [`cli.py`](../src/tierroute/cli.py) implemented at `3e20792` and hardened at `db12ff8` | [`test_gbm_training.py`](../tests/test_gbm_training.py), [`test_predictor_comparison.py`](../tests/test_predictor_comparison.py), [`test_predictor_comparison_cli.py`](../tests/test_predictor_comparison_cli.py), [PR #43](https://github.com/Hbin77/tierroute/pull/43) | Descriptive paired estimation is not unbiased family selection and supplies no official-data, superiority, quality-gain, or savings result |
 | `I-PREPARED-552B62D` | A bounded standard-library reference canonicalizes caller-precomputed `12 + E` surface/embedding fit rows, binds caller-checked source and embedding content identities, derives per-domain Welford moments, and combines only included training domains with Chan's formula for prepared nested-LODO subsets | [`features/surface.py`](../src/tierroute/features/surface.py) at `1425d11`, [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py) through `552b62d`, and [the trust-boundary specification](prepared-feature-store.md) at `9bc0b8b` | [`test_features_predictors.py`](../tests/test_features_predictors.py), [`test_prepared_store.py`](../tests/test_prepared_store.py), [PR #46](https://github.com/Hbin77/tierroute/pull/46), [implementation/spec-head push CI run `29518686144`](https://github.com/Hbin77/tierroute/actions/runs/29518686144) | Content digests do not authenticate origin or provenance; numerical store/stat digests are not promised across platforms; no provider, persistence, solve, score, performance, bge-m3, or official-data claim |
 | `I-PREPARED-EXEC-608468B` | A bounded in-memory Python reference combines each canonical prepared subset, solves centered ridge from moments with one Cholesky factor shared by all model targets, and emits every graph-ordered raw-score block; the seven-domain regression proves 63 coefficient blocks, 154 score blocks, exactly `22N` row memberships, and `22NM` scalar scores | [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py) at implementation commit `f4b07bc`, hardened through `2ac1b50`, and [the execution contract](prepared-reference-execution.md) | [`test_prepared_execution.py`](../tests/test_prepared_execution.py) at test commit `608468b`, with admission/locality hardening at `2ac1b50`; focused local Darwin arm64/Python 3.12.11: 62 passed; [PR #47](https://github.com/Hbin77/tierroute/pull/47); [implementation/spec-head CI run `29524753168`](https://github.com/Hbin77/tierroute/actions/runs/29524753168) at `8ec9cc1`: Python 3.10 921 passed/1 expected skip, Python 3.12 920 passed/2 expected skips, dependency-free wheel and macOS/Windows native-source jobs passed | Synthetic/frozen-fixture numerical parity is tolerance-based, not bitwise or a cross-platform digest promise. Builders are the supported derivation path; direct leaf constructors provide only self-declared canonical record identities. Digests are not authentication, and substitution detection needs a trusted expected digest. The admission estimate is reviewed numeric work/storage accounting, not peak RSS or wall-clock. No provider, persistence, native execution, calibration, lambda, final-report, performance, bge-m3, RouterBench, or official-data claim; issue #9 remains open |
@@ -141,6 +143,8 @@ optimization over every policy.
 | Six common baselines on one identical, versioned, digest-bound evaluation scope | `IMPLEMENTED` | `I-SCOPE-129A230` |
 | Surface-feature bilinear predictor with per-model isotonic calibration | `IMPLEMENTED` | `I-PREDICTOR-129A230` |
 | In-memory deterministic stump-GBM core with per-model isotonic calibration | `IMPLEMENTED — IN-MEMORY` | `I-GBM-C649150` |
+| Canonical calibrated GBM predictor artifact v1 | `IMPLEMENTED — LIBRARY ONLY` | `I-GBM-ARTIFACT-5D1D727` |
+| GBM artifact CLI/policy integration | `PLANNED` | command, policy wiring, and end-to-end integration evidence |
 | Same-scope GBM-versus-bilinear paired estimation | `IMPLEMENTED — DESCRIPTIVE ONLY` | `I-PAIR-3E20792` |
 | Project-owned C11 backend for one authenticated bounded dense ridge solve | `IMPLEMENTED — EXPERIMENTAL` | protocol/parity/platform-source evidence; no full-run claim |
 | Bounded prepared feature-store and training-side sufficient-statistics reference | `IMPLEMENTED — EXPERIMENTAL` | `I-PREPARED-552B62D`; no provider, solve, score, or performance claim |
@@ -175,10 +179,11 @@ flowchart LR
     SURFACE --> ENCODER["Versioned feature schema"]
     BGE -. optional feature block .-> ENCODER
     ENCODER --> BILINEAR["Bilinear quality predictor<br/>IMPLEMENTED"]
-    ENCODER --> GBM["Deterministic stump-GBM<br/>IMPLEMENTED — IN-MEMORY"]
+    ENCODER --> GBM["Deterministic stump-GBM<br/>IMPLEMENTED — IN-MEMORY CORE"]
     BILINEAR --> BILCAL["Bilinear per-model<br/>isotonic calibration"]
     GBM --> GBMCAL["GBM per-model<br/>isotonic calibration"]
-    GBM -. future integration .-> GBMCLI["GBM artifact and train/route CLI<br/>PLANNED"]
+    GBMCAL --> GBMART["Canonical GBM artifact v1<br/>IMPLEMENTED — LIBRARY ONLY"]
+    GBMART -. future integration .-> GBMCLI["GBM artifact CLI/policy integration<br/>PLANNED"]
     BILCAL --> POLICY["One-shot exact-arithmetic<br/>lambda-threshold decision"]
     GBMCAL -. paired evaluation only .-> POLICY
     POLICY --> ACTION["CallModel or SelectOutput"]
@@ -242,6 +247,13 @@ flowchart LR
 - The paired predictor runner is `IMPLEMENTED` for descriptive estimation only. It
   fixes `selected_family=null` and `performance_claim_allowed=false`; selecting a
   family requires untouched evidence or an additional selection-aware validation layer.
+- Canonical calibrated GBM artifact v1 is `IMPLEMENTED — LIBRARY ONLY` at implementation
+  commit `5d1d727`, hardened at `4de98de`, with adversarial tests at `5be3642`.
+  Its strict-JSON library boundary does not connect the artifact to the route CLI or a
+  policy. It leaves the bilinear v1 artifact bytes and the dependency/SBOM inventory
+  unchanged and supplies no external/official-data, bge-m3 backend/asset, deployment,
+  performance, quality, or savings evidence. PR #56's two implementation-head CI runs
+  passed; documentation/final-head CI and merge remain pending.
 - The prepared execution module is a bounded standard-library reference outside the
   production training/report path. From the prepared store's moments it builds one
   schema per canonical training subset, solves all model targets with a shared
@@ -405,6 +417,11 @@ protocol.
   predictor-family selection.
   Its `NOASSERTION` license and global all-domain quote/tier calibration prevent using
   it as a public result, an end-to-end domain-shift claim, or a paper reproduction.
+- Canonical calibrated GBM artifact v1 is available only through the Python library.
+  GBM CLI/policy integration remains planned; the current artifact commits add no
+  external/official-data result, bge-m3 backend or asset, deployment, performance,
+  quality, savings, dependency, or SBOM-inventory claim. The bilinear v1 bytes remain
+  unchanged.
 - A project-owned C11 sidecar for one bounded dense ridge solve is implemented and
   parity-tested. A separate bounded in-memory Python reference now canonicalizes fit
   rows, computes per-domain Welford moments, combines included domains, solves each
