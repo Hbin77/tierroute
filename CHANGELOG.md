@@ -7,6 +7,16 @@ the public API is pre-1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Re-audited the bilingual eight-boundary maintainer packet against implementation
+  snapshot `a1d7bd7`, separating that snapshot from later documentation commits. The
+  packet now scopes each mutation to the invariant it directly exercises, decomposes
+  the broad predictor card into six independently human-owned sub-reviews, includes
+  native-ridge and current GBM-artifact evidence, hardens the atomic-I/O drill against
+  stale bytecode and overbroad temporary-file claims, and binds final PR #56 and
+  merged-main CI evidence. Every human sign-off remains blank or `PENDING`.
+
 ### Added
 
 - A separately versioned canonical GBM predictor artifact v1 at the Python library

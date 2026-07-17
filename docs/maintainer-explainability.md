@@ -12,10 +12,53 @@ and asks questions the entrant must answer in their own words. Reading this docu
 receiving a green CI result is not sign-off. The owner must trace the code, run the
 focused tests, perform a mutation drill, and complete the table at the end.
 
-The mutation walkthrough companion is pinned to implementation snapshot commit
-`c6491508533655baa76c7b50bfdadacbc1612e60`. Review the current commit instead if the
-code has moved, and record that exact commit in the sign-off table. A green result on
-the pinned snapshot does not attest to later source changes.
+The re-audited **implementation snapshot** is
+`a1d7bd7dd835a1ab88e85e805df167985ca699be`. A later packet/document commit is a
+separate value and does not replace the reviewed
+implementation commit. Record both. A green result on this snapshot does not attest
+to later source changes.
+
+### Optional 60–80 minute partial route
+
+After the locked environment is ready, an entrant may spend an estimated 60–80 minutes
+on Korean mutation cards **1 → 2 → 3 → 7**. Their mutation
+sources and primary test nodes are byte-unchanged from the older packet snapshot
+`c6491508533655baa76c7b50bfdadacbc1612e60` through the reviewed implementation
+snapshot. That machine diff and the automated re-audit are not human sign-off.
+
+For each card, the entrant must run the baseline, write the expected failure before
+the mutation, observe pytest exit status 1 and the named invariant, reverse the patch,
+rerun the baseline, and verify an empty tracked/untracked tree and HF cache. Only those
+four rows may then be signed, and only if the entrant answers the five explanation
+questions in their own words. Cards 4, 5, 6, and 8 and every AI-assistance ledger row
+remain blank or **PENDING** until separately executed and reviewed. The optional
+RouterBench local-artifact download/E2E is excluded. If time expires or any restoration
+or cleanup check fails, leave that card and every remaining row **PENDING**; a diff or
+green CI result is not partial human credit. At packet publication all eight rows are
+blank; only a later entrant execution may change them.
+
+### Current-snapshot machine re-audit — not human sign-off
+
+On 2026-07-17 the mutation wiring was re-executed at
+`a1d7bd7dd835a1ab88e85e805df167985ca699be` in detached throwaway worktrees with the
+locked Python 3.12.11 environment and an empty offline `HF_HOME`:
+
+| Card | Machine re-audit result |
+|---|---|
+| 1 | 1 baseline pass → pytest exit 1 with the exact-cost boundary error → 1 restored pass |
+| 2 | 1 baseline pass → pytest exit 1 with the cost/call-sum error → 1 restored pass |
+| 3 | 1 baseline pass → pytest exit 1 with the cap-identity digest collision → 1 restored pass |
+| 4 | 7 baseline passes → pytest exit 1 with `3 failed, 4 passed` → 7 restored passes |
+| 5 | 558 baseline passes across 111+92+16+98+241 → pytest exit 1 with the held-out prompt assertion → 558 restored passes |
+| 6 | 104 baseline passes → pytest exit 1 with `DID NOT RAISE <class 'ValueError'>` → 104 restored passes |
+| 7 | baseline node pass → pytest exit 1 with `DID NOT RAISE`, zero calls to patched `os.system` → restored five-node suite pass |
+| 8 | 1 baseline pass → pytest exit 1 with the exact new-policy assertion → 1 restored pass; expanded suite 25 passes, package suite 3 passes, license 12 and SPDX 146 gates pass |
+
+Each card ended with an empty tracked/untracked status and HF cache. Card 8's three
+dedicated basetemp directories contained no staging/backup debris; the broader
+failure-injection suite intentionally retains recovery backups, so no empty-global-temp
+claim is made. This is automated/AI-assisted evidence only. Every human-owned row below
+remains blank and **PENDING**.
 
 ## 1. Router contract and exact cost arithmetic
 
@@ -108,13 +151,14 @@ Owner questions:
 
 ## 4. Metrics, leakage-free benchmarking, and the stream showcase
 
-**Invariant.** Reportable learned-policy validation uses true nested
-leave-one-domain-out splits: predictor fitting, calibration, and lambda tuning remain
-inside each outer training side. The domain-table baseline is also fitted only on that
-side and can read only an explicit pre-call metadata tag, not the split label. The
-learned router and all six policies replay the same original row order and per-query
-ledger scope. Scores, exact cost evidence, and oracle-gap recovery are derived again
-from bound reports rather than trusted as stored numbers. The three-step showcase
+**Invariant.** Tier-weighted quality applies each tier's explicit weight and never
+redistributes the weight of an infeasible tier. Reportable learned-policy validation
+uses true nested leave-one-domain-out splits: predictor fitting, calibration, and lambda
+tuning remain inside each outer training side. The domain-table baseline is also fitted
+only on that side and can read only an explicit pre-call metadata tag, not the split
+label. The learned router and all six policies replay the same original row order and
+per-query ledger scope. Scores, exact cost evidence, and oracle-gap recovery are derived
+again from bound reports rather than trusted as stored numbers. The three-step showcase
 directly replays the same outer-fold learned policies and must agree with the nested
 result; its running values remain presentation diagnostics outside the full benchmark.
 
@@ -180,6 +224,11 @@ contains the curated rows, `accounting` states the interpretation boundaries,
 separate full-population learned-plus-six-baseline report. The bundled steps end at a
 reporting-only realized-cost sum of `1.8` and an unweighted retention of `1/1`; those
 fixture values are wiring assertions, not performance claims.
+
+Korean mutation card 4 directly breaks only explicit tier-weight aggregation. Its
+seven-node run must exit with pytest status 1 and `3 failed, 4 passed`. The independent
+LODO and showcase nodes are sentinels; their passing does not make that one mutation
+proof of leakage control or presentation semantics.
 
 Owner questions:
 
@@ -402,6 +451,36 @@ plus evidence commits `77e5c47` and `304decd`. PR #50's earlier platform jobs re
 separate session-layer evidence. The human walkthrough remains **PENDING**, no
 distributable release artifact is approved, and this evidence does not complete issue #9.
 
+[PR #56](https://github.com/Hbin77/tierroute/pull/56) separately implemented the GBM
+artifact beginning at `5d1d727` and hardened it through `4de98de` and `5be3642`. At the
+final evidence head `ef8606f34d8a7706a19ae2303d742a06c955d3cb`,
+[push CI `29548164885`](https://github.com/Hbin77/tierroute/actions/runs/29548164885) and
+[PR CI `29548166228`](https://github.com/Hbin77/tierroute/actions/runs/29548166228)
+each passed all five jobs. The
+[merged-main run `29548281471`](https://github.com/Hbin77/tierroute/actions/runs/29548281471)
+at `a1d7bd7dd835a1ab88e85e805df167985ca699be` also passed all five jobs. This is
+automated evidence for the library-only GBM artifact and current tree, not human
+walkthrough, GBM CLI/policy binding, official-data, quality, or cost-savings evidence.
+
+Korean card 5's one-line mutation directly tests only bilinear outer-fold isolation.
+The remaining sub-boundaries require their own baseline evidence and entrant
+explanation at the same reviewed implementation commit:
+
+| Card 5 sub-review | Entrant explanation, exact command/result, and status |
+|---|---|
+| 5a feature, bilinear, and calibration |  |
+| 5b GBM core, training, and artifact |  |
+| 5c paired comparison |  |
+| 5d prepared graph, store, execution, and reference |  |
+| 5e native ridge and prepared file/session |  |
+| 5f native policy bridge |  |
+
+The top-level Card 5 sign-off row remains blank or **PENDING** until every 5a–5f row
+contains the entrant's own explanation and exact command/result. A passing baseline or
+the single bilinear mutation is insufficient. The re-audited five baseline groups
+recorded 111, 92, 16, 98, and 241 tests respectively (558 total); this machine evidence
+does not replace human sign-off.
+
 Owner questions:
 
 1. Which feature statistics are fitted rather than computed independently, and why
@@ -497,7 +576,11 @@ Owner questions:
 `predicted_quality - lambda * quoted_cost`, with exact rational lambda and deterministic
 tie breaks. An exhaustive claim includes every boundary/interval/tail candidate. A cap
 is an explicitly labeled deterministic approximation, not a smaller exhaustive search.
-Nested LODO tunes only inside each outer training side.
+Nested LODO tunes only inside each outer training side. The current policy hash and
+bundle bind the exact canonical JSON of a `BilinearPredictorArtifact` only.
+`GbmPredictorArtifact` v1 is a separate library-only contract and is not connected to
+the lambda policy or route CLI. SHA-256 supplies content identity, not origin or
+provenance authentication.
 
 - Core: [`policies/lambda_threshold.py`](../src/tierroute/policies/lambda_threshold.py),
   [`policies/lambda_tuning.py`](../src/tierroute/policies/lambda_tuning.py),
@@ -509,6 +592,10 @@ Nested LODO tunes only inside each outer training side.
   [`test_lambda_tuning.py`](../tests/test_lambda_tuning.py), and
   [`test_lambda_policy_artifacts.py`](../tests/test_lambda_policy_artifacts.py)
 - Design context: [exact lambda tuning](lambda-tuning.md)
+
+Korean card 6 mutates only predictor-content binding and its fail-closed mismatch
+guard. Exact route selection and lambda tuning remain independent subclaims covered by
+`test_policies.py` and `test_lambda_tuning.py`; this one mutation does not sign them off.
 
 Owner questions:
 
@@ -594,22 +681,35 @@ Owner questions:
 
 ## 8. Atomic files, offline operation, build, and license compliance
 
-**Invariant.** Predictor/policy outputs are staged under random exclusive regular files,
-validated, and published with rollback-safe ordering. Runtime/training/evaluation never
-download. The base wheel has no third-party runtime dependency. CI rejects unallowlisted
-dependency metadata, unsafe or unreadable bundled evidence, and detected GPL-family
-license documents; manual review still covers native and non-Python assets.
+**Invariant.** The bilinear predictor/policy bundle is staged under random exclusive
+regular files and validated before `_save_training_artifacts` publishes the predictor
+first and its bound policy last. Rename intent is recorded before the operating-system
+rename so rollback can cover an asynchronous exception after rename succeeds but before
+control returns to Python. This is not a guarantee for arbitrary asynchronous timing,
+power loss, or concurrent writers. Failed cleanup or restoration may deliberately
+preserve authenticated recovery backups for inspection. GBM artifact `save()` is a
+separate single-file atomic contract, not a policy bundle. Runtime/training/evaluation
+never download. The base wheel has no third-party runtime dependency. CI rejects
+unallowlisted dependency metadata, unsafe or unreadable bundled evidence, and detected
+GPL-family license documents; manual review still covers native and non-Python assets.
 
 - Core: [`core/atomic_io.py`](../src/tierroute/core/atomic_io.py),
   [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py),
+  [`predictors/gbm_artifacts.py`](../src/tierroute/predictors/gbm_artifacts.py),
   [`policies/lambda_artifacts.py`](../src/tierroute/policies/lambda_artifacts.py),
   [`cli.py`](../src/tierroute/cli.py), [`check_licenses.py`](../scripts/check_licenses.py),
-  [`check_spdx.py`](../scripts/check_spdx.py), and
+  [`check_spdx.py`](../scripts/check_spdx.py),
+  [`build_native_ridge.py`](../scripts/build_native_ridge.py),
+  [`build_native_prepared.py`](../scripts/build_native_prepared.py),
+  [`audit_native_binary.py`](../scripts/audit_native_binary.py), and
   [`ci.yml`](../.github/workflows/ci.yml)
 - Strongest evidence: [`test_atomic_io.py`](../tests/test_atomic_io.py),
+  [`test_gbm_artifacts.py`](../tests/test_gbm_artifacts.py),
+  [`test_gbm_artifact_hardening.py`](../tests/test_gbm_artifact_hardening.py),
   [`test_offline_runtime.py`](../tests/test_offline_runtime.py),
   [`test_license_gate.py`](../tests/test_license_gate.py),
-  [`test_cli.py`](../tests/test_cli.py), and [`test_package.py`](../tests/test_package.py)
+  [`test_cli.py`](../tests/test_cli.py), [`test_package.py`](../tests/test_package.py), and
+  [`test_reproduction_contract.py`](../tests/test_reproduction_contract.py)
 - Design context: [dependency-license audit](dependency-license-audit.md),
   [SBOM](../SBOM.md), and [CONTRIBUTING](../CONTRIBUTING.md)
 
@@ -622,6 +722,22 @@ Owner questions:
 3. Prove the base wheel is dependency-free and explain why build/dev tools still appear
    in the SBOM and license gate.
 4. Which commands and environment variables demonstrate an empty, offline model cache?
+
+Korean card 8 mutates only rollback-intent ordering. Offline execution,
+dependency-free packaging, SPDX/license gates, GBM single-file saving, and native
+source-portability are independent subclaims and require their own command results.
+
+The current-main card-8 re-audit recorded 25 passes in the expanded recovery suite,
+three passes in the complete package suite, 12 allowed dependency licenses, and SPDX
+coverage for 146 files. Merged-main CI
+[`29548281471`](https://github.com/Hbin77/tierroute/actions/runs/29548281471) passed all
+five jobs at `a1d7bd7dd835a1ab88e85e805df167985ca699be`; both Python jobs executed the
+locked `make reproduce-inference` and `make reproduce-training` lanes. The platform
+jobs built and audited ephemeral source candidates and uploaded no artifact. This does
+not approve Linux-musl, a distributable binary, the chosen toolchain, or network
+isolation during environment installation. Some failure-injection tests intentionally
+retain recovery backups, so the review inspects only its three dedicated mutation
+basetemp directories rather than claiming that the entire temporary root is debris-free.
 
 ## Gated and intentionally incomplete work
 
@@ -662,7 +778,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \
   tests/test_prepared_files.py tests/test_native_prepared.py \
   tests/test_native_prepared_benchmark.py \
-  tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
+  tests/test_native_ridge.py tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
   tests/test_lambda_tuning.py tests/test_lambda_policy_artifacts.py \
   tests/test_routerbench_adapter.py tests/test_validate_routerbench_script.py \
   tests/test_atomic_io.py tests/test_offline_runtime.py \
@@ -699,9 +815,10 @@ mutation before committing. Never weaken a test merely to make the drill pass.
 ## Human owner sign-off
 
 Only the human entrant fills this table. Use a real name or stable Git identity, an ISO
-date, the exact reviewed commit, and a short note naming the mutation/failure drill.
+date, the exact reviewed implementation commit, the packet commit, and a short note
+naming the mutation/failure drill.
 
-| Boundary | Owner | Date | Reviewed commit | Status and notes |
+| Boundary | Owner | Date | Reviewed implementation / packet commit | Status and notes |
 |---|---|---|---|---|
 | Router contract and exact costs |  |  |  |  |
 | Budget adapters, replay, and call evidence |  |  |  |  |
