@@ -213,8 +213,10 @@ The optional C11 ridge process is a training-only, explicitly authenticated solv
 known solver ID never substitutes for its absolute path and exact binary hash.
 
 The prepared execution reference remains bounded in-memory Python proof code, not the
-production trainer and not integrated with the separate native/persistent session. For active raw coordinates `a_i`
-and continuous scales `s_i` (one for noncontinuous coordinates), it constructs
+production trainer. The native policy consumer described below does not route through
+this reference object graph; it reconstructs the same bounded policy inputs directly
+from authenticated native views. For active raw coordinates `a_i` and continuous scales
+`s_i` (one for noncontinuous coordinates), the in-memory reference constructs
 `G_ij = Cxx[a_i,a_j] / (s_i s_j) + ridge * 1[i=j]` and
 `h_i,m = Cxy[a_i,m] / s_i`, performs exactly one Cholesky factorization per unique
 training subset for all model targets, and recovers
@@ -258,8 +260,30 @@ is a protocol failure. Successful records expose bounded binary64 views over one
 context-managed mmap. One reentrant lock serializes read/view creation with close.
 Closing while an exported view exists must remain retryable;
 after a successful close every record/view access fails and private workspace cleanup
-owns the descriptor on both POSIX and Windows paths. The adapter has no CLI, policy,
-calibration, lambda, all-domain artifact, or prepared six-baseline integration.
+owns the descriptor on both POSIX and Windows paths. The adapter itself neither invokes
+policy replay nor publishes an artifact.
+
+The public `evaluate_native_prepared_per_query_benchmark` consumer supplies the bounded
+policy integration. It requires an open exact `NativePreparedSessionResult` owned by the
+caller, the trusted prepared-store receipt, and mandatory caller-retained expected
+binary and result-file SHA-256 values. Before deep example/fold/lambda traversal it
+compares the external binary/result/store pins and verifies the current result mapping.
+Phase one authenticates an owned private store snapshot, compares its targets bit-
+exactly with the evaluation rows, consumes native views only through `at()`, and builds
+an owned calibrated snapshot without calling caller code. It verifies both mappings
+again after the last read, rechecks the external result pin, closes only its owned store,
+and stops consulting the still-open caller-owned result. Phase two uses only owned data,
+the fixed `PerQueryBudgetLedger`, the existing nested lambda evaluator, and the six-
+baseline evaluator. The returned evidence graph keeps calibration parameters and hashes
+but no mmap, native view, raw/target/calibrated matrix, or private score payload.
+The admitted config restricts candidate cap to exact integers 2 through 257, seed to
+signed 64-bit, and character threshold to positive signed 64-bit. A direct calibrator
+record cannot retain more points than its declared calibration rows. The owned numeric
+estimate includes `policy.postprocess_numeric_bytes`, one additional simultaneous
+`owned_calibrated_score_bytes` copy, and `row_index_bytes`; it does not treat Python
+tuple/object allocator overhead as binary64 payload.
+Baseline constructor/evidence work is the six reports times a conservative 32 modeled
+bookkeeping units per retained tier/query row (`192 * T * N`), not measured CPU work.
 
 - Core: [`features/encoding.py`](../src/tierroute/features/encoding.py),
   [`features/surface.py`](../src/tierroute/features/surface.py),
@@ -281,8 +305,9 @@ calibration, lambda, all-domain artifact, or prepared six-baseline integration.
   [`predictors/calibration.py`](../src/tierroute/predictors/calibration.py), and
   [`predictors/artifacts.py`](../src/tierroute/predictors/artifacts.py), with limits in
   [`predictors/resource_limits.py`](../src/tierroute/predictors/resource_limits.py),
-  plus [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py)
-  and [`policies/prepared_reference.py`](../src/tierroute/policies/prepared_reference.py)
+  plus [`policies/predictor_comparison.py`](../src/tierroute/policies/predictor_comparison.py),
+  [`policies/prepared_reference.py`](../src/tierroute/policies/prepared_reference.py), and
+  [`policies/native_prepared_benchmark.py`](../src/tierroute/policies/native_prepared_benchmark.py)
 - Strongest evidence: [`test_feature_encoding.py`](../tests/test_feature_encoding.py),
   [`test_features_predictors.py`](../tests/test_features_predictors.py),
   [`test_bilinear_training.py`](../tests/test_bilinear_training.py),
@@ -298,7 +323,8 @@ calibration, lambda, all-domain artifact, or prepared six-baseline integration.
   [`test_prepared_execution.py`](../tests/test_prepared_execution.py), plus
   [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py),
   [`test_prepared_files.py`](../tests/test_prepared_files.py), and
-  [`test_native_prepared.py`](../tests/test_native_prepared.py)
+  [`test_native_prepared.py`](../tests/test_native_prepared.py), plus
+  [`test_native_prepared_benchmark.py`](../tests/test_native_prepared_benchmark.py)
 - Design context: [lambda/training design](lambda-tuning.md) and
   [prepared graph contract](prepared-session-graph.md), the
   [prepared feature-store reference](prepared-feature-store.md), the
@@ -341,6 +367,28 @@ speed, memory-efficiency, throughput, quality, or cost result.
 [merged-main CI](https://github.com/Hbin77/tierroute/actions/runs/29537633261) passed
 macOS/Windows ephemeral source compile, protocol/parity, and link/import audits. This is
 not release-artifact approval, and no human sign-off is implied.
+
+The subsequent current-tree native policy benchmark tests compile the same C11 source
+for surface-only D4-D7 fixtures and require strict equality with the authoritative
+rowwise `NestedLodoLambdaResult` and six-baseline result. D7 uses uneven row counts
+`(1, 2, 1, 3, 2, 1, 2)` and three models. Adversarial cases lock external credential
+fail-order, mapping verification before deep traversal and after the final read,
+persistent mutation rejection, bit-exact targets, `at()`-only access, owned-store close
+before replay, primary-error preservation, bounded configuration, and a payload-free
+returned graph. The focused native run recorded 89 passes. In the locked full suite,
+Python 3.10.19 with pip 26.1.2 recorded 1,044 passes with no skip; Python 3.12.10 with pip
+26.1.2 recorded 1,043 passes and one expected skip for the locked Python 3.10
+`typing_extensions` compatibility dependency.
+[Branch-push CI run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699)
+and [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
+at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
+3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
+source portability Windows. The four CI-covered implementation/spec commits through
+that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
+`f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head CI,
+not merged-main evidence; PR #50's earlier platform jobs remain separate session-layer
+evidence. The human walkthrough remains **PENDING**, no distributable release artifact
+is approved, and this evidence does not complete issue #9.
 
 Owner questions:
 
@@ -416,10 +464,16 @@ Owner questions:
     close with an exported view must be retryable, and which
     accesses fail after a successful close. Which Windows cleanup paths are exercised
     by the source-portability CI, and why is that still not release-artifact approval?
-19. Distinguish the D4-D7 small surface-only parity fixtures, the unprojected
+19. Distinguish the earlier D4-D7 small surface-only solve/score parity fixtures, the
     `D4/N8/d1036/M1` synthetic completion, and the aggregate-only
     `D7/N34778/d1036/M11` preflight. Why does none establish bge-m3, RouterBench,
-    official-data, all-domain policy/six-baseline integration, or performance?
+    official-data, an all-domain artifact, or performance?
+20. Trace the public native policy consumer from the three external pins through initial
+    result verification, `at()`-only mapped reads, final reauthentication, owned-store
+    close, and fixed per-query learned-plus-six-baseline replay. Why does the caller-owned
+    result remain open, why can no caller callback run during phase one, and which object
+    types and numerical payloads must be absent from the returned graph? Explain what the
+    strict D4-D7 rowwise equality and adversarial tests prove—and what they do not.
 
 ## 6. Exact lambda routing, tuning, and policy artifacts
 
@@ -561,7 +615,7 @@ Owner questions:
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity, and macOS/Windows ephemeral source-portability evidence; no binary in the wheel | Explicit local opt-in only; macOS/Linux-musl/Windows-MSVC distributable release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. Small surface-only D4-D7 fixtures have actual compiled reference parity, one local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates, and macOS/Windows ephemeral source-portability CI passes. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, policy/all-domain artifact, CLI, prepared six-baseline wrapper, official data, Linux-musl/distributable cross-platform release artifact, or performance claim exists | Audited offline local provider, all-domain policy/artifact and CLI integration, full official-shape execution/parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, prepared six-baseline wrapper, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer now produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. One local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates. PR #50's earlier session-only macOS/Windows source-portability CI passes; branch-push CI run `29542245699` and PR #52 head CI run `29542451542` cover the current policy benchmark test and all five jobs at `9ed400d580e288bb9648a300a8de12a5c2200fff`. This is not merged-main or distributable release-artifact evidence, and the human walkthrough remains pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, all-domain artifact, shipped command/trainer integration, official data, Linux-musl/distributable cross-platform release artifact, or performance claim exists | Audited offline local provider, all-domain artifact and command integration, full official-shape execution/parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, merged-main evidence as required, human walkthrough, and issue #9 completion |
 | GBM artifact and deployment CLI | In-memory state; paired estimation only | Separate artifact schema plus reviewed `train`/`route` integration |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
@@ -590,6 +644,7 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_prepared_graph.py tests/test_prepared_store.py \
   tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \
   tests/test_prepared_files.py tests/test_native_prepared.py \
+  tests/test_native_prepared_benchmark.py \
   tests/test_ridge_solver.py tests/test_predictor_artifacts.py \
   tests/test_lambda_tuning.py tests/test_lambda_policy_artifacts.py \
   tests/test_routerbench_adapter.py tests/test_validate_routerbench_script.py \
@@ -635,7 +690,7 @@ date, the exact reviewed commit, and a short note naming the mutation/failure dr
 | Budget adapters, replay, and call evidence |  |  |  |  |
 | Complete evaluation-scope identity |  |  |  |  |
 | Metrics, learned-versus-six-baseline nested LODO, and showcase |  |  |  |  |
-| Features, ridge/GBM predictors, prepared references, file/native session, and calibration |  |  |  |  |
+| Features, ridge/GBM predictors, prepared references, file/native session, native policy benchmark, and calibration |  |  |  |  |
 | Exact lambda tuning and policy artifacts |  |  |  |  |
 | RouterBench hostile-data and local diagnostic boundary |  |  |  |  |
 | Atomic I/O, offline, build, and licenses |  |  |  |  |

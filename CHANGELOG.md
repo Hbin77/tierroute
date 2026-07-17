@@ -32,10 +32,46 @@ the public API is pre-1.0.
   contain no executable. PR #50 and its PR-head/merged-main CI runs compile, test, and
   link/import-audit ephemeral source-built candidates on macOS and Windows. There is no
   bge-m3 provider, official/RouterBench data result, all-domain policy/artifact
-  integration, prepared six-baseline wrapper, Linux-musl or distributable
-  cross-platform release evidence, or quality, cost, speed, memory-efficiency, or
-  throughput claim.
-  Issue #9 remains open.
+  integration, Linux-musl or distributable cross-platform release evidence, or quality,
+  cost, speed, memory-efficiency, or throughput claim. The session layer alone stops at
+  authenticated coefficient/raw-score views; the bounded public policy consumer below
+  is the current fixed per-query integration. Issue #9 remains open.
+- A public experimental native prepared per-query benchmark bridge. The
+  `evaluate_native_prepared_per_query_benchmark` API accepts a caller-owned open
+  `NativePreparedSessionResult`, a trusted prepared-store receipt, and mandatory external
+  binary and result-file SHA-256 pins. Its first phase rejects credential mismatch before
+  deep evaluation traversal, verifies the result mapping, authenticates an owner-only
+  store snapshot, consumes native numeric views only through cell-addressed `at()` reads,
+  validates targets bit-exactly, and builds owned calibrated evidence without a caller
+  callback. After the last mapped read it verifies both inputs again, rechecks the
+  external result pin, closes the owned store, and stops consulting the still-open
+  caller-owned result. The second phase uses only that snapshot and the fixed
+  `PerQueryBudgetLedger` for nested-LODO learned replay and all six baselines. Returned
+  evidence retains calibration parameters and hashes but no mmap, native view, raw,
+  target, or calibrated-score matrix.
+  Compiled surface-only D4-D7 fixtures strictly equal the authoritative rowwise learned
+  and six-baseline results; D7 uses uneven row counts `(1, 2, 1, 3, 2, 1, 2)` and three
+  models. Adversarial coverage fixes credential fail-order, initial and final mapping
+  checks, persistent mutation rejection, `at()`-only access, phase-boundary store close,
+  primary-error preservation under cleanup failure, bit-exact target binding, bounded
+  controls, direct calibrator point-count bounds, simultaneous immutable-plus-unpacked
+  calibrated-payload admission, and a payload-free returned object graph. Candidate cap
+  is 2 through 257; seed and positive character threshold are signed 64-bit. The focused
+  native run recorded 89 passes. In the locked full suite, Python 3.10.19 with pip 26.1.2
+  recorded 1,044 passes with no skip; Python 3.12.10 with pip 26.1.2 recorded 1,043 passes
+  and one expected skip for the locked Python 3.10 `typing_extensions` compatibility
+  dependency. Branch-push CI
+  [run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699) and
+  [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
+  at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
+  3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
+  source portability Windows. The four CI-covered implementation/spec commits through
+  that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
+  `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head CI,
+  not merged-main evidence; the human walkthrough remains **PENDING**, and no
+  distributable release artifact is approved. This slice adds no dependency and
+  establishes no external-data, all-domain artifact, command, trainer, quality,
+  cost-reduction, or performance result. Issue #9 remains open.
 - A bounded prepared reference policy pipeline that maps canonical raw-score contexts
   through the existing per-model isotonic calibration, exact/bounded tier-lambda
   search, and `OfflineSimulator`, returning the existing `NestedLodoLambdaResult`.
@@ -53,9 +89,11 @@ the public API is pre-1.0.
   mismatch, per-query, and cumulative-ledger tests preserve the reviewed boundaries.
   Caller-supplied ledger callback work and side effects remain outside the resource
   estimate. This is synthetic bounded wiring evidence, not universal near-
-  tie parity, a cross-platform numeric-digest promise, CLI or integration with the
-  separate native/persistent prepared session,
-  an all-domain artifact, or a performance/quality/cost claim. Issue #9 remains open.
+  tie parity, a cross-platform numeric-digest promise, a shipped command, an all-domain
+  artifact, or a performance/quality/cost claim. This in-memory reference does not
+  consume the native session object; the separate public native consumer above now
+  reconstructs the same bounded policy inputs directly from authenticated native views.
+  Issue #9 remains open.
 - A bounded, standard-library-only prepared moment execution reference that consumes
   the immutable prepared store/statistics, sequentially combines, solves, and discards
   each canonical training subset, and shares one Cholesky factor across all model
@@ -74,9 +112,10 @@ the public API is pre-1.0.
   caller-owned input, and other process memory and is not a peak-RSS or wall-time
   estimate. Earlier store/statistics and execution caps reject the complete pinned
   RouterBench/bge-m3 shape. The separate bounded policy bridge now supplies frozen-
-  fixture calibration/lambda/report integration, but neither reference adds a CLI,
-  integration with the separate native/persistent session, all-domain artifact, or
-  performance, quality, or cost-reduction claim; Issue #9 remains open.
+  fixture calibration/lambda/report integration. The public native consumer above adds
+  fixed per-query native-to-policy wiring without changing either in-memory reference;
+  none adds a shipped command, all-domain artifact, or performance, quality, or cost-
+  reduction claim. Issue #9 remains open.
 - A bounded, standard-library-only prepared feature-store reference that canonicalizes
   fit-relevant source rows and caller-precomputed embeddings into immutable
   little-endian binary64 payloads, requires caller-supplied expected source/embedding
@@ -279,10 +318,9 @@ the public API is pre-1.0.
 
 - Add a sequence-level oracle before reporting oracle-gap recovery under cumulative
   accounting, after the organizer confirms the official budget semantics.
-- Move the bounded Python solve-and-score reference into one scalable authenticated
-  persistent prepared session, integrate calibration, lambda tuning, reporting, and
-  CLI reproduction, and pass end-to-end parity plus three-platform artifact/link audits
-  before the full-dimensional bge-m3 experiment is reportable.
+- Complete the remaining issue #9 gates beyond the bounded native per-query Python
+  bridge: audited data/provider input, all-domain artifact and reproducible command
+  integration, full-shape end-to-end parity, and three-platform artifact/link evidence.
 - Add a separately versioned GBM artifact and explicit `train`/`route` integration.
 - Run a preregistered family-selection-aware experiment on licensed data; the current
   paired runner estimates fixed families but cannot select a winner on the same outer

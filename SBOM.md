@@ -14,8 +14,12 @@ or compiler is part of the base wheel or routing runtime. The prepared nested-LO
 graph, bounded in-memory feature-store/statistics reference, prepared moment solve,
 target-free feature shards, full admitted-width raw scoring, authenticated file-backed
 store, and one-invocation prepared solve/score adapter use only the Python standard
-library plus the project-owned source below. The persistent/native slice adds no model,
-dataset, distributed binary, executable, or third-party dependency. Caller-pinned
+library plus the project-owned source below. The native prepared per-query policy
+benchmark bridge likewise uses only the standard library and existing project modules
+for authentication, isotonic calibration, lambda evaluation, and the six baselines; it
+adds no package, model, data, action, or binary inventory entry. The dependency inventory
+is unchanged by this bridge. The persistent/native slice adds no model, dataset,
+distributed binary, executable, or third-party dependency. Caller-pinned
 digests authenticate exact bytes against separately trusted expectations; they do not
 prove origin, provenance, toolchain behavior, or network absence. Resource estimates
 are admission accounting, not peak-RSS or wall-time estimates.
