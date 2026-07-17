@@ -12,10 +12,30 @@ and asks questions the entrant must answer in their own words. Reading this docu
 receiving a green CI result is not sign-off. The owner must trace the code, run the
 focused tests, perform a mutation drill, and complete the table at the end.
 
-The mutation walkthrough companion is pinned to implementation snapshot commit
-`c6491508533655baa76c7b50bfdadacbc1612e60`. Review the current commit instead if the
-code has moved, and record that exact commit in the sign-off table. A green result on
-the pinned snapshot does not attest to later source changes.
+The re-audited **implementation snapshot** is
+`a1d7bd7dd835a1ab88e85e805df167985ca699be`. A later packet/document commit is a
+separate value and does not replace the reviewed
+implementation commit. Record both. A green result on this snapshot does not attest
+to later source changes.
+
+### Optional 60–80 minute partial route
+
+After the locked environment is ready, an entrant may spend an estimated 60–80 minutes
+on Korean mutation cards **1 → 2 → 3 → 7**. Their mutation
+sources and primary test nodes are byte-unchanged from the older packet snapshot
+`c6491508533655baa76c7b50bfdadacbc1612e60` through the reviewed implementation
+snapshot. That machine diff and the automated re-audit are not human sign-off.
+
+For each card, the entrant must run the baseline, write the expected failure before
+the mutation, observe pytest exit status 1 and the named invariant, reverse the patch,
+rerun the baseline, and verify an empty tracked/untracked tree and HF cache. Only those
+four rows may then be signed, and only if the entrant answers the five explanation
+questions in their own words. Cards 4, 5, 6, and 8 and every AI-assistance ledger row
+remain blank or **PENDING** until separately executed and reviewed. The optional
+RouterBench local-artifact download/E2E is excluded. If time expires or any restoration
+or cleanup check fails, leave that card and every remaining row **PENDING**; a diff or
+green CI result is not partial human credit. At packet publication all eight rows are
+blank; only a later entrant execution may change them.
 
 ## 1. Router contract and exact cost arithmetic
 
@@ -699,9 +719,10 @@ mutation before committing. Never weaken a test merely to make the drill pass.
 ## Human owner sign-off
 
 Only the human entrant fills this table. Use a real name or stable Git identity, an ISO
-date, the exact reviewed commit, and a short note naming the mutation/failure drill.
+date, the exact reviewed implementation commit, the packet commit, and a short note
+naming the mutation/failure drill.
 
-| Boundary | Owner | Date | Reviewed commit | Status and notes |
+| Boundary | Owner | Date | Reviewed implementation / packet commit | Status and notes |
 |---|---|---|---|---|
 | Router contract and exact costs |  |  |  |  |
 | Budget adapters, replay, and call evidence |  |  |  |  |

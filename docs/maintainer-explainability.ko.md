@@ -11,10 +11,11 @@
 worktree에서 제시된 변이를 한 번씩 수행한 뒤, 복구와 테스트 성공을 직접
 확인해야 한다.
 
-이 실습의 기준 소스는 구현 스냅샷 커밋
-`c6491508533655baa76c7b50bfdadacbc1612e60`다. 소스가 바뀌면 현재 검토한 정확한
-커밋으로 절차와 변이를 다시 감사하고, 서명 표에는 그 커밋을 기록한다.
-기준 스냅샷의 성공은 이후 소스 변경을 인증하지 않는다.
+이 실습에서 재감사한 **구현 스냅샷**은
+`a1d7bd7dd835a1ab88e85e805df167985ca699be`다. 이 워크시트를 나중에 고친
+packet/document 커밋은 검토한 구현 커밋을 대신하지 않는다. 참가자는 두 값을
+각각 기록한다. 구현 스냅샷의 성공은 이후 소스 변경을 인증하지 않으며, 구현이
+바뀌면 절차와 변이를 다시 감사해야 한다.
 
 ## 1. 서명 판정 기준
 
@@ -69,8 +70,12 @@ venv, 빈 Hugging Face cache, 테스트 임시 디렉터리를 만든다. 현재
 set -euo pipefail
 repo="$(git rev-parse --show-toplevel)"
 test -z "$(git -C "$repo" status --porcelain=v1 --untracked-files=all)"
-review_commit="c6491508533655baa76c7b50bfdadacbc1612e60"
+review_commit="a1d7bd7dd835a1ab88e85e805df167985ca699be"
 git -C "$repo" cat-file -e "$review_commit^{commit}"
+packet_commit="$(git -C "$repo" log -1 --format=%H -- docs/maintainer-explainability.ko.md)"
+test -n "$packet_commit"
+git -C "$repo" cat-file -e "$packet_commit^{commit}"
+git -C "$repo" merge-base --is-ancestor "$review_commit" "$packet_commit"
 
 review_root="$(mktemp -d "${TMPDIR:-/tmp}/tierroute-explain.XXXXXX")"
 worktree="$review_root/worktree"
@@ -83,6 +88,7 @@ python3.12 -m venv "$venv"
 make -C "$worktree" install-dev PYTHON="$venv/bin/python"
 
 export PATH="$venv/bin:$PATH" PYTHONNOUSERSITE=1 PYTHONHASHSEED=0
+export PYTHONDONTWRITEBYTECODE=1
 export HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export TMPDIR="$review_root/tmp"
 cd "$worktree"
@@ -117,6 +123,33 @@ expect_pytest_failure() {
 있다. 이는 준비 단계이며 런타임 오프라인 주장과 분리해 기록한다. 설치 후
 모든 아래 명령은 위 오프라인 환경변수를 유지한다. 전체 런타임의 socket
 차단 증거는 경계 8의 전용 테스트와 CI로 확인한다.
+
+### 선택 가능한 60~80분 부분 검토
+
+잠긴 환경 준비가 끝난 뒤 약 60~80분 동안 카드 **1 → 2 → 3 → 7**만 먼저
+수행할 수 있다. 이 네 카드의 변이 소스와 주 검증 node는 과거 packet 기준
+`c6491508533655baa76c7b50bfdadacbc1612e60`에서 위 구현 스냅샷까지 바뀌지 않았음을
+기계적으로 재확인했다. 이 diff와 자동 재감사는 사람 서명이 아니다.
+
+각 카드마다 기준 PASS → 실행 전 실패 예측 → one-line 변이 → pytest 종료 1과
+예상 메시지 확인 → 역패치 → 같은 기준 PASS → 빈 tracked/untracked 상태와 빈
+`HF_HOME`을 모두 직접 확인한다. 참가자가 다섯 설명 항목을 자기 말로 답한 경우에만
+서명 표의 해당 네 행을 채운다. 카드 4·5·6·8과 AI 보조 원장 행은 실제 검토 전까지
+빈칸/`PENDING`으로 둔다. 이 packet을 게시할 때는 여덟 행 모두 빈칸이며, 이후 참가자
+실행만 상태를 바꿀 수 있다. 부분 검토는 검토한 구현 스냅샷 전체의 설명 가능성이나 공식 데이터,
+성능·품질·비용 근거를 인증하지 않는다. 선택적 RouterBench local-artifact 다운로드·
+E2E는 이 시간 추정과 부분 경로에서 제외한다. 시간이 끝나거나 어느 복구·청소 검사든
+실패하면 그 카드와 남은 행을 `PENDING`으로 두며 diff·CI로 대체하지 않는다.
+
+```bash
+git -C "$repo" diff --exit-code \
+  c6491508533655baa76c7b50bfdadacbc1612e60.."$review_commit" -- \
+  src/tierroute/core/router.py src/tierroute/core/schemas.py tests/test_core.py \
+  src/tierroute/eval/simulator.py src/tierroute/eval/schemas.py tests/test_simulator.py \
+  src/tierroute/eval/provenance.py tests/test_eval_provenance.py \
+  src/tierroute/adapters/routerbench.py scripts/validate_routerbench.py \
+  tests/test_routerbench_adapter.py tests/test_validate_routerbench_script.py
+```
 
 각 실습에서는 먼저 같은 테스트 명령이 PASS하는지 확인한다. 제시된 patch만
 적용하고, 실행 전에 실패 메시지를 자신의 말로 기록한다. 변이 실행 후에는
@@ -981,7 +1014,8 @@ entrant notes:
 경계 번호/제목:
 소유자 또는 안정적 Git 식별자:
 ISO 날짜:
-검토한 정확한 commit:
+검토한 정확한 구현 commit:
+사용한 워크시트 packet commit:
 Python/platform:
 변이 전 정확한 명령/결과:
 변이 전에 작성한 예측:
@@ -1008,7 +1042,7 @@ Python/platform:
 바꾸지 않는다. 코드 변경으로 해당 불변식이 바뀌면 기존 서명은 무효하며,
 참가자가 재검토하고 새 상태를 기록할 때까지 그 행을 비워 둔다.
 
-| 경계 | 소유자 | 날짜 | 검토한 commit | 상태·메모 |
+| 경계 | 소유자 | 날짜 | 검토한 구현 commit / packet commit | 상태·메모 |
 |---|---|---|---|---|
 | Router 계약과 정확 비용 |  |  |  |  |
 | 예산 adapter, replay, call 증거 |  |  |  |  |

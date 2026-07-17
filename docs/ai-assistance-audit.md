@@ -43,7 +43,7 @@ the Apache-2.0 contribution, third-party attribution, and every merged behavior.
 AI-agent review provide useful automated evidence, but neither may be relabeled as
 human owner sign-off.
 
-As of the `614a018` snapshot, all ten merged pull requests listed below have zero
+As of the `614a018` snapshot, the ten pull requests merged by that snapshot had zero
 submitted GitHub reviews, zero issue comments, and zero review comments. Their
 successful checks are automated evidence only. References in older development records
 to an "independent review" or "independent audit" are classified in this ledger as
