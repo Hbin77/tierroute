@@ -379,10 +379,12 @@ The bounded [prepared policy pipeline](prepared-reference-pipeline.md) consumes 
 scores through calibration, lambda tuning, and final replay on frozen fixtures. A later
 [native prepared-session slice](native-prepared-session-protocol.md) adds authenticated
 file persistence and one-invocation C11 solve/scoring as a separate Python API/test
-path. It is not integrated with the policy bridge, CLI, an all-domain artifact, or a
-prepared six-baseline wrapper. Its official D7/N34778/d1036/M11 tuple is preflight-only,
-so none of these successors establishes scalable RouterBench execution or a reportable
-performance result.
+path. A later bounded public consumer verifies the native result and integrates it with
+calibration, fixed per-query learned replay, and all six baselines on project-authored
+D4–D7 fixtures. That consumer is not a shipped CLI/trainer or all-domain deployable
+artifact. Its official D7/N34778/d1036/M11 tuple remains preflight-only, so none of
+these successors establishes scalable RouterBench execution or a reportable performance
+result.
 
 The default bilinear training and evaluation path remains unchanged. Before a
 prepared execution path can replace any repeated fit, the complete parity gate must
@@ -394,9 +396,10 @@ use a frozen corpus and independently reviewed tolerances to compare, in order:
 3. every prepared raw-score block — exercised by the bounded reference, small D4-D7
    native parity fixtures, and one unprojected D4/N8/d1036/M1 synthetic completion, not
    yet a full official-shape session;
-4. isotonic calibration, exact lambda candidate/tie selection, tier decisions, and
-   final per-fold/aggregate reports — now equal on stable bounded four- and seven-
-   domain fixtures, not yet an official-shape scalable replacement.
+4. isotonic calibration, exact-arithmetic candidate/tie decisions under the configured
+   bounded lambda search, tier decisions, and final per-fold/aggregate reports — now
+   equal on stable bounded four- and seven-domain fixtures, not yet an official-shape
+   scalable replacement.
 
 The corpus must include ordinary data, high-dynamic-range numerical cases, zero
 variance columns, permutations, and near-tie decisions. Any field claimed to be
@@ -406,7 +409,10 @@ required, the design must either replay the required row operations or move both
 paths to one newly versioned arithmetic contract; the current centered moments alone
 cannot reconstruct prior intermediate rounding.
 
-Until that gate passes, these modules are evidence for canonicalization, isolation,
-and bounded coefficient/raw-score parity. They are not evidence of speedup, cost
-reduction, quality retention, calibration/lambda/final-report parity, full
-RouterBench-scale execution, or production readiness. Issue #9 remains open.
+Until that gate passes, the store and in-memory execution modules are evidence for
+canonicalization, isolation, and bounded coefficient/raw-score parity; their later
+bounded native/policy successors separately establish configured-search
+calibration/lambda/final-report and six-baseline parity on project-authored D4–D7
+fixtures. None of these paths is evidence of speedup, cost reduction, quality
+retention, full RouterBench-scale execution, or production readiness. Issue #9 remains
+open.

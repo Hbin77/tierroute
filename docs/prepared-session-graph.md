@@ -6,8 +6,11 @@ Status: experimental graph enumeration and resource preflight. A separate bounde
 [in-memory feature-store and sufficient-statistics reference](prepared-feature-store.md)
 and [prepared reference execution](prepared-reference-execution.md) now exercise this
 graph through every unique coefficient solve and raw-score block on bounded fixtures.
-No native session protocol, persistent cache, or scalable prepared execution path is
-implemented.
+A later authenticated [file-backed native prepared session](native-prepared-session-protocol.md)
+executes the same graph in one project-owned C11 child, and its bounded public consumer
+produces fixed per-query learned-plus-six-baseline evidence on project-authored D4–D7
+fixtures. No persistent reusable cache, default trainer/CLI replacement, all-domain
+artifact, or official full-shape execution is implemented.
 
 ## Scope
 
@@ -146,20 +149,20 @@ prove training-data isolation by itself. The
 fit-content identity and subset isolation, but its digests are not authenticity or
 provenance evidence.
 
-A future scalable prepared execution session still needs all of the following:
+A future official-shape deployable prepared path still needs all of the following:
 
-- a persistent descriptor/session protocol and cache bound to the in-memory reference
-  identities;
-- scalable coefficient solving and batched scoring from the prepared subset
-  statistics; the bounded Python reference is evidence only for small fixtures;
-- promotion of the bounded [prepared policy-pipeline](prepared-reference-pipeline.md)
-  parity into an official-shape scalable session, including broader near-tie gates and
-  all-domain artifact assembly;
-- a separate protocol identity and magic rather than overloading `TRRIDG01` version 1;
-- timeout, malformed-frame, digest, path-race, and three-platform artifact/link audits.
+- audited offline embedding preparation and licensed input data;
+- persistent reusable cache/all-domain artifact assembly bound to the authenticated
+  source, store, binary, graph, and policy identities;
+- complete `D7/N34778/d1036/M11` execution plus broader near-tie and end-to-end parity;
+- shipped command/trainer integration without changing the fixed per-query evidence
+  into an unverified cumulative or cascade claim; and
+- pinned-toolchain distributable artifacts with macOS, Linux-musl, and Windows-MSVC
+  link/import audits. The current CI compiles ephemeral source candidates only; and
+- the entrant's independent maintainer walkthrough and sign-off.
 
 The graph contains no network operation, dependency, model asset, dataset, executable,
-or build tool. Its bounded policy successor establishes frozen synthetic
-calibration/lambda/final-report wiring only; none of these references makes bge-m3,
+or build tool. Its bounded reference and native successors establish synthetic/frozen
+coefficient-to-fixed-per-query-report wiring only; none of these paths makes bge-m3,
 RouterBench execution, official SK Telecom data, cost savings, quality retention, or
 full-dimensional training an implemented claim. Issue #9 remains open.

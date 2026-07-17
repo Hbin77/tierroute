@@ -60,18 +60,32 @@ the public API is pre-1.0.
   native run recorded 89 passes. In the locked full suite, Python 3.10.19 with pip 26.1.2
   recorded 1,044 passes with no skip; Python 3.12.10 with pip 26.1.2 recorded 1,043 passes
   and one expected skip for the locked Python 3.10 `typing_extensions` compatibility
-  dependency. Branch-push CI
-  [run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699) and
-  [PR #52 head CI run `29542451542`](https://github.com/Hbin77/tierroute/actions/runs/29542451542)
-  at head `9ed400d580e288bb9648a300a8de12a5c2200fff` each passed all five jobs: Python
+  dependency. Implementation/spec branch-push CI
+  [run `29542245699`](https://github.com/Hbin77/tierroute/actions/runs/29542245699) at
+  `9ed400d580e288bb9648a300a8de12a5c2200fff`, final PR-head CI
+  [run `29543435978`](https://github.com/Hbin77/tierroute/actions/runs/29543435978) at
+  `304decd0a591fcfc5e5a1e04f35bf20b22c17cea`, and merged-main CI
+  [run `29543610611`](https://github.com/Hbin77/tierroute/actions/runs/29543610611) at
+  `c7b717ce1226fcfd70d696d0124aa8df294033c8` each passed all five jobs: Python
   3.10, Python 3.12, dependency-free wheel, Native source portability macOS, and Native
-  source portability Windows. The four CI-covered implementation/spec commits through
-  that tested head in [PR #52](https://github.com/Hbin77/tierroute/pull/52) are
-  `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`. This is branch-push and PR-head CI,
-  not merged-main evidence; the human walkthrough remains **PENDING**, and no
-  distributable release artifact is approved. This slice adds no dependency and
-  establishes no external-data, all-domain artifact, command, trainer, quality,
-  cost-reduction, or performance result. Issue #9 remains open.
+  source portability Windows. [PR #52](https://github.com/Hbin77/tierroute/pull/52)
+  merged implementation/spec commits `f159e04`, `85393e2`, `a8e0896`, and `9ed400d`,
+  plus evidence commits `77e5c47` and `304decd`. This is merged-main source-portability
+  evidence, not distributable release-artifact approval; the human walkthrough remains
+  **PENDING**. This slice adds no dependency and establishes no external-data,
+  all-domain artifact, command, trainer, quality, cost-reduction, or performance result.
+  Issue #9 remains open.
+- A current-state evidence synchronization tracked by
+  [Issue #53](https://github.com/Hbin77/tierroute/issues/53). Submission, novelty,
+  graph, reference, protocol, README, changelog, maintainer, and assistance documents
+  now distinguish the historical PR #47/#48/#50 slice boundaries from PR #52's merged
+  native-result-to-fixed-per-query learned-plus-six-baseline bridge. The submission
+  source adds immutable `I-PREPARED-NATIVE-POLICY-85393E2` evidence and an architecture
+  sink separate from the bilinear-versus-GBM paired-delta path. It also records the
+  store/result/evaluation/tier inputs, configured bounded-search semantics, exact
+  three-module 89-case source, merged-main CI, and pending human walkthrough. This is a
+  documentation-only correction with no source, dependency, SBOM-inventory, external-
+  data, release-artifact, quality, cost, or performance change; Issue #9 remains open.
 - A bounded prepared reference policy pipeline that maps canonical raw-score contexts
   through the existing per-model isotonic calibration, exact/bounded tier-lambda
   search, and `OfflineSimulator`, returning the existing `NestedLodoLambdaResult`.

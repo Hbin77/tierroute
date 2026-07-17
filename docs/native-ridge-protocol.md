@@ -192,12 +192,16 @@ cross-platform numerical-digest equality. Its empirical residual factor 2,048 is
 regression corruption/failure guard, not a theorem or universal error bound; it does
 not replace this protocol's separate factor-4,096 C residual check.
 
-A later scalable prepared training session must authenticate offline embedding
-preparation and add persistent/session semantics, aggregate loading and resource
-controls, plus calibration, exact lambda/tie selection, routing-decision, and final
-report parity. Any native form needs a separate session/training-engine identity,
-magic, and version distinct from this single-problem ridge-solver identity, with
-timeout, malformed-frame, digest, path-race, and three-platform artifact/link audits.
-It must not overload version 1. Neither reference execution nor this native protocol
-is evidence of RouterBench/full-dimensional execution, performance, quality retention,
-cost reduction, or production readiness; Issue #9 remains open.
+A later bounded `TRPSTO01`/`TRPSES01`/`TRPRES01` prepared session now uses a separate
+session/training-engine identity and magic, authenticates caller-pinned store/binary
+inputs, executes the graph in one project-owned C11 child, and feeds a fixed per-query
+learned-plus-six-baseline consumer on project-authored D4–D7 fixtures. It does not
+overload version 1 of this single-problem solver protocol.
+
+An official-shape deployable training path still needs audited offline embedding
+preparation, licensed data, reusable all-domain artifact/command integration, complete
+execution and broader near-tie parity, and pinned-toolchain distributable artifact/link
+audits on macOS, Linux-musl, and Windows-MSVC. Neither this native ridge protocol nor
+its bounded prepared successors is evidence of RouterBench/full-dimensional execution,
+performance, quality retention, cost reduction, or production readiness; Issue #9
+remains open.
