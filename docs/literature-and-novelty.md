@@ -344,6 +344,13 @@ invented cost-aware model routing:
    current pair traversals and bounds the aggregate lambda candidate/policy-artifact
    estimate. This is engineering parity evidence, not a claim that isotonic calibration,
    Lagrangian routing, or nested evaluation is novel.
+10. An authenticated file-backed `TRPSTO01`/`TRPSES01` session executes the canonical
+    prepared solve-and-score graph in one project-owned C11 child, and a separate public
+    bounded consumer maps its pinned result through calibration, fixed per-query learned
+    replay, and all six baselines. Surface-only D4–D7 fixtures, including an uneven
+    three-model D7 case, match the authoritative rowwise results. This is an engineering
+    handoff and parity boundary, not a claim that file-backed sufficient statistics,
+    native batch scoring, or baseline orchestration is novel.
 
 ## Claims tierroute must not make
 
@@ -374,18 +381,20 @@ invented cost-aware model routing:
   and one D4/N8/d1036/M1 synthetic fixture exercises 12 surface plus 1,024 embedding
   columns without projection. This is implementation evidence, not a full-shape,
   throughput, peak-memory, or speedup result.
-- The prepared references establish bounded canonical rows, caller-checked content
-  identities, domain moments, subset isolation, moment-ridge coefficients, and complete
-  raw-score plus calibration/lambda/final-report wiring on synthetic/frozen fixtures.
-  Stable four- and seven-domain corpora match the rowwise nested result, while raw
-  numerical agreement remains tolerance-based rather than bitwise or a cross-platform
-  digest promise. They do not authenticate dataset/model provenance, run an embedding
-  provider or all-domain artifact, connect the native result to the prepared policy
-  bridge/six-baseline report, execute the planned full RouterBench shape, or prove
-  throughput, peak memory, quality, cost savings, or a speedup. The official-size D7
-  tuple has exact aggregate admission evidence only, not a completed execution. Their
-  resource estimates also do not bound the work or side effects of an arbitrary
-  caller-supplied ledger callback. Issue #9 remains open.
+- The combined prepared path establishes bounded canonical rows, caller-checked content
+  identities, domain moments, subset isolation, moment-ridge coefficients, native raw
+  scores, calibration/lambda/final-report wiring, and fixed per-query learned-plus-six-
+  baseline replay on synthetic/frozen fixtures. Stable four- and seven-domain corpora
+  match the rowwise nested result, while raw numerical agreement remains tolerance-based
+  rather than bitwise or a cross-platform digest promise. It does not authenticate
+  dataset/model provenance, run an embedding provider, create an all-domain deployable
+  artifact or shipped command/trainer, execute the planned full RouterBench shape, or
+  prove throughput, peak memory, quality, cost savings, or a speedup. The official-size
+  D7 tuple has exact aggregate admission evidence only, not a completed execution. The
+  in-memory reference estimate does not bound work or side effects inside an arbitrary
+  caller-supplied ledger callback; the native high-level consumer instead fixes
+  `PerQueryBudgetLedger`. The entrant's maintainer walkthrough/sign-off remains pending;
+  Issue #9 remains open.
 - Prepared content digests are deterministic content identities, not authenticity or
   provenance proofs. Supported builders enforce derivation/topology associations;
   direct leaf constructors validate only self-declared canonical record content.

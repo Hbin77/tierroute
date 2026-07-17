@@ -12,9 +12,12 @@ per unique training subset and emits every graph-prescribed raw-score block.
 This is executable structural and numerical-parity evidence for small synthetic and
 frozen fixtures. The separate bounded
 [prepared policy pipeline](prepared-reference-pipeline.md) now consumes these raw
-scores through calibration, lambda tuning, and final replay. Neither reference is a
-scalable prepared session, persistent cache, native protocol, deployable all-domain
-artifact, or default trainer/CLI replacement. Issue #9 remains open.
+scores through calibration, lambda tuning, and final replay. Neither reference itself
+is a scalable prepared session, persistent cache, native protocol, deployable all-domain
+artifact, or default trainer/CLI replacement. A later authenticated
+[native prepared session](native-prepared-session-protocol.md) and fixed per-query
+benchmark consumer are separate bounded successors; they do not enlarge this module's
+scope. Issue #9 remains open.
 
 ## Supported workflow
 
@@ -239,10 +242,13 @@ not implement or prove:
   redistribution rights; or
 - GBM comparison, production readiness, wall-time speedup, or memory savings.
 
-The bounded successor gate now proves calibration, exact candidate/lambda selection,
-routing decisions, and final fold/aggregate report equality on stable four- and seven-
-domain frozen corpora. Replacement still requires authenticated offline embedding
-preparation, scalable persistence/session semantics, all-domain artifact assembly, new
-protocol identities, fail-closed loading, official-shape parity, resource controls,
-and three-platform artifact/link audits. Until those gates pass, Issue #9 remains open
-and the current rowwise training path remains authoritative.
+Later bounded successors now add an authenticated file/native session and a public
+consumer that proves exact-arithmetic/bounded candidate-and-lambda parity under the
+configured search, routing-decision and final fold/aggregate report equality, and
+six-baseline parity with fixed per-query accounting on stable D4–D7 fixtures. Those
+successors do not retroactively change this slice's exclusions. Replacement still
+requires audited offline embedding preparation, licensed data, reusable all-domain
+artifact assembly and command integration, official-shape execution/parity, resource
+controls, and pinned-toolchain distributable artifact/link audits on macOS,
+Linux-musl, and Windows-MSVC. Until those gates pass, Issue #9 remains open and the
+current rowwise training path remains authoritative.

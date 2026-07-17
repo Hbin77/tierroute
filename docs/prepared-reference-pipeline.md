@@ -13,6 +13,12 @@ This is proof-oriented, in-memory reference code for synthetic and frozen fixtur
 It is not a scalable or persistent prepared session, a native execution protocol, an
 all-domain deployable predictor, a CLI path, or performance evidence.
 
+A later bounded consumer in `tierroute.policies.native_prepared_benchmark` applies the
+same calibration/lambda/report semantics to caller-pinned native prepared results, then
+runs the learned policy and all six baselines with fixed per-query accounting. It is a
+separate API and does not enlarge this reference module's scope or create an all-domain
+artifact, shipped command/trainer, official-data result, or performance claim.
+
 ## Public entry point
 
 ```python
@@ -206,4 +212,6 @@ This reference establishes bounded end-to-end wiring only. It does not establish
 
 The caller still chooses the budget-ledger adapter. Tests prove that the prepared
 policy bridge preserves both existing per-query and cumulative adapter behavior; they
-do not resolve the organizer's budget semantics.
+do not resolve the organizer's budget semantics. The separate native high-level
+consumer deliberately fixes `PerQueryBudgetLedger`; it is not cumulative or cascade
+evidence.
