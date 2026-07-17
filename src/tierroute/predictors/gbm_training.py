@@ -1,19 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 """Leakage-aware training for the dependency-free GBM reference predictor.
 
-This module intentionally returns an in-memory predictor.  Portable artifact and
-route-CLI support belong to a later schema version so the pinned bilinear artifact
-bytes remain unchanged.
+The original fit entry points retain their in-memory return contract for nested
+evaluation. Separate artifact entry points materialize the reviewed GBM schema
+without changing the pinned bilinear artifact bytes; route-CLI integration remains
+a later boundary.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
-from tierroute.eval import DomainFold, EvaluationExample, leave_one_domain_out
+from tierroute.eval import (
+    DomainFold,
+    EvaluationExample,
+    evaluation_data_sha256,
+    leave_one_domain_out,
+)
 from tierroute.features import (
     EmbeddingProvider,
     PromptFeatureEncoder,
@@ -31,6 +38,9 @@ from tierroute.predictors.gbm import (
     _fit_gradient_boosted_stumps,
 )
 from tierroute.predictors.resource_limits import MAX_PREDICTOR_MODELS
+
+if TYPE_CHECKING:
+    from tierroute.predictors.gbm_artifacts import GbmPredictorArtifact
 
 GBM_ALGORITHM_ID = "tierroute-gradient-boosted-regression-stumps-v1"
 MAX_GBM_ESTIMATORS = MAX_GBM_STUMPS_PER_MODEL
@@ -156,6 +166,14 @@ class _FittedBase:
     encoder: PromptFeatureEncoder
     predictor: GbmQualityPredictor
     models: dict[str, GbmModel]
+
+
+@dataclass(frozen=True, slots=True)
+class _FittedCalibrated:
+    ordered: tuple[EvaluationExample, ...]
+    config: GbmTrainingConfig
+    fitted: _FittedBase
+    calibrators: Mapping[str, IsotonicCalibrator]
 
 
 def _ordered_examples(
@@ -518,19 +536,13 @@ def _fit_base(
     return _FittedBase(encoder=encoder, predictor=predictor, models=models)
 
 
-def fit_calibrated_gbm(
+def _fit_calibrated_gbm_state(
     training_examples: Sequence[EvaluationExample],
     *,
     config: GbmTrainingConfig | None = None,
     embedding_provider: EmbeddingProvider | None = None,
-) -> PerModelCalibratedQualityPredictor:
-    """Fit GBM heads and per-model isotonic calibration using inner LODO.
-
-    Callers running an outer LODO protocol must pass only the outer fold's training
-    side.  :func:`fit_calibrated_gbm_for_fold` makes that boundary explicit.
-    This phase returns an in-memory predictor and deliberately provides no artifact
-    serialization or route-CLI loading contract.
-    """
+) -> _FittedCalibrated:
+    """Fit one canonical calibrated state shared by memory and artifact APIs."""
 
     config = _normalized_gbm_config(config)
     ordered = _ordered_examples(training_examples)
@@ -572,9 +584,83 @@ def fit_calibrated_gbm(
         for model_id in model_ids
     }
     fitted = _fit_base(ordered, config, embedding_provider)
-    return PerModelCalibratedQualityPredictor(
-        base=fitted.predictor,
+    return _FittedCalibrated(
+        ordered=ordered,
+        config=config,
+        fitted=fitted,
         calibrators=MappingProxyType(calibrators),
+    )
+
+
+def fit_calibrated_gbm(
+    training_examples: Sequence[EvaluationExample],
+    *,
+    config: GbmTrainingConfig | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+) -> PerModelCalibratedQualityPredictor:
+    """Fit GBM heads and per-model isotonic calibration using inner LODO.
+
+    Callers running an outer LODO protocol must pass only the outer fold's training
+    side. :func:`fit_calibrated_gbm_for_fold` makes that boundary explicit. This
+    established API keeps returning an in-memory predictor for nested evaluation;
+    :func:`fit_calibrated_gbm_artifact` provides durable state separately.
+    """
+
+    state = _fit_calibrated_gbm_state(
+        training_examples,
+        config=config,
+        embedding_provider=embedding_provider,
+    )
+    return PerModelCalibratedQualityPredictor(
+        base=state.fitted.predictor,
+        calibrators=state.calibrators,
+    )
+
+
+def fit_calibrated_gbm_artifact(
+    training_examples: Sequence[EvaluationExample],
+    *,
+    config: GbmTrainingConfig | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+) -> GbmPredictorArtifact:
+    """Fit the separately versioned canonical GBM artifact on all supplied rows."""
+
+    # Kept local so ``gbm_artifacts`` can validate ``GbmTrainingConfig`` without an
+    # import cycle at module initialization.
+    from tierroute.predictors.gbm_artifacts import (
+        MAX_GBM_ARTIFACT_MODELS,
+        MAX_GBM_ARTIFACT_TOTAL_STUMPS,
+        GbmPredictorArtifact,
+    )
+
+    normalized_config = _normalized_gbm_config(config)
+    ordered = _ordered_examples(training_examples)
+    model_count = len(_model_ids(ordered))
+    if model_count > MAX_GBM_ARTIFACT_MODELS:
+        raise ValueError(
+            "GBM artifact model catalogue exceeds the reviewed limit "
+            f"({model_count:,} > {MAX_GBM_ARTIFACT_MODELS:,})"
+        )
+    possible_stumps = model_count * normalized_config.n_estimators
+    if possible_stumps > MAX_GBM_ARTIFACT_TOTAL_STUMPS:
+        raise ValueError(
+            "GBM artifact ensemble exceeds the reviewed stump limit "
+            f"({possible_stumps:,} > {MAX_GBM_ARTIFACT_TOTAL_STUMPS:,})"
+        )
+
+    state = _fit_calibrated_gbm_state(
+        ordered,
+        config=normalized_config,
+        embedding_provider=embedding_provider,
+    )
+    return GbmPredictorArtifact(
+        feature_schema=state.fitted.encoder.schema,
+        models=state.fitted.models,
+        calibrators=state.calibrators,
+        training_data_sha256=evaluation_data_sha256(state.ordered),
+        training_example_count=len(state.ordered),
+        training_domains=tuple(sorted({example.domain for example in state.ordered})),
+        training_config=state.config,
     )
 
 
@@ -589,6 +675,23 @@ def fit_calibrated_gbm_for_fold(
     if not isinstance(fold, DomainFold):
         raise TypeError("fold must be a DomainFold")
     return fit_calibrated_gbm(
+        fold.training,
+        config=config,
+        embedding_provider=embedding_provider,
+    )
+
+
+def fit_calibrated_gbm_artifact_for_fold(
+    fold: DomainFold,
+    *,
+    config: GbmTrainingConfig | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+) -> GbmPredictorArtifact:
+    """Fit a canonical artifact exclusively on an outer fold's training side."""
+
+    if not isinstance(fold, DomainFold):
+        raise TypeError("fold must be a DomainFold")
+    return fit_calibrated_gbm_artifact(
         fold.training,
         config=config,
         embedding_provider=embedding_provider,
