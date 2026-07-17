@@ -103,6 +103,30 @@ def _continuous_values(prompt: str) -> tuple[float, float, float]:
     )
 
 
+def _embedding_provider_contract(
+    provider: EmbeddingProvider,
+) -> tuple[int, EmbeddingIdentity]:
+    """Snapshot exact provider metadata before trusting equality or dimensions."""
+
+    dimension = provider.dimension
+    if type(dimension) is not int:
+        raise TypeError("embedding provider dimension must be an exact integer")
+    identity = provider.identity
+    if type(identity) is not EmbeddingIdentity:
+        raise TypeError("embedding provider identity must be an exact EmbeddingIdentity")
+    # Reconstructing prevents a frozen dataclass instance that was mutated through
+    # ``object.__setattr__`` from crossing the offline identity boundary unchecked.
+    normalized_identity = EmbeddingIdentity(
+        provider=identity.provider,
+        model_id=identity.model_id,
+        revision=identity.revision,
+        pooling=identity.pooling,
+        normalize=identity.normalize,
+        asset_manifest_sha256=identity.asset_manifest_sha256,
+    )
+    return dimension, normalized_identity
+
+
 @dataclass(frozen=True, slots=True)
 class PromptFeatureSchema:
     """Serializable feature statistics fitted on training prompts only."""
@@ -155,6 +179,18 @@ class PromptFeatureSchema:
             and type(self.embedding_identity) is not EmbeddingIdentity
         ):
             raise TypeError("embedding_identity must be an EmbeddingIdentity or None")
+        embedding_identity = self.embedding_identity
+        if embedding_identity is not None:
+            # Snapshot exact fields so a frozen identity mutated through low-level
+            # ``object.__setattr__`` cannot create a schema that will not round-trip.
+            embedding_identity = EmbeddingIdentity(
+                provider=embedding_identity.provider,
+                model_id=embedding_identity.model_id,
+                revision=embedding_identity.revision,
+                pooling=embedding_identity.pooling,
+                normalize=embedding_identity.normalize,
+                asset_manifest_sha256=embedding_identity.asset_manifest_sha256,
+            )
         if (self.embedding_dimension == 0) != (self.embedding_identity is None):
             raise ValueError(
                 "embedding identity must be present exactly when embedding_dimension is positive"
@@ -168,6 +204,7 @@ class PromptFeatureSchema:
         object.__setattr__(self, "continuous_means", means)
         object.__setattr__(self, "continuous_scales", scales)
         object.__setattr__(self, "domain_tags", domain_tags)
+        object.__setattr__(self, "embedding_identity", embedding_identity)
 
     @classmethod
     def fit(
@@ -317,9 +354,12 @@ class PromptFeatureEncoder:
             return
         if self.embedding_provider is None:
             raise ValueError("embedding provider is required by this feature schema")
-        if self.embedding_provider.dimension != self.schema.embedding_dimension:
+        provider_dimension, provider_identity = _embedding_provider_contract(
+            self.embedding_provider
+        )
+        if provider_dimension != self.schema.embedding_dimension:
             raise ValueError("embedding provider dimension does not match feature schema")
-        if self.embedding_provider.identity != self.schema.embedding_identity:
+        if provider_identity != self.schema.embedding_identity:
             raise ValueError("embedding provider identity does not match feature schema")
 
     @classmethod
@@ -331,8 +371,13 @@ class PromptFeatureEncoder:
     ) -> PromptFeatureEncoder:
         """Fit a schema without reading split labels or outcome quality."""
 
-        embedding_dimension = 0 if embedding_provider is None else embedding_provider.dimension
-        embedding_identity = None if embedding_provider is None else embedding_provider.identity
+        if embedding_provider is None:
+            embedding_dimension = 0
+            embedding_identity = None
+        else:
+            embedding_dimension, embedding_identity = _embedding_provider_contract(
+                embedding_provider
+            )
         schema = PromptFeatureSchema.fit(
             prompts,
             embedding_dimension=embedding_dimension,

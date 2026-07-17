@@ -22,6 +22,8 @@ from tierroute.predictors.gbm_artifacts import (
     GBM_PREDICTOR_ARTIFACT_KIND,
     GBM_PREDICTOR_ARTIFACT_VERSION,
     GbmPredictorArtifact,
+    fit_calibrated_gbm_artifact,
+    fit_calibrated_gbm_artifact_for_fold,
 )
 from tierroute.predictors.gbm_training import (
     GBM_ALGORITHM_ID,
@@ -29,8 +31,6 @@ from tierroute.predictors.gbm_training import (
     GbmTrainingConfig,
     estimate_nested_lodo_gbm_work,
     fit_calibrated_gbm,
-    fit_calibrated_gbm_artifact,
-    fit_calibrated_gbm_artifact_for_fold,
     fit_calibrated_gbm_for_fold,
     preflight_gbm_fit,
     preflight_nested_lodo_gbm,

@@ -407,7 +407,7 @@ def test_gbm_artifact_numeric_budget_rejects_during_payload_decode(
     model_scalars = sum(1 + 4 * len(model.stumps) for model in artifact.models.values())
     monkeypatch.setattr(
         gbm_artifacts,
-        "MAX_PREDICTOR_NUMERIC_SCALARS",
+        "MAX_GBM_ARTIFACT_NUMERIC_SCALARS",
         gbm_artifacts._FIXED_NUMERIC_SCALARS + model_scalars,
     )
 
