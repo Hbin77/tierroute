@@ -643,7 +643,7 @@ fixture의 실제 compiled D4-D7 coefficient/raw-score parity와 12 surface+1,02
 embedding을 투영하지 않은 `D4/N8/d1036/M1` 완료 근거는 있다. 현재 public Python
 consumer는 이 native 결과에서 고정 쿼리별 learned+6-baseline evidence까지 만들며,
 불균등 3-model D7을 포함한 surface-only D4-D7 전체 결과가 rowwise 경로와 엄격히 같다.
-별도 branch-local bounded Python assembler는 이제 canonical pinned all-domain
+별도 PR-open bounded Python assembler는 이제 canonical pinned all-domain
 bilinear artifact를 만들지만 native 결과를 소비하지 않는다. 하지만 official
 `D7/N34778/d1036/M11` 전체 store/session·artifact, provider, native-to-artifact 소비,
 제공 명령·trainer·policy 연동, Linux-musl·3플랫폼 배포 artifact, 성능·품질·비용,
@@ -739,7 +739,7 @@ Windows의 5개 job을 모두 통과했다.
 walkthrough는 **PENDING**이고 배포 가능한 release artifact를 승인하지 않으며, 이
 근거로 issue #9가 완료되지는 않는다.
 
-prepared all-domain artifact는 현재 branch-local 근거다. Format 구현 `4e73b4d`,
+prepared all-domain artifact는 현재 PR-open 근거다. Format 구현 `4e73b4d`,
 assembler/export 구현 `bef1a17`, hardening·수치 근거 `013a651`, 경계 문서
 `2be4910`으로 구성된다. Artifact/assembly focused module 5개는 114 tests를
 통과했다. Clean Python 3.10.19 검증은 1,209 tests, clean Python 3.12.10 검증은
@@ -751,8 +751,12 @@ tolerance로 authoritative row 경로와 비교한다. 별도 high-dynamic-range
 exact-rational PAV와 이웃 `nextafter`, one-shot route/budget-ledger oracle은 수치·
 추론 경계를 직접 검사한다. 독립 AI-agent artifact·assembly 검토에서 발견한
 blocker를 수정했고 최종 blocker/high 수는 0이었다. 이는 자동 local 검사이지 사람
-walkthrough나 sign-off가 아니다. 이 slice에는 아직 PR, remote CI run, merge 기록이
-없으며 immutable 근거가 생기기 전까지 해당 칸을 pending으로 둔다.
+walkthrough나 sign-off가 아니다. Pre-evidence head
+`4321d69b8c9f885d961091d4332ac2a1e4a0beed`에서
+[PR #60](https://github.com/Hbin77/tierroute/pull/60)의
+[push CI `29722000179`](https://github.com/Hbin77/tierroute/actions/runs/29722000179)와
+[PR CI `29722016318`](https://github.com/Hbin77/tierroute/actions/runs/29722016318)는
+각각 5개 job을 모두 통과했다. 아직 merge 기록은 없다.
 
 별도 [PR #56](https://github.com/Hbin77/tierroute/pull/56)의 GBM artifact 구현은
 `5d1d727`에서 시작해 `4de98de`·`5be3642`로 hardening했고, 최종 evidence head

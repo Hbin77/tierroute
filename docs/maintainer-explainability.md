@@ -483,7 +483,7 @@ plus evidence commits `77e5c47` and `304decd`. PR #50's earlier platform jobs re
 separate session-layer evidence. The human walkthrough remains **PENDING**, no
 distributable release artifact is approved, and this evidence does not complete issue #9.
 
-The prepared all-domain artifact is currently branch-local evidence:
+The prepared all-domain artifact is currently PR-open evidence:
 format implementation `4e73b4d`, assembler/export implementation `bef1a17`,
 hardening and numerical evidence `013a651`, and boundary documentation `2be4910`.
 The five focused artifact/assembly modules passed 114 tests. Clean Python 3.10.19
@@ -496,9 +496,12 @@ predictions with the authoritative row path under explicit tolerances. Separate
 high-dynamic-range, exact-rational PAV/neighboring-`nextafter`, and one-shot
 route/budget-ledger oracles exercise the numerical and inference boundaries directly.
 Independent AI-agent artifact and assembly reviews found and resolved blockers and
-ended with blocker/high counts of zero. These are automated local checks, not a human
-walkthrough or sign-off. There is not yet a PR, remote CI run, or merge record for this
-slice; those fields must remain pending until immutable evidence exists.
+ended with blocker/high counts of zero. These are automated checks, not a human
+walkthrough or sign-off. At pre-evidence head
+`4321d69b8c9f885d961091d4332ac2a1e4a0beed`, [PR #60](https://github.com/Hbin77/tierroute/pull/60)
+[push CI `29722000179`](https://github.com/Hbin77/tierroute/actions/runs/29722000179)
+and [PR CI `29722016318`](https://github.com/Hbin77/tierroute/actions/runs/29722016318)
+each passed all five jobs. There is not yet a merge record.
 
 [PR #56](https://github.com/Hbin77/tierroute/pull/56) separately implemented the GBM
 artifact beginning at `5d1d727` and hardened it through `4de98de` and `5be3642`. At the
@@ -528,7 +531,7 @@ The top-level Card 5 sign-off row remains blank or **PENDING** until every 5a–
 contains the entrant's own explanation and exact command/result. A passing baseline or
 the single bilinear mutation is insufficient. The re-audited five baseline groups
 recorded 111, 92, 16, 98, and 241 tests respectively (558 total); this machine evidence
-does not replace human sign-off. The five new branch-local artifact/assembly modules
+does not replace human sign-off. The five new PR-open artifact/assembly modules
 separately recorded 114 focused passes; that automated result likewise does not populate
 a human-owned row.
 
@@ -586,7 +589,7 @@ Owner questions:
     Why does the residual factor 2,048 remain an empirical frozen-fixture regression
     guard rather than a universal numerical-error bound? Which provider, native
     consumption, CLI/trainer/policy, platform, official-shape, and official-data gates
-    keep issue #9 open after the branch-local all-domain artifact was added?
+    keep issue #9 open after the PR-open all-domain artifact was added?
 15. For calibrated training set `S`, derive why calibration reads
     `(S-{c}, c)` for every `c in S` and prediction reads `(S, h)` for `h not in S`.
     Why are there `C(D,2)+D` calibration records, each with one calibrator per model,
@@ -807,7 +810,7 @@ basetemp directories rather than claiming that the entire temporary root is debr
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity, and macOS/Windows ephemeral source-portability evidence; no binary in the wheel | Explicit local opt-in only; macOS/Linux-musl/Windows-MSVC distributable release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. A separate branch-local bounded Python assembler now emits a canonical pinned all-domain bilinear artifact; its D4-D7, high-dynamic-range, PAV/`nextafter`, and one-shot route checks are project-authored implementation evidence. It does not consume the native result. One local D4/N8/d1036/M1 synthetic native run keeps all 1,024 embedding coordinates. PR #50's earlier session-only and PR #52's policy-consumer evidence remain merged-main source-portability evidence, not distributable release-artifact approval; the new artifact has no PR, remote CI, or merge record yet. Human walkthrough remains pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, native-to-artifact integration, shipped command/trainer/policy integration, official data, Linux-musl/distributable cross-platform release artifact, or performance/quality/cost claim exists | Audited offline local provider, native-result consumption by the all-domain artifact, command/trainer/policy integration, full official-shape execution/direct parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, human walkthrough, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. A separate PR-open bounded Python assembler now emits a canonical pinned all-domain bilinear artifact; its D4-D7, high-dynamic-range, PAV/`nextafter`, and one-shot route checks are project-authored implementation evidence. It does not consume the native result. One local D4/N8/d1036/M1 synthetic native run keeps all 1,024 embedding coordinates. PR #50's earlier session-only and PR #52's policy-consumer evidence remain merged-main source-portability evidence, not distributable release-artifact approval; PR #60 push and PR CI passed all five jobs at its pre-evidence head, but there is no merge record yet. Human walkthrough remains pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, native-to-artifact integration, shipped command/trainer/policy integration, official data, Linux-musl/distributable cross-platform release artifact, or performance/quality/cost claim exists | Audited offline local provider, native-result consumption by the all-domain artifact, command/trainer/policy integration, full official-shape execution/direct parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, human walkthrough, and issue #9 completion |
 | GBM artifact deployment integration | Distinct canonical `tierroute-gbm-predictor` artifact v1 is implemented at library level with bounded JSON, atomic save, bounded load, and offline reconstruction; bilinear v1 is unchanged. There is no GBM train/route selection or lambda-policy binding | Reviewed `train`/`route` and policy binding plus unbiased family-selection and deployment evidence |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
