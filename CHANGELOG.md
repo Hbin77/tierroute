@@ -19,6 +19,15 @@ the public API is pre-1.0.
 
 ### Added
 
+- A bounded, offline, standard-library prepared all-domain bilinear predictor artifact
+  library API. Caller-pinned store/statistics/raw-score parents pass a six-phase
+  fail-closed resnapshot and association boundary before final Chan aggregation,
+  multi-target solve, held-out PAV calibration, canonical lineage, and single-stage
+  pinned JSON persistence. Assembly and persistence invoke no provider or network; an
+  embedding provider enters only at later prediction through `build_predictor`. This
+  slice consumes no native result and adds no CLI/trainer/policy, bge-m3,
+  official/RouterBench data, full official-shape execution, performance, quality, or
+  cost result. Issue #9 remains open.
 - A separately versioned canonical GBM predictor artifact v1 at the Python library
   boundary. It persists the feature schema, deterministic stump ensembles, per-model
   isotonic calibrators, training configuration, and training-scope identity in bounded
