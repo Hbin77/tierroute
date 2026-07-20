@@ -224,8 +224,9 @@ consumer, never call an embedding provider, and never access a network.
 - a surface-only artifact needs no provider and rejects an unnecessary one;
 - an embedded artifact requires a provider whose declared identity and dimension
   match the stored schema;
-- constructing the predictor does not embed anything; and
-- the provider is first invoked only when prediction encodes a prompt.
+- constructing the predictor immediately reads and validates that declared provider
+  metadata but does not call `embed()`; and
+- the first embedding invocation occurs only when prediction encodes a prompt.
 
 The caller remains responsible for supplying an audited local offline provider.
 `build_predictor` does not download a model, authorize a provider, or prove that a

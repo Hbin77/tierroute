@@ -338,10 +338,11 @@ score입니다. Frozen 합성 테스트는 독립적으로 row를 fit한 referen
 pin한 in-memory prepared store/statistics/raw-score parent만 받습니다. 네 digest를
 complete canonical resnapshot 전후로 반복 대조하고, store에서 join을 다시 만든 뒤
 최종 all-domain solve와 model별 held-out PAV calibration을 수행해 strict canonical
-JSON을 생성합니다. Assembly와 persistence는 provider-free·offline이며, embedding
-provider는 이후 예측이 prompt를 encode할 때 `build_predictor()` 경계로만 들어옵니다.
-이 경로는 native result를 소비하지 않으며 `train`, `route`, policy artifact, bge-m3,
-공식 데이터, RouterBench와 연결되지 않았습니다.
+JSON을 생성합니다. Assembly와 persistence는 provider-free·offline입니다.
+`build_predictor()`는 embedding provider가 선언한 dimension과 identity를 즉시
+검증하지만 `embed()`는 호출하지 않으며, 첫 embedding 호출은 이후 예측이 prompt를
+encode할 때만 일어납니다. 이 경로는 native result를 소비하지 않으며 `train`,
+`route`, policy artifact, bge-m3, 공식 데이터, RouterBench와 연결되지 않았습니다.
 
 Bounded
 [prepared policy-pipeline reference](docs/prepared-reference-pipeline.md)는 이 raw

@@ -352,10 +352,11 @@ separate bounded Python library reference. It accepts only caller-pinned in-memo
 prepared store/statistics/raw-score parents, repeats the four pins around a complete
 canonical resnapshot, rebuilds store-derived joins, performs the final all-domain solve
 and per-model held-out PAV calibration, and emits strict canonical JSON. Assembly and
-persistence are provider-free and offline; an embedding provider can enter only through
-`build_predictor()` when a later prediction encodes a prompt. This path does not consume
-native results and is not connected to `train`, `route`, policy artifacts, bge-m3,
-official data, or RouterBench.
+persistence are provider-free and offline. `build_predictor()` immediately validates an
+embedding provider's declared dimension and identity without calling `embed()`; the
+first embedding invocation occurs only when a later prediction encodes a prompt. This
+path does not consume native results and is not connected to `train`, `route`, policy
+artifacts, bge-m3, official data, or RouterBench.
 
 The bounded
 [prepared policy-pipeline reference](docs/prepared-reference-pipeline.md) now maps those
