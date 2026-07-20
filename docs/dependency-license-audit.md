@@ -13,6 +13,16 @@ actual wheel contents, nested metadata, bundled license documents, direct requir
 and native-library relationships. Runtime packages remain unapproved until every
 supported platform has equivalent evidence.
 
+## Issue #57 branch-local dependency result
+
+The prepared all-domain artifact commits `4e73b4d`, `bef1a17`, `013a651`, and
+`2be4910` add no runtime or build dependency and require no `SBOM.md` inventory change.
+Clean local license gates accepted 15 allowlisted distributions on Python 3.10.19 and
+12 on Python 3.12.10; both locked environments also passed the offline CLI and
+training smoke paths. These are branch-local results only: no PR, remote CI, or merge
+evidence exists yet. They do not approve a provider, bge-m3 asset, native or release
+artifact, official/RouterBench data, or network behavior outside the tested paths.
+
 ## Approved build backend
 
 `flit_core==3.12.0` is approved for build and editable-install time only.

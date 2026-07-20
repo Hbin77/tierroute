@@ -482,6 +482,29 @@ schema나 all-domain 배포
 artifact를 만들지 않는다. 주입한 임의 ledger callback의 작업·부작용은 코드 소유
 자원 estimate 범위 밖이다.
 
+별도 prepared all-domain artifact 경로는 native-result consumer나 production trainer가
+아닌 bounded in-memory Python reference다. 지원 assembler는 exact
+`PreparedFeatureStore`, `PreparedDomainStatisticsBundle`, `PreparedRawScoreBundle`과
+호출자가 따로 보관한 expected digest 4개를 필수로 받는다. Fail-closed 순서는
+6단계다. exact type·shallow shape·resource admission, 첫 pin 비교, 전체 canonical
+resnapshot, 두 번째 pin 비교, cross-parent·store-derived association 검사, 마지막
+수치 materialization 순이다. 마지막 단계는 canonical domain 순서로 moment를
+결합하고 하나의 Cholesky factor를 모든 all-domain model target이 공유하며,
+위치가 아니라 의미로 찾은 `D`개 all-but-one-domain score context로 model별
+equal-weight isotonic calibrator 하나를 fit한다. Target shard는 artifact에
+`N × M` target matrix를 남기지 않고 join identity를 묶는다.
+
+`PreparedBilinearPredictorArtifact`는 all-domain schema·coefficient, calibrator,
+전체 lineage를 strict canonical JSON으로 저장한다. `save()`는 exactly one
+same-directory stage를 만들기 전에 전체를 검증하고 backup 없이 한 번 publish한다.
+`load()`는 신뢰한 expected SHA-256, 안정적인 regular-file descriptor, byte-for-byte
+canonical reserialization을 필수로 검사한다. Assembly·serialization·save·load는
+provider-free다. `build_predictor()`만 provider 경계이며, predictor를 만들 때
+provider가 선언한 dimension과 identity를 즉시 snapshot·검증하지만 `embed()`는
+호출하지 않는다. 첫 embedding 호출은 embedded prediction이 prompt를 encode할 때만
+일어난다. 이 library 경로는 native prepared result를 import하거나 소비하지 않고,
+`tierroute` 명령·trainer·policy artifact, bge-m3 구현, 공식 데이터에 연결되지 않는다.
+
 실험적 native prepared 경로는 별도의 학습 측 vertical slice다.
 `prepared_files.py`는 고정 little-endian `TRPSTO01` store를 새 파일로 쓰거나
 인증한다. 호출자가 고정한 receipt는 whole-file byte, source-fit identity,
@@ -540,6 +563,8 @@ bookkeeping 32단위를 잡은 `192 * T * N`이며 측정 CPU work가 아니다.
   [`combine_prepared_subset_statistics`](../src/tierroute/predictors/prepared_store.py),
   [`build_prepared_coefficient_bundle`](../src/tierroute/predictors/prepared_execution.py),
   [`build_prepared_raw_score_bundle`](../src/tierroute/predictors/prepared_execution.py),
+  [`assemble_prepared_bilinear_artifact`](../src/tierroute/predictors/prepared_assembly.py),
+  [`PreparedBilinearPredictorArtifact`](../src/tierroute/predictors/prepared_artifacts.py),
   [`evaluate_prepared_reference_pipeline`](../src/tierroute/policies/prepared_reference.py),
   [`write_prepared_store_file_from_sections`](../src/tierroute/predictors/prepared_files.py),
   [`authenticate_prepared_store_file`](../src/tierroute/predictors/prepared_files.py),
@@ -550,11 +575,18 @@ bookkeeping 32단위를 잡은 `192 * T * N`이며 측정 CPU work가 아니다.
   [`tierroute_prepared.c`](../native/tierroute_prepared.c)
 - GBM artifact 근거: [`test_gbm_artifacts.py`](../tests/test_gbm_artifacts.py),
   [`test_gbm_artifact_hardening.py`](../tests/test_gbm_artifact_hardening.py)
+- prepared all-domain artifact 근거:
+  [`test_prepared_artifacts.py`](../tests/test_prepared_artifacts.py),
+  [`test_prepared_artifact_hardening.py`](../tests/test_prepared_artifact_hardening.py),
+  [`test_prepared_assembly.py`](../tests/test_prepared_assembly.py),
+  [`test_prepared_assembly_hardening.py`](../tests/test_prepared_assembly_hardening.py),
+  [`test_prepared_assembly_numerics.py`](../tests/test_prepared_assembly_numerics.py),
+  [prepared all-domain artifact 경계](prepared-all-domain-artifact.md)
 - 임시 변이: outer 학습에 held-out test 행을 합쳐 embedding provider에 노출한다.
 
 이 한 줄 변이는 bilinear outer-fold 격리만 직접 깨뜨린다. GBM core·training·artifact,
-paired comparison, prepared graph·store·execution·reference, native ridge·file/session·
-policy bridge, calibration 경계는 각각 아래의 독립 기준 suite와 참가자의 별도
+paired comparison, prepared graph·store·execution·reference·all-domain artifact,
+native ridge·file/session·policy bridge, calibration 경계는 각각 아래의 독립 기준 suite와 참가자의 별도
 설명·메모로 검토한다. 이 변이 하나의 실패를 다른 하위 경계의 검증이나 서명으로
 간주하지 않는다.
 
@@ -563,7 +595,7 @@ policy bridge, calibration 경계는 각각 아래의 독립 기준 suite와 참
 | 5a feature·bilinear·calibration |  |
 | 5b GBM core·training·artifact |  |
 | 5c paired comparison |  |
-| 5d prepared graph·store·execution·reference |  |
+| 5d prepared graph·store·execution·reference·all-domain artifact |  |
 | 5e native ridge·prepared file/session |  |
 | 5f native policy bridge |  |
 
@@ -611,9 +643,19 @@ fixture의 실제 compiled D4-D7 coefficient/raw-score parity와 12 surface+1,02
 embedding을 투영하지 않은 `D4/N8/d1036/M1` 완료 근거는 있다. 현재 public Python
 consumer는 이 native 결과에서 고정 쿼리별 learned+6-baseline evidence까지 만들며,
 불균등 3-model D7을 포함한 surface-only D4-D7 전체 결과가 rowwise 경로와 엄격히 같다.
-하지만 official `D7/N34778/d1036/M11` 전체 store/session, provider, all-domain artifact,
-제공 명령·trainer 연동, Linux-musl·3플랫폼 배포 artifact, 성능·품질·비용, 공식 데이터
-근거는 없으며 issue #9는 열려 있다.
+별도 branch-local bounded Python assembler는 이제 canonical pinned all-domain
+bilinear artifact를 만들지만 native 결과를 소비하지 않는다. 하지만 official
+`D7/N34778/d1036/M11` 전체 store/session·artifact, provider, native-to-artifact 소비,
+제공 명령·trainer·policy 연동, Linux-musl·3플랫폼 배포 artifact, 성능·품질·비용,
+공식 데이터 근거는 없으며 issue #9는 열려 있다.
+참가자는 all-domain assembler의 6단계를 순서대로 추적하고, 왜 전체 canonical
+resnapshot 앞뒤로 trusted pin을 두 번 비교하는지 설명한다. `D` calibration
+context를 위치가 아닌 의미로 찾는 이유, target shard를 한 번에 하나만
+materialize하는 이유, D4–D7 tolerance 비교·high-dynamic-range fixture·
+exact-rational PAV/`nextafter` probe·one-shot route oracle이 각각 무엇을 증명하는지
+구분한다. Single-stage save와 mandatory-pinned canonical load를 추적하고, persistence와
+`build_predictor()`만으로 native 소비·CLI 연동·주입 provider의 network-free 성질·
+공식 전체 shape·품질·비용 절감·성능을 증명할 수 없는 이유를 설명한다.
 binary64 feature-cache를 binary32로
 조용히 바꾸면 후속 calibrator, lambda, 최종 report까지 다시 parity를 입증해야
 하는 이유를 설명한다. 전용 근거는
@@ -621,6 +663,11 @@ binary64 feature-cache를 binary32로
 [`test_prepared_graph.py`](../tests/test_prepared_graph.py),
 [`test_prepared_store.py`](../tests/test_prepared_store.py),
 [`test_prepared_execution.py`](../tests/test_prepared_execution.py),
+[`test_prepared_artifacts.py`](../tests/test_prepared_artifacts.py),
+[`test_prepared_artifact_hardening.py`](../tests/test_prepared_artifact_hardening.py),
+[`test_prepared_assembly.py`](../tests/test_prepared_assembly.py),
+[`test_prepared_assembly_hardening.py`](../tests/test_prepared_assembly_hardening.py),
+[`test_prepared_assembly_numerics.py`](../tests/test_prepared_assembly_numerics.py),
 [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py),
 [`test_prepared_files.py`](../tests/test_prepared_files.py),
 [`test_native_prepared.py`](../tests/test_native_prepared.py),
@@ -628,6 +675,7 @@ binary64 feature-cache를 binary32로
 [prepared graph 계약](prepared-session-graph.md),
 [prepared feature-store reference](prepared-feature-store.md),
 [prepared execution reference](prepared-reference-execution.md),
+[prepared all-domain artifact 경계](prepared-all-domain-artifact.md),
 [prepared policy-pipeline reference](prepared-reference-pipeline.md),
 [네이티브 ridge protocol](native-ridge-protocol.md),
 [native prepared-session protocol](native-prepared-session-protocol.md)에 있다.
@@ -691,6 +739,21 @@ Windows의 5개 job을 모두 통과했다.
 walkthrough는 **PENDING**이고 배포 가능한 release artifact를 승인하지 않으며, 이
 근거로 issue #9가 완료되지는 않는다.
 
+prepared all-domain artifact는 현재 branch-local 근거다. Format 구현 `4e73b4d`,
+assembler/export 구현 `bef1a17`, hardening·수치 근거 `013a651`, 경계 문서
+`2be4910`으로 구성된다. Artifact/assembly focused module 5개는 114 tests를
+통과했다. Clean Python 3.10.19 검증은 1,209 tests, clean Python 3.12.10 검증은
+1,208 tests와 expected compatibility skip 1을 통과했다. 잠긴 두 버전 모두 offline
+CLI·training smoke를 통과했고 clean license gate는 각각 allowlist distribution
+15개와 12개를 허용했다. 프로젝트 작성 D4–D7 fixture는 schema·coefficient·
+intercept·semantic held-out raw score·PAV partition·최종 prediction을 명시한
+tolerance로 authoritative row 경로와 비교한다. 별도 high-dynamic-range,
+exact-rational PAV와 이웃 `nextafter`, one-shot route/budget-ledger oracle은 수치·
+추론 경계를 직접 검사한다. 독립 AI-agent artifact·assembly 검토에서 발견한
+blocker를 수정했고 최종 blocker/high 수는 0이었다. 이는 자동 local 검사이지 사람
+walkthrough나 sign-off가 아니다. 이 slice에는 아직 PR, remote CI run, merge 기록이
+없으며 immutable 근거가 생기기 전까지 해당 칸을 pending으로 둔다.
+
 별도 [PR #56](https://github.com/Hbin77/tierroute/pull/56)의 GBM artifact 구현은
 `5d1d727`에서 시작해 `4de98de`·`5be3642`로 hardening했고, 최종 evidence head
 `ef8606f34d8a7706a19ae2303d742a06c955d3cb`의
@@ -742,6 +805,9 @@ run_card_05_baseline() {
   python -m pytest -q tests/test_native_ridge.py
   python -m pytest -q tests/test_prepared_graph.py tests/test_prepared_store.py \
     tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \
+    tests/test_prepared_artifacts.py tests/test_prepared_artifact_hardening.py \
+    tests/test_prepared_assembly.py tests/test_prepared_assembly_hardening.py \
+    tests/test_prepared_assembly_numerics.py \
     tests/test_prepared_files.py tests/test_native_prepared.py \
     tests/test_native_prepared_benchmark.py
 }
@@ -782,9 +848,10 @@ test -z "$(git status --porcelain=v1 --untracked-files=all)"
 test -z "$(find "$HF_HOME" -mindepth 1 -print -quit)"
 ```
 
-검토한 구현 스냅샷의 독립 기준 실행은 위 다섯 그룹에서 각각
-111·92·16·98·241개, 합계 558개 test PASS를 기록했다. 이는 사람 설명이나 카드 5
-서명을 대신하지 않는다.
+이전 검토 스냅샷의 독립 기준 실행은 기존 다섯 그룹에서 각각
+111·92·16·98·241개, 합계 558개 test PASS를 기록했다. 현재 branch의 새
+artifact/assembly module 5개는 별도 focused 실행에서 114 PASS를 기록했다. 두 수치는
+각각의 local 자동 근거이며 사람 설명이나 카드 5 서명을 대신하지 않는다.
 
 ```text
 실행 전 예측:
