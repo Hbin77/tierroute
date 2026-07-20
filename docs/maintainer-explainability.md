@@ -294,6 +294,30 @@ child-digest configuration. It does not manufacture a second report schema or an
 all-domain deployable artifact. Arbitrary injected ledger callback work and side
 effects are outside the code-owned resource estimate.
 
+The separate prepared all-domain artifact path remains a bounded in-memory Python
+reference, not a native-result consumer or production trainer. Its supported assembler
+accepts exact `PreparedFeatureStore`, `PreparedDomainStatisticsBundle`, and
+`PreparedRawScoreBundle` parents plus four mandatory caller-retained expected digests.
+Its fail-closed order has six phases: exact-type/shallow-shape/resource admission,
+first pin comparison, complete canonical resnapshot, second pin comparison,
+cross-parent and store-derived association checks, then numerical materialization.
+The final phase combines domain moments in canonical order, uses one Cholesky factor
+for every all-domain model target, and fits one equal-weight isotonic calibrator per
+model from the `D` semantically selected all-but-one-domain score contexts. Target
+shards bind the joins without retaining an `N × M` target matrix.
+
+`PreparedBilinearPredictorArtifact` stores the all-domain schema/coefficients,
+calibrators, and complete lineage as strict canonical JSON. `save()` validates before
+creating exactly one same-directory stage and publishes once without a backup;
+`load()` requires a trusted expected SHA-256, a stable regular-file descriptor, and
+byte-for-byte canonical reserialization. Assembly, serialization, save, and load are
+provider-free. `build_predictor()` is the only provider boundary: construction
+immediately snapshots and validates the provider's declared dimension and identity, but
+does not call `embed()`. The first embedding invocation occurs only when an embedded
+prediction encodes a prompt. This library path neither imports nor consumes the native
+prepared result, and it is not wired to a `tierroute` command, trainer, policy artifact,
+bge-m3 implementation, or official data.
+
 The experimental native prepared path is a separate training-side vertical slice.
 `prepared_files.py` writes or authenticates the fixed little-endian `TRPSTO01` store.
 A caller-pinned receipt binds its whole-file bytes, source-fit identity, logical
@@ -354,6 +378,8 @@ bookkeeping units per retained tier/query row (`192 * T * N`), not measured CPU 
   [`predictors/prepared_graph.py`](../src/tierroute/predictors/prepared_graph.py),
   [`predictors/prepared_store.py`](../src/tierroute/predictors/prepared_store.py),
   [`predictors/prepared_execution.py`](../src/tierroute/predictors/prepared_execution.py),
+  [`predictors/prepared_artifacts.py`](../src/tierroute/predictors/prepared_artifacts.py),
+  [`predictors/prepared_assembly.py`](../src/tierroute/predictors/prepared_assembly.py),
   [`predictors/prepared_files.py`](../src/tierroute/predictors/prepared_files.py),
   [`predictors/native_prepared.py`](../src/tierroute/predictors/native_prepared.py),
   [`predictors/native_ridge.py`](../src/tierroute/predictors/native_ridge.py),
@@ -380,6 +406,11 @@ bookkeeping units per retained tier/query row (`192 * T * N`), not measured CPU 
   [`test_prepared_graph.py`](../tests/test_prepared_graph.py), plus
   [`test_prepared_store.py`](../tests/test_prepared_store.py) and
   [`test_prepared_execution.py`](../tests/test_prepared_execution.py), plus
+  [`test_prepared_artifacts.py`](../tests/test_prepared_artifacts.py),
+  [`test_prepared_artifact_hardening.py`](../tests/test_prepared_artifact_hardening.py),
+  [`test_prepared_assembly.py`](../tests/test_prepared_assembly.py),
+  [`test_prepared_assembly_hardening.py`](../tests/test_prepared_assembly_hardening.py),
+  [`test_prepared_assembly_numerics.py`](../tests/test_prepared_assembly_numerics.py), plus
   [`test_prepared_reference_pipeline.py`](../tests/test_prepared_reference_pipeline.py),
   [`test_prepared_files.py`](../tests/test_prepared_files.py), and
   [`test_native_prepared.py`](../tests/test_native_prepared.py), plus
@@ -388,6 +419,7 @@ bookkeeping units per retained tier/query row (`192 * T * N`), not measured CPU 
   [prepared graph contract](prepared-session-graph.md), the
   [prepared feature-store reference](prepared-feature-store.md), the
   [prepared execution reference](prepared-reference-execution.md), the
+  [prepared all-domain artifact boundary](prepared-all-domain-artifact.md), the
   [prepared policy-pipeline reference](prepared-reference-pipeline.md), plus the
   [native ridge protocol](native-ridge-protocol.md) and
   [native prepared-session protocol](native-prepared-session-protocol.md)
@@ -451,6 +483,26 @@ plus evidence commits `77e5c47` and `304decd`. PR #50's earlier platform jobs re
 separate session-layer evidence. The human walkthrough remains **PENDING**, no
 distributable release artifact is approved, and this evidence does not complete issue #9.
 
+The prepared all-domain artifact is currently PR-open evidence:
+format implementation `4e73b4d`, assembler/export implementation `bef1a17`,
+hardening and numerical evidence `013a651`, and boundary documentation `2be4910`.
+The five focused artifact/assembly modules passed 114 tests. Clean Python 3.10.19
+verification passed 1,209 tests; clean Python 3.12.10 verification passed 1,208 tests
+plus one expected compatibility skip. Both locked versions passed the offline CLI and
+training smoke paths; their clean license gates accepted 15 and 12 allowlisted
+distributions respectively. Project-authored D4–D7 fixtures compare schemas,
+coefficients, intercepts, semantic held-out raw scores, PAV partitions, and final
+predictions with the authoritative row path under explicit tolerances. Separate
+high-dynamic-range, exact-rational PAV/neighboring-`nextafter`, and one-shot
+route/budget-ledger oracles exercise the numerical and inference boundaries directly.
+Independent AI-agent artifact and assembly reviews found and resolved blockers and
+ended with blocker/high counts of zero. These are automated checks, not a human
+walkthrough or sign-off. At pre-evidence head
+`4321d69b8c9f885d961091d4332ac2a1e4a0beed`, [PR #60](https://github.com/Hbin77/tierroute/pull/60)
+[push CI `29722000179`](https://github.com/Hbin77/tierroute/actions/runs/29722000179)
+and [PR CI `29722016318`](https://github.com/Hbin77/tierroute/actions/runs/29722016318)
+each passed all five jobs. There is not yet a merge record.
+
 [PR #56](https://github.com/Hbin77/tierroute/pull/56) separately implemented the GBM
 artifact beginning at `5d1d727` and hardened it through `4de98de` and `5be3642`. At the
 final evidence head `ef8606f34d8a7706a19ae2303d742a06c955d3cb`,
@@ -471,7 +523,7 @@ explanation at the same reviewed implementation commit:
 | 5a feature, bilinear, and calibration |  |
 | 5b GBM core, training, and artifact |  |
 | 5c paired comparison |  |
-| 5d prepared graph, store, execution, and reference |  |
+| 5d prepared graph, store, execution, reference, and all-domain artifact |  |
 | 5e native ridge and prepared file/session |  |
 | 5f native policy bridge |  |
 
@@ -479,7 +531,9 @@ The top-level Card 5 sign-off row remains blank or **PENDING** until every 5a–
 contains the entrant's own explanation and exact command/result. A passing baseline or
 the single bilinear mutation is insufficient. The re-audited five baseline groups
 recorded 111, 92, 16, 98, and 241 tests respectively (558 total); this machine evidence
-does not replace human sign-off.
+does not replace human sign-off. The five new PR-open artifact/assembly modules
+separately recorded 114 focused passes; that automated result likewise does not populate
+a human-owned row.
 
 Owner questions:
 
@@ -533,9 +587,9 @@ Owner questions:
     100,000,000-unit and 512 MiB ceilings admission controls rather than peak-RSS,
     allocator, Python-object, caller-owned-memory, wall-clock, or speedup guarantees?
     Why does the residual factor 2,048 remain an empirical frozen-fixture regression
-    guard rather than a universal numerical-error bound? Which provider, persistence,
-    native execution, all-domain artifact, platform, and official-data gates keep
-    issue #9 open?
+    guard rather than a universal numerical-error bound? Which provider, native
+    consumption, CLI/trainer/policy, platform, official-shape, and official-data gates
+    keep issue #9 open after the PR-open all-domain artifact was added?
 15. For calibrated training set `S`, derive why calibration reads
     `(S-{c}, c)` for every `c in S` and prediction reads `(S, h)` for `h not in S`.
     Why are there `C(D,2)+D` calibration records, each with one calibrator per model,
@@ -546,24 +600,33 @@ Owner questions:
     the candidate-cap exhaustive
     flag, the injected-ledger exclusion, and why stable frozen-result equality is not
     universal near-tie parity.
-16. Trace `TRPSTO01` from exclusive owner-only staging through row/domain/feature/target
+16. Trace the all-domain assembler's six phases and explain why both trusted-pin
+    comparisons surround a complete canonical resnapshot. Why are the `D` calibration
+    contexts found semantically, why is one target shard materialized at a time, and
+    what do the D4–D7 tolerance comparisons, high-dynamic-range fixture,
+    exact-rational PAV/`nextafter` probes, and one-shot route oracle each prove? Trace
+    the single-stage save and mandatory-pinned canonical load, then explain why neither
+    persistence nor `build_predictor()` proves native consumption, CLI integration, a
+    network-free injected provider, official-shape completion, quality, cost savings,
+    or performance.
+17. Trace `TRPSTO01` from exclusive owner-only staging through row/domain/feature/target
     serialization, header/payload/whole-file hashes, publication, lstat/open/fstat
     stability checks, and private-copy authentication. Which receipt values need an
     independently trusted origin, and why is a matching content digest not provenance?
-17. Trace one `TRPSES01` request and `TRPRES01` response. Why must public and C resource
+18. Trace one `TRPSES01` request and `TRPRES01` response. Why must public and C resource
     ceilings match exactly, why is there one child for all subsets/score blocks, and how
     do the nonce, store/binary/graph identities, exact record order, exit/status pair,
     finite scan, and scale-aware residual gate fail closed?
-18. Why do result payloads remain mmap-backed? Explain ownership of the descriptor and
+19. Why do result payloads remain mmap-backed? Explain ownership of the descriptor and
     private workspace, why the same reentrant lock must serialize read and close, why
     close with an exported view must be retryable, and which
     accesses fail after a successful close. Which Windows cleanup paths are exercised
     by the source-portability CI, and why is that still not release-artifact approval?
-19. Distinguish the earlier D4-D7 small surface-only solve/score parity fixtures, the
+20. Distinguish the earlier D4-D7 small surface-only solve/score parity fixtures, the
     `D4/N8/d1036/M1` synthetic completion, and the aggregate-only
     `D7/N34778/d1036/M11` preflight. Why does none establish bge-m3, RouterBench,
-    official-data, an all-domain artifact, or performance?
-20. Trace the public native policy consumer from the three external pins through initial
+    official-data, native-to-artifact consumption, or performance?
+21. Trace the public native policy consumer from the three external pins through initial
     result verification, `at()`-only mapped reads, final reauthentication, owned-store
     close, and fixed per-query learned-plus-six-baseline replay. Why does the caller-owned
     result remain open, why can no caller callback run during phase one, and which object
@@ -747,7 +810,7 @@ basetemp directories rather than claiming that the entire temporary root is debr
 | Cumulative sequence oracle | No cumulative oracle-gap claim | Official cumulative budget semantics followed by a sequence-level optimization and tests |
 | Local `bge-m3` features | Revision/license contract only; no weights or provider shipped | Reviewed preparation/distribution plan, offline local provider, SBOM/model-card update, and locked tests |
 | Dense C11 ridge solve | Project-owned source, protocol, authenticated adapter, local parity, and macOS/Windows ephemeral source-portability evidence; no binary in the wheel | Explicit local opt-in only; macOS/Linux-musl/Windows-MSVC distributable release artifacts still need link/import approval |
-| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer now produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. One local D4/N8/d1036/M1 synthetic run keeps all 1,024 embedding coordinates. PR #50's earlier session-only macOS/Windows source-portability CI passes; final PR #52 head CI run `29543435978` at `304decd0a591fcfc5e5a1e04f35bf20b22c17cea` and merged-main CI run `29543610611` at `c7b717ce1226fcfd70d696d0124aa8df294033c8` cover the current policy benchmark test and all five jobs. These are merged-main source-portability evidence, not distributable release-artifact approval, and the human walkthrough remains pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, all-domain artifact, shipped command/trainer integration, official data, Linux-musl/distributable cross-platform release artifact, or performance claim exists | Audited offline local provider, all-domain artifact and command integration, full official-shape execution/parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, human walkthrough, and issue #9 completion |
+| Full-dimensional nested ridge | Exact 63-subset/154-block/`22N` graph, bounded in-memory coefficient-to-report references, and an authenticated file-backed single-invocation native solve/score slice exist. A public bounded Python consumer produces fixed per-query learned and six-baseline evidence from caller-pinned native results; surface-only D4-D7 fixtures, including uneven three-model D7, strictly match the rowwise result. A separate PR-open bounded Python assembler now emits a canonical pinned all-domain bilinear artifact; its D4-D7, high-dynamic-range, PAV/`nextafter`, and one-shot route checks are project-authored implementation evidence. It does not consume the native result. One local D4/N8/d1036/M1 synthetic native run keeps all 1,024 embedding coordinates. PR #50's earlier session-only and PR #52's policy-consumer evidence remain merged-main source-portability evidence, not distributable release-artifact approval; PR #60 push and PR CI passed all five jobs at its pre-evidence head, but there is no merge record yet. Human walkthrough remains pending. The official D7/N34778/d1036/M11 shape is preflight-only; no provider, native-to-artifact integration, shipped command/trainer/policy integration, official data, Linux-musl/distributable cross-platform release artifact, or performance/quality/cost claim exists | Audited offline local provider, native-result consumption by the all-domain artifact, command/trainer/policy integration, full official-shape execution/direct parity, broader near-tie checks, three-platform release-artifact audits, licensed-data evidence, human walkthrough, and issue #9 completion |
 | GBM artifact deployment integration | Distinct canonical `tierroute-gbm-predictor` artifact v1 is implemented at library level with bounded JSON, atomic save, bounded load, and offline reconstruction; bilinear v1 is unchanged. There is no GBM train/route selection or lambda-policy binding | Reviewed `train`/`route` and policy binding plus unbiased family-selection and deployment evidence |
 | Reportable predictor-family selection | Same-fold descriptive paired runner; `selected_family=null`; no reportable selection claim | Licensed data plus preregistered untouched or selection-aware evidence |
 | Official SK Telecom data | No committed data or official result | Data release plus written license/schema confirmation |
@@ -776,6 +839,9 @@ HF_HOME="$hf_home" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q \
   tests/test_gbm_artifacts.py tests/test_gbm_artifact_hardening.py \
   tests/test_prepared_graph.py tests/test_prepared_store.py \
   tests/test_prepared_execution.py tests/test_prepared_reference_pipeline.py \
+  tests/test_prepared_artifacts.py tests/test_prepared_artifact_hardening.py \
+  tests/test_prepared_assembly.py tests/test_prepared_assembly_hardening.py \
+  tests/test_prepared_assembly_numerics.py \
   tests/test_prepared_files.py tests/test_native_prepared.py \
   tests/test_native_prepared_benchmark.py \
   tests/test_native_ridge.py tests/test_ridge_solver.py tests/test_predictor_artifacts.py \

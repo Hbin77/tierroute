@@ -13,6 +13,20 @@ actual wheel contents, nested metadata, bundled license documents, direct requir
 and native-library relationships. Runtime packages remain unapproved until every
 supported platform has equivalent evidence.
 
+## Issue #57 PR-open dependency result
+
+The prepared all-domain artifact commits `4e73b4d`, `bef1a17`, `013a651`, and
+`2be4910` add no runtime or build dependency and require no `SBOM.md` inventory change.
+Clean local license gates accepted 15 allowlisted distributions on Python 3.10.19 and
+12 on Python 3.12.10; both locked environments also passed the offline CLI and
+training smoke paths. At pre-evidence head
+`4321d69b8c9f885d961091d4332ac2a1e4a0beed`, [PR #60](https://github.com/Hbin77/tierroute/pull/60)
+[push CI `29722000179`](https://github.com/Hbin77/tierroute/actions/runs/29722000179)
+and [PR CI `29722016318`](https://github.com/Hbin77/tierroute/actions/runs/29722016318)
+each passed all five jobs. No merge evidence exists yet. These results do not approve a
+provider, bge-m3 asset, native or release artifact, official/RouterBench data, or network
+behavior outside the tested paths.
+
 ## Approved build backend
 
 `flit_core==3.12.0` is approved for build and editable-install time only.

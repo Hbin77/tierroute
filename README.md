@@ -18,9 +18,9 @@ quality and exact quote-error metrics, leakage-aware calibrated bilinear trainin
 a deterministic stump-GBM trainer with a separate canonical library-level v1 artifact,
 paired descriptive family estimation, exact tier-lambda tuning, strict v1
 bilinear-predictor/policy artifacts, a bounded prepared moment-solve/raw-score reference,
-an experimental authenticated file-backed prepared C11 solve/score session with a
-bounded per-query policy-benchmark bridge, and an external-data-free demo are
-implemented.
+an offline canonical prepared all-domain predictor artifact, an experimental
+authenticated file-backed prepared C11 solve/score session with a bounded per-query
+policy-benchmark bridge, and an external-data-free demo are implemented.
 The CLI selects a model but does **not** call an LLM or return a model completion.
 
 ## Quickstart
@@ -346,6 +346,18 @@ numerical-tolerance parity with an independently fitted row reference. Moment re
 uses a different operation order, so this is not bitwise parity and the numeric payload
 digests are not promised to match across Python/platform arithmetic implementations.
 
+The
+[prepared all-domain predictor artifact](docs/prepared-all-domain-artifact.md) is a
+separate bounded Python library reference. It accepts only caller-pinned in-memory
+prepared store/statistics/raw-score parents, repeats the four pins around a complete
+canonical resnapshot, rebuilds store-derived joins, performs the final all-domain solve
+and per-model held-out PAV calibration, and emits strict canonical JSON. Assembly and
+persistence are provider-free and offline. `build_predictor()` immediately validates an
+embedding provider's declared dimension and identity without calling `embed()`; the
+first embedding invocation occurs only when a later prediction encodes a prompt. This
+path does not consume native results and is not connected to `train`, `route`, policy
+artifacts, bge-m3, official data, or RouterBench.
+
 The bounded
 [prepared policy-pipeline reference](docs/prepared-reference-pipeline.md) now maps those
 raw blocks through the existing per-model isotonic calibrator, exact/bounded lambda
@@ -457,21 +469,24 @@ by the bounded in-memory feature-store, statistics, and reference-execution caps
 separate file/native preflight admits its aggregate shape, but that is not materialized
 execution, numerical parity, or benchmark evidence.
 
-The in-memory references perform no provider inference or file I/O. The native slice now
-connects authenticated file-backed scores to calibration, lambda evaluation, the learned
-report, and all six baselines through the bounded public Python API above. That connection
-is fixed to per-query accounting and project-authored fixtures; it does not create an
-all-domain deployable artifact or alter a shipped command or trainer. Tolerance-close raw
-scores are not guaranteed to preserve every PAV partition or exact decision on a new
-dataset, so any later data-specific parity check must compare directly and fail closed
-rather than introduce an epsilon. Numeric digests remain local evidence, not a cross-
-platform promise. No bge-m3, official-data, RouterBench, quality, cost-reduction, or
-performance result follows from this bridge. [Issue
+The graph/store/execution/policy in-memory references perform no provider inference or
+file I/O; the separate all-domain artifact adds only explicit canonical local
+persistence and still performs no provider inference during assembly or persistence.
+The native slice now connects authenticated file-backed scores to calibration, lambda
+evaluation, the learned report, and all six baselines through the bounded public Python
+API above. That connection is fixed to per-query accounting and project-authored
+fixtures; it does not feed native results into the separate bounded all-domain artifact
+or alter a shipped command or trainer. Tolerance-close raw scores are not guaranteed to
+preserve every PAV partition or exact decision on a new dataset, so any later
+data-specific parity check must compare directly and fail closed rather than introduce
+an epsilon. Numeric digests remain local evidence, not a cross-platform promise. No
+bge-m3, official-data, RouterBench, quality, cost-reduction, or performance result
+follows from this bridge. [Issue
 #9](https://github.com/Hbin77/tierroute/issues/9) therefore remains open.
 
 Full training with the planned 1,024-dimensional bge-m3 embedding (up to 1,036 total
-features) remains gated on an audited offline local provider, integration of the
-authenticated prepared session with all-domain artifacts and CLI reproduction,
+features) remains gated on an audited offline local provider, consumption of the
+authenticated prepared session by the bounded all-domain artifact, CLI reproduction,
 official-shape end-to-end execution/parity, plus audited release artifacts and pinned
 toolchain evidence for macOS, Linux-musl, and Windows-MSVC. tierroute will not silently reduce
 or discard embedding dimensions. The
@@ -534,7 +549,8 @@ dependency-free because it uses only stored coefficients.
   100,000 retained candidates per tier before expensive parsing. Ledger-adapter names
   are limited to 4 KiB; the pre-fit artifact estimate includes actual encoded domains
   and tier-budget text rather than treating metadata as a fixed-size constant.
-- Predictor and policy files use random exclusive staging, post-write validation, and
+- Existing bilinear predictor and policy files use random exclusive staging,
+  post-write validation, and
   rollback-safe policy-last bundle replacement; input aliases and unsafe output nodes
   fail before fitting. Ordinary OS/Python failures roll back every attempted path, but
   concurrent writers and power-loss atomicity across unrelated pathnames are not
@@ -547,12 +563,19 @@ dependency-free because it uses only stored coefficients.
   For seven domains its tested structure is exactly 63 subsets, 154 blocks, `22N`
   row memberships, and `22NM` score cells. It is synthetic structural and
   numerical-tolerance evidence only, not a scalable experiment or performance result.
+- A bounded prepared all-domain predictor artifact library API performs a caller-pinned
+  six-phase resnapshot/association/final-solve/calibration assembly and persists strict
+  canonical JSON with exact content lineage. Assembly, save, and pinned load are
+  provider-free and offline. Synthetic D4-D7, high-dynamic-range, independent-PAV, and
+  one-shot route checks are wiring and parity evidence, not unbiased quality evidence.
+  See the [artifact contract](docs/prepared-all-domain-artifact.md).
 - A bounded prepared policy bridge derives `C(D,2)+D` inner-LODO calibration contexts and
   `D^2` calibrated destination blocks, then reuses the existing lambda tuner and
   simulator. Four- and seven-domain frozen fixtures match the complete rowwise nested
   result; trusted digest checks, aggregate preflight, original-order replay, both budget
-  adapters, and held-out-target noninterference fail closed under tests. It is not a
-  deployable prepared artifact or a universal exact-parity claim.
+  adapters, and held-out-target noninterference fail closed under tests. That bridge
+  neither emits nor consumes the separate predictor artifact and makes no universal
+  exact-parity claim.
 - An experimental authenticated file-backed prepared store and single-invocation C11
   solve/score adapter emit the complete admitted coefficient/raw-score graph without
   loading result payloads into Python tuples. D4-D7 surface-only reference parity and
@@ -895,9 +918,9 @@ The embedding contract pins `BAAI/bge-m3` at revision
 `5617a9f61b028005a4858fdac845db406aefb181` (MIT). Weights are not bundled and no
 runtime downloader exists. The planned provider will accept only a prepared local path
 and must fail closed under `HF_HUB_OFFLINE=1` rather than resolving a Hub model ID.
-Full training at up to 1,036 total features remains gated on the provider, all-domain
-prepared/policy integration, official-shape execution, and three-platform release-
-artifact checks above.
+Full training at up to 1,036 total features remains gated on the provider, integration
+of the all-domain artifact with native/provider/CLI/policy paths, official-shape
+execution, and three-platform release-artifact checks above.
 The native prepared slice proves small D4-D7 surface-only solve/score parity, and the
 bounded policy consumer proves strict D4-D7 rowwise learned-plus-six-baseline parity,
 including an uneven three-model D7 fixture. One separate 1,036-feature synthetic session
