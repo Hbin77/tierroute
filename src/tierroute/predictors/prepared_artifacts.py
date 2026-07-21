@@ -28,6 +28,8 @@ from tierroute.features import (
     PromptFeatureEncoder,
     PromptFeatureSchema,
 )
+from tierroute.features.embeddings import MAX_EMBEDDING_IDENTITY_TEXT_BYTES
+from tierroute.features.encoding import MAX_FEATURE_METADATA_TEXT_BYTES
 from tierroute.features.surface import (
     SURFACE_DOMAIN_TAG_CATALOGUE,
     SURFACE_FEATURE_ALGORITHM_ID,
@@ -102,6 +104,7 @@ _BINARY_COUNT = 2
 _TAG_OFFSET = _CONTINUOUS_COUNT + _BINARY_COUNT
 _UNIVERSAL_SURFACE_DIMENSION = _TAG_OFFSET + len(SURFACE_DOMAIN_TAG_CATALOGUE)
 _F64_BYTES = 8
+_MAPPING_PROXY_TYPE = type(MappingProxyType({}))
 
 
 def _validate_artifact_document(document: str) -> None:
@@ -109,16 +112,57 @@ def _validate_artifact_document(document: str) -> None:
 
     if type(document) is not str:
         raise ValueError("prepared predictor artifact must be exact text")
-    try:
-        encoded = document.encode("utf-8")
-    except UnicodeEncodeError as error:
-        raise ValueError("prepared predictor artifact is not valid UTF-8 text") from error
-    if len(document) > MAX_PREDICTOR_ARTIFACT_BYTES or len(encoded) > (
-        MAX_PREDICTOR_ARTIFACT_BYTES
-    ):
+    if len(document) > MAX_PREDICTOR_ARTIFACT_BYTES:
         raise ValueError(
             f"prepared predictor artifact exceeds {MAX_PREDICTOR_ARTIFACT_BYTES:,} UTF-8 bytes"
         )
+    byte_count = 0
+    try:
+        for offset in range(0, len(document), 64 * 1024):
+            byte_count += len(document[offset : offset + 64 * 1024].encode("utf-8"))
+            if byte_count > MAX_PREDICTOR_ARTIFACT_BYTES:
+                raise ValueError(
+                    "prepared predictor artifact exceeds "
+                    f"{MAX_PREDICTOR_ARTIFACT_BYTES:,} UTF-8 bytes"
+                )
+    except UnicodeEncodeError as error:
+        raise ValueError("prepared predictor artifact is not valid UTF-8 text") from error
+
+
+def _bounded_canonical_json(payload: Mapping[str, object]) -> str:
+    """Encode canonical JSON without retaining more than the document byte cap."""
+
+    encoder = json.JSONEncoder(
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    chunks: list[str] = []
+    character_count = 0
+    byte_count = 0
+    try:
+        for chunk in encoder.iterencode(payload):
+            next_character_count = character_count + len(chunk)
+            if next_character_count + 1 > MAX_PREDICTOR_ARTIFACT_BYTES:
+                raise ValueError(
+                    "prepared predictor artifact exceeds "
+                    f"{MAX_PREDICTOR_ARTIFACT_BYTES:,} UTF-8 bytes"
+                )
+            encoded = chunk.encode("utf-8")
+            next_byte_count = byte_count + len(encoded)
+            if next_byte_count + 1 > MAX_PREDICTOR_ARTIFACT_BYTES:
+                raise ValueError(
+                    "prepared predictor artifact exceeds "
+                    f"{MAX_PREDICTOR_ARTIFACT_BYTES:,} UTF-8 bytes"
+                )
+            chunks.append(chunk)
+            character_count = next_character_count
+            byte_count = next_byte_count
+    except UnicodeEncodeError as error:
+        raise ValueError("prepared predictor artifact is not valid UTF-8 text") from error
+    chunks.append("\n")
+    return "".join(chunks)
 
 
 def _exact_nonnegative_int(value: object, name: str) -> int:
@@ -188,17 +232,40 @@ def _canonical_f64_bytes(values: tuple[float, ...], name: str) -> bytes:
 def _snapshot_schema(value: object) -> PromptFeatureSchema:
     if type(value) is not PromptFeatureSchema:
         raise TypeError("feature_schema must be an exact PromptFeatureSchema")
+    means = value.continuous_means
+    scales = value.continuous_scales
+    domain_tags = value.domain_tags
+    if type(means) is not tuple or len(means) != _CONTINUOUS_COUNT:
+        raise ValueError("feature continuous means must be an exact three-value tuple")
+    if type(scales) is not tuple or len(scales) != _CONTINUOUS_COUNT:
+        raise ValueError("feature continuous scales must be an exact three-value tuple")
+    if type(domain_tags) is not tuple:
+        raise TypeError("feature domain_tags must be an exact tuple")
+    if len(domain_tags) > len(SURFACE_DOMAIN_TAG_CATALOGUE):
+        raise ValueError("feature domain_tags exceed the fixed catalogue")
+    for tag in domain_tags:
+        _bounded_text(
+            tag,
+            "feature domain tag",
+            max_bytes=MAX_FEATURE_METADATA_TEXT_BYTES,
+        )
+    embedding_dimension = _exact_nonnegative_int(
+        value.embedding_dimension,
+        "feature schema embedding_dimension",
+    )
+    embedding_identity = _snapshot_embedding_identity(
+        value.embedding_identity,
+        embedding_dimension,
+        "feature schema",
+    )
     schema = PromptFeatureSchema(
-        continuous_means=tuple(
-            _canonical_f64(item, "feature continuous mean") for item in value.continuous_means
-        ),  # type: ignore[arg-type]
+        continuous_means=tuple(_canonical_f64(item, "feature continuous mean") for item in means),  # type: ignore[arg-type]
         continuous_scales=tuple(
-            _canonical_f64(item, "feature continuous scale", positive=True)
-            for item in value.continuous_scales
+            _canonical_f64(item, "feature continuous scale", positive=True) for item in scales
         ),  # type: ignore[arg-type]
-        domain_tags=value.domain_tags,
-        embedding_dimension=value.embedding_dimension,
-        embedding_identity=value.embedding_identity,
+        domain_tags=domain_tags,
+        embedding_dimension=embedding_dimension,
+        embedding_identity=embedding_identity,
         schema_version=value.schema_version,
     )
     catalogue = {tag: index for index, tag in enumerate(SURFACE_DOMAIN_TAG_CATALOGUE)}
@@ -227,13 +294,27 @@ def _snapshot_embedding_identity(
         return None
     if type(identity) is not EmbeddingIdentity:
         raise TypeError(f"{context} embedding identity must be exact")
+    text_fields = {
+        name: _bounded_text(
+            getattr(identity, name),
+            f"{context} embedding {name}",
+            max_bytes=MAX_EMBEDDING_IDENTITY_TEXT_BYTES,
+        )
+        for name in ("provider", "model_id", "revision", "pooling")
+    }
+    if type(identity.normalize) is not bool:
+        raise TypeError(f"{context} embedding normalize must be an exact boolean")
+    asset_manifest_sha256 = _sha256_hex(
+        identity.asset_manifest_sha256,
+        f"{context} embedding asset_manifest_sha256",
+    )
     return EmbeddingIdentity(
-        provider=identity.provider,
-        model_id=identity.model_id,
-        revision=identity.revision,
-        pooling=identity.pooling,
+        provider=text_fields["provider"],
+        model_id=text_fields["model_id"],
+        revision=text_fields["revision"],
+        pooling=text_fields["pooling"],
         normalize=identity.normalize,
-        asset_manifest_sha256=identity.asset_manifest_sha256,
+        asset_manifest_sha256=asset_manifest_sha256,
     )
 
 
@@ -891,6 +972,44 @@ def prepared_calibration_input_sha256(
     return writer.hexdigest()
 
 
+def _snapshot_calibrator_shape(
+    value: object,
+    *,
+    max_points: int,
+    context: str,
+) -> tuple[tuple[object, ...], tuple[object, ...]]:
+    """Validate one mutated calibrator's bounded shape before value traversal."""
+
+    if type(value) is not IsotonicCalibrator:
+        raise TypeError(f"{context} must be an exact IsotonicCalibrator")
+    bounds = value.upper_bounds
+    values = value.values
+    if type(bounds) is not tuple or type(values) is not tuple:
+        raise TypeError(f"{context} bounds and values must be exact tuples")
+    point_count = len(bounds)
+    if point_count == 0 or len(values) != point_count:
+        raise ValueError(f"{context} bounds and values must be non-empty and equally sized")
+    if point_count > max_points:
+        raise ValueError(f"{context} exceeds the bounded point limit ({max_points:,})")
+    return bounds, values
+
+
+def _snapshot_calibrator(
+    value: object,
+    *,
+    max_points: int,
+    context: str,
+) -> IsotonicCalibrator:
+    bounds, values = _snapshot_calibrator_shape(
+        value,
+        max_points=max_points,
+        context=context,
+    )
+    normalized_bounds = tuple(_canonical_f64(item, f"{context} upper bound") for item in bounds)
+    normalized_values = tuple(_canonical_f64(item, f"{context} value") for item in values)
+    return IsotonicCalibrator(normalized_bounds, normalized_values)
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedModelCalibration:
     """One model's self-declared input root and recomputable isotonic child root."""
@@ -918,18 +1037,12 @@ class PreparedModelCalibration:
             self.input_sha256,
             "calibration input_sha256",
         )
-        if type(self.calibrator) is not IsotonicCalibrator:
-            raise TypeError("calibrator must be an exact IsotonicCalibrator")
-        bounds = tuple(
-            _canonical_f64(value, "calibrator upper bound")
-            for value in self.calibrator.upper_bounds
+        source_rows = sum(source.row_count for source in sources)
+        calibrator = _snapshot_calibrator(
+            self.calibrator,
+            max_points=min(MAX_PREDICTOR_CALIBRATOR_POINTS, source_rows),
+            context="calibrator",
         )
-        values = tuple(
-            _canonical_f64(value, "calibrator value") for value in self.calibrator.values
-        )
-        calibrator = IsotonicCalibrator(bounds, values)
-        if len(bounds) > sum(source.row_count for source in sources):
-            raise ValueError("calibrator points exceed the calibration source rows")
         object.__setattr__(self, "sources", sources)
         object.__setattr__(self, "input_sha256", input_sha256)
         object.__setattr__(self, "calibrator", calibrator)
@@ -1073,6 +1186,29 @@ class PreparedArtifactLineage:
             "final_coefficient_sha256": self.final_coefficient_sha256,
             "calibration_sources": [source.to_dict() for source in self.calibration_sources],
         }
+
+
+def _snapshot_artifact_lineage(value: object) -> PreparedArtifactLineage:
+    if type(value) is not PreparedArtifactLineage:
+        raise TypeError("lineage must be an exact PreparedArtifactLineage")
+    return PreparedArtifactLineage(
+        source_fit_sha256=value.source_fit_sha256,
+        store_sha256=value.store_sha256,
+        statistics_bundle_sha256=value.statistics_bundle_sha256,
+        raw_score_bundle_sha256=value.raw_score_bundle_sha256,
+        embedding_snapshot_sha256=value.embedding_snapshot_sha256,
+        aggregate_statistics_sha256=value.aggregate_statistics_sha256,
+        final_coefficient_sha256=value.final_coefficient_sha256,
+        calibration_sources=value.calibration_sources,
+        assembly_algorithm_id=value.assembly_algorithm_id,
+        graph_algorithm_id=value.graph_algorithm_id,
+        surface_feature_algorithm_id=value.surface_feature_algorithm_id,
+        aggregate_statistics_algorithm_id=value.aggregate_statistics_algorithm_id,
+        final_coefficient_algorithm_id=value.final_coefficient_algorithm_id,
+        target_shard_algorithm_id=value.target_shard_algorithm_id,
+        calibrator_input_algorithm_id=value.calibrator_input_algorithm_id,
+        calibrator_algorithm_id=value.calibrator_algorithm_id,
+    )
 
 
 def _lineage_from_dict(payload: object) -> PreparedArtifactLineage:
@@ -1237,6 +1373,88 @@ def _metadata_bytes_for_artifact(
     return total
 
 
+def _artifact_to_dict(value: PreparedBilinearPredictorArtifact) -> dict[str, object]:
+    """Serialize an already resnapshotted artifact without re-entering validation."""
+
+    model_items = _owned_model_items(value)
+    return {
+        "algorithm_id": value.algorithm_id,
+        "artifact_kind": value.artifact_kind,
+        "artifact_version": value.artifact_version,
+        "feature_schema": value.feature_schema.to_dict(),
+        "models": {
+            model_id: {
+                "weights": list(state.weights),
+                "bias": state.bias,
+                "calibrator": state.calibration.to_dict(),
+            }
+            for model_id, state in model_items
+        },
+        "training": {
+            "domains": list(value.training_domains),
+            "example_count": value.training_example_count,
+            "ridge": value.ridge,
+            "solver_id": value.solver_id,
+            "raw_scorer_id": value.raw_scorer_id,
+        },
+        "lineage": value.lineage.to_dict(),
+    }
+
+
+def _owned_model_items(
+    value: PreparedBilinearPredictorArtifact,
+) -> tuple[tuple[str, PreparedModelState], ...]:
+    """Read only the constructor-owned exact tuple, never a replaced mapping proxy."""
+
+    if type(value.models) is not _MAPPING_PROXY_TYPE:
+        raise TypeError("prepared artifact models must remain an immutable mapping")
+    if value.models is not value._models_snapshot:
+        raise ValueError("prepared artifact model mapping changed after construction")
+    items = value._model_state_items
+    if type(items) is not tuple or not 0 < len(items) <= MAX_PREPARED_ARTIFACT_MODELS:
+        raise ValueError("prepared artifact model snapshot has the wrong bounded shape")
+    model_ids: list[str] = []
+    for item in items:
+        if type(item) is not tuple or len(item) != 2:
+            raise TypeError("prepared artifact model snapshot must contain exact pairs")
+        model_id, state = item
+        if type(model_id) is not str or type(state) is not PreparedModelState:
+            raise TypeError("prepared artifact model snapshot contains invalid values")
+        _bounded_text(
+            model_id,
+            "prepared artifact model snapshot ID",
+            max_bytes=MAX_PREPARED_MODEL_ID_UTF8_BYTES,
+        )
+        model_ids.append(model_id)
+    if tuple(model_ids) != tuple(sorted(set(model_ids))):
+        raise ValueError("prepared artifact model snapshot must be sorted and unique")
+    return items
+
+
+def _snapshot_prepared_artifact(value: object) -> PreparedBilinearPredictorArtifact:
+    """Deep-copy one accepted artifact before any public read or serialization."""
+
+    if type(value) is not PreparedBilinearPredictorArtifact:
+        raise TypeError("prepared predictor artifact must be an exact project type")
+    model_items = _owned_model_items(value)
+    training_domains = value.training_domains
+    if type(training_domains) is not tuple:
+        raise TypeError("prepared artifact training_domains must remain an exact tuple")
+    return PreparedBilinearPredictorArtifact(
+        feature_schema=value.feature_schema,
+        models={model_id: state for model_id, state in model_items},
+        training_domains=training_domains,
+        training_example_count=value.training_example_count,
+        ridge=value.ridge,
+        lineage=value.lineage,
+        solver_id=value.solver_id,
+        raw_scorer_id=value.raw_scorer_id,
+        algorithm_id=value.algorithm_id,
+        artifact_kind=value.artifact_kind,
+        artifact_version=value.artifact_version,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedBilinearPredictorArtifact:
     """Inference state plus immutable prepared-store lineage."""
@@ -1247,6 +1465,16 @@ class PreparedBilinearPredictorArtifact:
     training_example_count: int
     ridge: float
     lineage: PreparedArtifactLineage
+    _models_snapshot: Mapping[str, PreparedModelState] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
+    _model_state_items: tuple[tuple[str, PreparedModelState], ...] = field(
+        init=False,
+        repr=False,
+        compare=False,
+    )
     solver_id: str = PREPARED_MOMENT_RIDGE_SOLVER_ID
     raw_scorer_id: str = PREPARED_RAW_SCORER_ID
     algorithm_id: str = PREPARED_PREDICTOR_ARTIFACT_ALGORITHM_ID
@@ -1278,34 +1506,17 @@ class PreparedBilinearPredictorArtifact:
         )
         model_ids = tuple(sorted(models_input))
         _snapshot_model_ids(model_ids)
-        states: dict[str, PreparedModelState] = {}
-        numeric_scalars = 6 + 1  # schema means/scales and ridge
-        for model_id in model_ids:
-            raw_state = models_input[model_id]
-            if type(raw_state) is not PreparedModelState:
-                raise TypeError("models must map IDs to exact PreparedModelState values")
-            if type(raw_state.weights) is not tuple or len(raw_state.weights) != schema.dimension:
-                raise ValueError("model weight width does not match the feature schema")
-            state = PreparedModelState(
-                weights=raw_state.weights,
-                bias=raw_state.bias,
-                calibration=raw_state.calibration,
-            )
-            if state.calibration.model_id != model_id:
-                raise ValueError("model calibration ID does not match its model key")
-            numeric_scalars += len(state.weights) + 1
-            numeric_scalars += 2 * len(state.calibration.calibrator.upper_bounds)
-            if numeric_scalars > MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:
-                raise ValueError(
-                    "prepared artifact exceeds the numeric scalar limit "
-                    f"({MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:,})"
-                )
-            states[model_id] = state
         domains = _shared_artifacts._text_tuple(
             self.training_domains,
             "training_domains",
             max_items=MAX_PREPARED_ARTIFACT_DOMAINS,
         )
+        for domain in domains:
+            _bounded_text(
+                domain,
+                "training domain",
+                max_bytes=MAX_PREDICTOR_METADATA_TEXT_BYTES,
+            )
         if not MIN_PREPARED_DOMAINS <= len(domains) <= MAX_PREPARED_ARTIFACT_DOMAINS:
             raise ValueError("training_domains has an unsupported prepared domain count")
         if any(not domain.strip() for domain in domains) or domains != tuple(sorted(set(domains))):
@@ -1317,26 +1528,7 @@ class PreparedBilinearPredictorArtifact:
         if example_count > MAX_PREPARED_EXAMPLES:
             raise ValueError("training_example_count exceeds the prepared example limit")
         ridge = _canonical_f64(self.ridge, "artifact ridge", positive=True)
-        if type(self.lineage) is not PreparedArtifactLineage:
-            raise TypeError("lineage must be an exact PreparedArtifactLineage")
-        lineage = PreparedArtifactLineage(
-            source_fit_sha256=self.lineage.source_fit_sha256,
-            store_sha256=self.lineage.store_sha256,
-            statistics_bundle_sha256=self.lineage.statistics_bundle_sha256,
-            raw_score_bundle_sha256=self.lineage.raw_score_bundle_sha256,
-            embedding_snapshot_sha256=self.lineage.embedding_snapshot_sha256,
-            aggregate_statistics_sha256=self.lineage.aggregate_statistics_sha256,
-            final_coefficient_sha256=self.lineage.final_coefficient_sha256,
-            calibration_sources=self.lineage.calibration_sources,
-            assembly_algorithm_id=self.lineage.assembly_algorithm_id,
-            graph_algorithm_id=self.lineage.graph_algorithm_id,
-            surface_feature_algorithm_id=self.lineage.surface_feature_algorithm_id,
-            aggregate_statistics_algorithm_id=(self.lineage.aggregate_statistics_algorithm_id),
-            final_coefficient_algorithm_id=self.lineage.final_coefficient_algorithm_id,
-            target_shard_algorithm_id=self.lineage.target_shard_algorithm_id,
-            calibrator_input_algorithm_id=self.lineage.calibrator_input_algorithm_id,
-            calibrator_algorithm_id=self.lineage.calibrator_algorithm_id,
-        )
+        lineage = _snapshot_artifact_lineage(self.lineage)
         if example_count != sum(source.row_count for source in lineage.calibration_sources):
             raise ValueError("training_example_count does not match calibration sources")
         if (schema.embedding_dimension == 0) != (lineage.embedding_snapshot_sha256 is None):
@@ -1350,6 +1542,68 @@ class PreparedBilinearPredictorArtifact:
             target_count=len(model_ids),
         )
         _validate_semantic_sources(plan, lineage.calibration_sources)
+
+        # Count every retained number from exact bounded tuple shapes before copying a
+        # single model.  This prevents a mutated calibrator from allocating work that
+        # the artifact-wide cap would reject only afterwards.
+        shallow_states: dict[str, tuple[object, ...]] = {}
+        numeric_scalars = 6 + 1  # schema means/scales and ridge
+        for model_id in model_ids:
+            raw_state = models_input[model_id]
+            if type(raw_state) is not PreparedModelState:
+                raise TypeError("models must map IDs to exact PreparedModelState values")
+            weights = raw_state.weights
+            if type(weights) is not tuple or len(weights) != schema.dimension:
+                raise ValueError("model weight width does not match the feature schema")
+            calibration = raw_state.calibration
+            if type(calibration) is not PreparedModelCalibration:
+                raise TypeError("prepared model calibration must be an exact project type")
+            calibration_model_id = calibration.model_id
+            if type(calibration_model_id) is not str or calibration_model_id != model_id:
+                raise ValueError("model calibration ID does not match its model key")
+            bounds, values = _snapshot_calibrator_shape(
+                calibration.calibrator,
+                max_points=min(example_count, MAX_PREDICTOR_CALIBRATOR_POINTS),
+                context=f"calibrator for model {model_id!r}",
+            )
+            numeric_scalars += len(weights) + 1 + len(bounds) + len(values)
+            if numeric_scalars > MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:
+                raise ValueError(
+                    "prepared artifact exceeds the numeric scalar limit "
+                    f"({MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:,})"
+                )
+            shallow_states[model_id] = (
+                weights,
+                raw_state.bias,
+                calibration_model_id,
+                calibration.sources,
+                calibration.input_sha256,
+                bounds,
+                values,
+            )
+
+        states: dict[str, PreparedModelState] = {}
+        for model_id in model_ids:
+            (
+                weights,
+                bias,
+                calibration_model_id,
+                calibration_sources,
+                calibration_input_sha256,
+                bounds,
+                values,
+            ) = shallow_states[model_id]
+            calibration = PreparedModelCalibration(
+                model_id=calibration_model_id,  # type: ignore[arg-type]
+                sources=calibration_sources,  # type: ignore[arg-type]
+                input_sha256=calibration_input_sha256,  # type: ignore[arg-type]
+                calibrator=IsotonicCalibrator(bounds, values),  # type: ignore[arg-type]
+            )
+            states[model_id] = PreparedModelState(
+                weights=weights,  # type: ignore[arg-type]
+                bias=bias,  # type: ignore[arg-type]
+                calibration=calibration,
+            )
         for state in states.values():
             if state.calibration.sources != lineage.calibration_sources:
                 raise ValueError("model calibration sources do not match artifact lineage")
@@ -1385,21 +1639,24 @@ class PreparedBilinearPredictorArtifact:
             lineage.final_coefficient_sha256,
         ):
             raise ValueError("final_coefficient_sha256 does not match serialized inference state")
+        models_snapshot = MappingProxyType(states)
         object.__setattr__(self, "feature_schema", schema)
-        object.__setattr__(self, "models", MappingProxyType(states))
+        object.__setattr__(self, "models", models_snapshot)
+        object.__setattr__(self, "_models_snapshot", models_snapshot)
+        object.__setattr__(self, "_model_state_items", tuple(states.items()))
         object.__setattr__(self, "training_domains", domains)
         object.__setattr__(self, "training_example_count", example_count)
         object.__setattr__(self, "ridge", ridge)
         object.__setattr__(self, "lineage", lineage)
         # Direct construction is a serialization trust boundary.  An accepted object
         # must already fit the exact bounded document contract.
-        self.to_json()
+        _bounded_canonical_json(_artifact_to_dict(self))
 
     @property
     def model_ids(self) -> tuple[str, ...]:
         """Return the canonical model catalogue."""
 
-        return tuple(self.models)
+        return tuple(model_id for model_id, _ in _owned_model_items(self))
 
     def build_predictor(
         self,
@@ -1408,12 +1665,12 @@ class PreparedBilinearPredictorArtifact:
     ) -> PerModelCalibratedQualityPredictor:
         """Rebuild offline inference; embedding work starts only on prediction."""
 
-        encoder = PromptFeatureEncoder(self.feature_schema, embedding_provider)
-        weights = {model_id: self.models[model_id].weights for model_id in self.model_ids}
-        biases = {model_id: self.models[model_id].bias for model_id in self.model_ids}
-        calibrators = {
-            model_id: self.models[model_id].calibration.calibrator for model_id in self.model_ids
-        }
+        snapshot = _snapshot_prepared_artifact(self)
+        encoder = PromptFeatureEncoder(snapshot.feature_schema, embedding_provider)
+        model_items = _owned_model_items(snapshot)
+        weights = {model_id: state.weights for model_id, state in model_items}
+        biases = {model_id: state.bias for model_id, state in model_items}
+        calibrators = {model_id: state.calibration.calibrator for model_id, state in model_items}
         base = BilinearQualityPredictor(
             vectorizer=encoder.transform_one,
             model_weights=MappingProxyType(weights),
@@ -1441,75 +1698,99 @@ class PreparedBilinearPredictorArtifact:
             raise TypeError("component assembly requires the exact artifact type")
         if type(coefficient) is not PreparedFinalCoefficient:
             raise TypeError("coefficient must be an exact PreparedFinalCoefficient")
+        lineage_snapshot = _snapshot_artifact_lineage(lineage)
+        coefficient_schema = _snapshot_schema(coefficient.feature_schema)
+        coefficient_model_ids = _snapshot_model_ids(coefficient.model_ids)
+        weights_payload = coefficient.weights_payload
+        intercepts_payload = coefficient.intercepts_payload
+        if type(weights_payload) is not bytes or type(intercepts_payload) is not bytes:
+            raise TypeError("final coefficient payloads must be immutable bytes")
+        if (
+            len(weights_payload)
+            != len(coefficient_model_ids) * coefficient_schema.dimension * _F64_BYTES
+            or len(intercepts_payload) != len(coefficient_model_ids) * _F64_BYTES
+        ):
+            raise ValueError("final coefficient payloads have the wrong exact lengths")
+        example_count = _exact_positive_int(
+            training_example_count,
+            "training_example_count",
+        )
+        if example_count > MAX_PREPARED_EXAMPLES:
+            raise ValueError("training_example_count exceeds the prepared example limit")
+        numeric_scalars = 7 + len(coefficient_model_ids) * (coefficient_schema.dimension + 1)
+        if numeric_scalars > MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:
+            raise ValueError(
+                "prepared artifact exceeds the numeric scalar limit "
+                f"({MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:,})"
+            )
         calibration_input = _shared_artifacts._mapping(
             calibrations,
             "calibrations",
             max_items=MAX_PREPARED_ARTIFACT_MODELS,
         )
-        if tuple(sorted(calibration_input)) != coefficient.model_ids:
+        if any(
+            type(calibration) is not PreparedModelCalibration
+            for calibration in calibration_input.values()
+        ):
+            raise TypeError("calibrations must contain exact model-calibration values")
+        if tuple(sorted(calibration_input)) != coefficient_model_ids:
             raise ValueError("calibrations do not match the final coefficient catalogue")
-        if coefficient.sha256 != lineage.final_coefficient_sha256:
+        for model_id in coefficient_model_ids:
+            calibration = calibration_input[model_id]
+            if type(calibration.model_id) is not str or calibration.model_id != model_id:
+                raise ValueError("model calibration ID does not match its model key")
+            bounds, values = _snapshot_calibrator_shape(
+                calibration.calibrator,
+                max_points=min(example_count, MAX_PREDICTOR_CALIBRATOR_POINTS),
+                context=f"calibrator for model {model_id!r}",
+            )
+            numeric_scalars += len(bounds) + len(values)
+            if numeric_scalars > MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:
+                raise ValueError(
+                    "prepared artifact exceeds the numeric scalar limit "
+                    f"({MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS:,})"
+                )
+        coefficient_snapshot = PreparedFinalCoefficient(
+            feature_schema=coefficient_schema,
+            active_feature_indices=coefficient.active_feature_indices,
+            model_ids=coefficient_model_ids,
+            aggregate_statistics_sha256=coefficient.aggregate_statistics_sha256,
+            ridge=coefficient.ridge,
+            weights_payload=weights_payload,
+            intercepts_payload=intercepts_payload,
+        )
+        if not hmac.compare_digest(
+            coefficient_snapshot.sha256,
+            lineage_snapshot.final_coefficient_sha256,
+        ):
             raise ValueError("final coefficient does not match artifact lineage")
         models: dict[str, PreparedModelState] = {}
-        for model_index, model_id in enumerate(coefficient.model_ids):
+        for model_index, model_id in enumerate(coefficient_snapshot.model_ids):
             calibration = calibration_input[model_id]
-            if type(calibration) is not PreparedModelCalibration:
-                raise TypeError("calibrations must contain exact model-calibration values")
             models[model_id] = PreparedModelState(
-                weights=coefficient.weights_for_model_index(model_index),
-                bias=coefficient.intercept_for_model_index(model_index),
+                weights=coefficient_snapshot.weights_for_model_index(model_index),
+                bias=coefficient_snapshot.intercept_for_model_index(model_index),
                 calibration=calibration,
             )
         return cls(
-            feature_schema=coefficient.feature_schema,
+            feature_schema=coefficient_snapshot.feature_schema,
             models=models,
             training_domains=training_domains,
-            training_example_count=training_example_count,
-            ridge=coefficient.ridge,
-            lineage=lineage,
+            training_example_count=example_count,
+            ridge=coefficient_snapshot.ridge,
+            lineage=lineage_snapshot,
         )
 
     def to_dict(self) -> dict[str, object]:
         """Return the exact canonical JSON-compatible object."""
 
-        return {
-            "algorithm_id": self.algorithm_id,
-            "artifact_kind": self.artifact_kind,
-            "artifact_version": self.artifact_version,
-            "feature_schema": self.feature_schema.to_dict(),
-            "models": {
-                model_id: {
-                    "weights": list(self.models[model_id].weights),
-                    "bias": self.models[model_id].bias,
-                    "calibrator": self.models[model_id].calibration.to_dict(),
-                }
-                for model_id in self.model_ids
-            },
-            "training": {
-                "domains": list(self.training_domains),
-                "example_count": self.training_example_count,
-                "ridge": self.ridge,
-                "solver_id": self.solver_id,
-                "raw_scorer_id": self.raw_scorer_id,
-            },
-            "lineage": self.lineage.to_dict(),
-        }
+        return _artifact_to_dict(_snapshot_prepared_artifact(self))
 
     def to_json(self) -> str:
         """Serialize canonical UTF-8 JSON with finite numbers and one final newline."""
 
-        document = (
-            json.dumps(
-                self.to_dict(),
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-                allow_nan=False,
-            )
-            + "\n"
-        )
-        _validate_artifact_document(document)
-        return document
+        snapshot = _snapshot_prepared_artifact(self)
+        return _bounded_canonical_json(_artifact_to_dict(snapshot))
 
     @classmethod
     def from_dict(
