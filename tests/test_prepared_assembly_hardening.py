@@ -146,6 +146,275 @@ def _assemble(fixture: _Fixture):
     )
 
 
+class _PoisonEncode:
+    def encode(self, *args: object, **kwargs: object) -> bytes:
+        del args, kwargs
+        raise AssertionError("phase-1 validation invoked poisoned encode")
+
+
+class _PoisonLength:
+    def __len__(self) -> int:
+        raise AssertionError("phase-1 validation invoked poisoned len")
+
+
+class _PoisonEquality:
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("phase-1 validation invoked poisoned equality")
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        raise AssertionError("phase-1 validation invoked poisoned inequality")
+
+
+class _PoisonFloat:
+    def __float__(self) -> float:
+        raise AssertionError("phase-1 validation invoked poisoned float conversion")
+
+
+def _forbid_estimate(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("malformed shallow input reached the estimator")
+
+    monkeypatch.setattr(assembly_module, "_estimate_assembly", forbidden)
+
+
+def test_phase_one_rejects_poisoned_row_key_before_estimation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    object.__setattr__(
+        fixture.store,
+        "example_ids",
+        (_PoisonEncode(), *fixture.store.example_ids[1:]),
+    )
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(ValueError, match="exact string"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+@pytest.mark.parametrize("example_id", ["x" * 4097, "가" * 1366])
+def test_phase_one_rejects_row_key_over_utf8_limit_before_estimation(
+    example_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    object.__setattr__(
+        fixture.store,
+        "example_ids",
+        (example_id, *fixture.store.example_ids[1:]),
+    )
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(ValueError, match="UTF-8 byte limit"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+def test_phase_one_rejects_poisoned_embedding_text_before_estimation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = EmbeddingIdentity(
+        provider="local",
+        model_id="model",
+        revision="revision",
+        pooling="mean",
+        normalize=True,
+        asset_manifest_sha256="a" * 64,
+    )
+    fixture = _fixture(embedding_identity=identity)
+    assert fixture.store.embedding_identity is not None
+    object.__setattr__(fixture.store.embedding_identity, "provider", _PoisonEncode())
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(ValueError, match="exact string"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+def test_phase_one_caps_embedding_text_before_identity_reconstruction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = EmbeddingIdentity(
+        provider="local",
+        model_id="model",
+        revision="revision",
+        pooling="mean",
+        normalize=True,
+        asset_manifest_sha256="a" * 64,
+    )
+    fixture = _fixture(embedding_identity=identity)
+    assert fixture.store.embedding_identity is not None
+    object.__setattr__(fixture.store.embedding_identity, "provider", "x" * 4097)
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("oversized identity reached nested reconstruction")
+
+    monkeypatch.setattr(EmbeddingIdentity, "__post_init__", forbidden)
+    _forbid_estimate(monkeypatch)
+    with pytest.raises(ValueError, match="UTF-8 byte limit"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+def test_phase_one_rejects_poisoned_payload_before_len(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    object.__setattr__(
+        fixture.raw_scores.coefficients.blocks[0],
+        "weights_payload",
+        _PoisonLength(),
+    )
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(TypeError, match="immutable bytes"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+def test_phase_one_rejects_poisoned_schema_tag_before_estimation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    schema = fixture.raw_scores.coefficients.blocks[0].feature_schema
+    object.__setattr__(schema, "domain_tags", (_PoisonEncode(),))
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(ValueError, match="exact string"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+def test_phase_one_rejects_poisoned_execution_estimate_before_estimation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    estimate = fixture.raw_scores.coefficients.execution_estimate
+    object.__setattr__(estimate, "active_feature_counts", (_PoisonLength(),))
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(ValueError, match="wrong bounded length"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+def test_phase_one_rejects_poisoned_domain_mask_before_estimation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    masks = fixture.raw_scores.coefficients.domain_active_tag_masks
+    object.__setattr__(
+        fixture.raw_scores.coefficients,
+        "domain_active_tag_masks",
+        (_PoisonLength(), *masks[1:]),
+    )
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(TypeError, match="exact integer"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+@pytest.mark.parametrize("child_kind", ["coefficient", "feature_shard", "raw_score"])
+def test_phase_one_rejects_poisoned_child_plan_before_equality(
+    child_kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    if child_kind == "coefficient":
+        child = fixture.raw_scores.coefficients.blocks[0]
+    elif child_kind == "feature_shard":
+        child = fixture.raw_scores.feature_shards.shards[0]
+    else:
+        child = fixture.raw_scores.blocks[0]
+    object.__setattr__(child, "plan", _PoisonEquality())
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(TypeError, match="plan must be exact"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+def test_phase_one_rejects_poisoned_exact_child_plan_layout_before_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    child_plan = replace(fixture.store.plan)
+    object.__setattr__(
+        child_plan,
+        "domains",
+        (_PoisonEquality(), *child_plan.domains[1:]),
+    )
+    object.__setattr__(fixture.raw_scores.coefficients.blocks[0], "plan", child_plan)
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises(ValueError, match="exact string"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
+@pytest.mark.parametrize("ridge_owner", ["bundle", "block"])
+@pytest.mark.parametrize(
+    "invalid_ridge",
+    [True, 0.0, -1.0, math.nan, math.inf, -math.inf, _PoisonFloat()],
+)
+def test_phase_one_rejects_invalid_ridge_before_estimation(
+    ridge_owner: str,
+    invalid_ridge: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+    owner = (
+        fixture.raw_scores.coefficients
+        if ridge_owner == "bundle"
+        else fixture.raw_scores.coefficients.blocks[0]
+    )
+    object.__setattr__(owner, "ridge", invalid_ridge)
+    _forbid_estimate(monkeypatch)
+
+    with pytest.raises((TypeError, ValueError), match="ridge"):
+        estimate_prepared_all_domain_assembly(
+            fixture.store,
+            fixture.statistics,
+            fixture.raw_scores,
+        )
+
+
 def test_retained_numeric_scalar_formula_and_cap_fail_before_resnapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

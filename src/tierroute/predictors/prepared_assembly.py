@@ -16,7 +16,9 @@ import struct
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 
-from tierroute.features import EmbeddingIdentity, PromptFeatureSchema
+from tierroute.features import FEATURE_SCHEMA_VERSION, EmbeddingIdentity, PromptFeatureSchema
+from tierroute.features.embeddings import MAX_EMBEDDING_IDENTITY_TEXT_BYTES
+from tierroute.features.encoding import MAX_FEATURE_METADATA_TEXT_BYTES
 from tierroute.features.surface import (
     SURFACE_DOMAIN_TAG_CATALOGUE,
     SURFACE_FEATURE_ALGORITHM_ID,
@@ -61,6 +63,7 @@ from tierroute.predictors.prepared_execution import (
     build_prepared_scored_feature_shards,
 )
 from tierroute.predictors.prepared_graph import (
+    MAX_PREPARED_DOMAIN_UTF8_BYTES,
     MAX_PREPARED_DOMAINS,
     MAX_PREPARED_EXAMPLES,
     MAX_PREPARED_FEATURES,
@@ -70,16 +73,20 @@ from tierroute.predictors.prepared_graph import (
     build_prepared_nested_lodo_plan,
 )
 from tierroute.predictors.prepared_store import (
+    MAX_PREPARED_MODEL_ID_UTF8_BYTES,
     MAX_PREPARED_REFERENCE_NUMERIC_BYTES,
     MAX_PREPARED_REFERENCE_STATISTIC_SCALARS,
+    MAX_PREPARED_REFERENCE_TEXT_UTF8_BYTES,
     PREPARED_FEATURE_STORE_ALGORITHM_ID,
     PREPARED_STATISTICS_ALGORITHM_ID,
     PREPARED_STATISTICS_BUNDLE_ALGORITHM_ID,
     PreparedDomainStatistics,
     PreparedDomainStatisticsBundle,
     PreparedFeatureStore,
+    _bounded_text,
     _combine_domain_statistics,
     _packed_upper_index,
+    _row_key_text_bytes,
 )
 from tierroute.predictors.resource_limits import (
     MAX_PREDICTOR_ARTIFACT_BYTES,
@@ -109,6 +116,18 @@ def _exact_nonnegative_int(value: object, name: str) -> int:
     return value
 
 
+def _positive_binary64(value: object, name: str) -> float:
+    if type(value) not in (int, float):
+        raise TypeError(f"{name} must be an exact real number")
+    try:
+        result = float(value)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(f"{name} must fit finite binary64") from error
+    if not math.isfinite(result) or result <= 0.0:
+        raise ValueError(f"{name} must be finite positive binary64")
+    return result
+
+
 def _sha256_hex(value: object, name: str) -> str:
     if (
         type(value) is not str
@@ -117,6 +136,113 @@ def _sha256_hex(value: object, name: str) -> str:
     ):
         raise ValueError(f"{name} must be lowercase SHA-256 hex")
     return value
+
+
+def _snapshot_model_ids_for_preflight(
+    value: object,
+    *,
+    expected_count: int,
+    context: str,
+) -> tuple[str, ...]:
+    if type(value) is not tuple:
+        raise TypeError(f"{context} model_ids must be an exact tuple")
+    if len(value) != expected_count:
+        raise ValueError(f"{context} model catalogue has the wrong exact count")
+    total_bytes = 0
+    for model_id in value:
+        _bounded_text(
+            model_id,
+            f"{context} model_id",
+            max_bytes=MAX_PREPARED_MODEL_ID_UTF8_BYTES,
+        )
+        total_bytes += len(model_id.encode("utf-8"))
+        if total_bytes > MAX_PREPARED_REFERENCE_TEXT_UTF8_BYTES:
+            raise ValueError(f"{context} model catalogue exceeds the text-byte limit")
+    if value != tuple(sorted(set(value))):
+        raise ValueError(f"{context} model_ids must be sorted and unique")
+    return value
+
+
+def _validate_plan_layout(
+    value: object,
+    canonical_plan: PreparedNestedLodoPlan,
+    context: str,
+) -> None:
+    """Compare only admitted layout primitives; phase three replaces nested nodes."""
+
+    if type(value) is not PreparedNestedLodoPlan:
+        raise TypeError(f"{context} plan must be exact")
+    domains = value.domains
+    counts = value.domain_example_counts
+    if type(domains) is not tuple or len(domains) != len(canonical_plan.domains):
+        raise ValueError(f"{context} plan domains have the wrong bounded shape")
+    if type(counts) is not tuple or len(counts) != len(canonical_plan.domain_example_counts):
+        raise ValueError(f"{context} plan counts have the wrong bounded shape")
+    for domain in domains:
+        _bounded_text(
+            domain,
+            f"{context} plan domain",
+            max_bytes=MAX_PREPARED_DOMAIN_UTF8_BYTES,
+        )
+    for count in counts:
+        if _exact_nonnegative_int(count, f"{context} plan domain count") == 0:
+            raise ValueError(f"{context} plan domain counts must be positive")
+    feature_count = _exact_nonnegative_int(value.feature_count, f"{context} feature_count")
+    target_count = _exact_nonnegative_int(value.target_count, f"{context} target_count")
+    if type(value.algorithm_id) is not str or value.algorithm_id != PREPARED_GRAPH_ALGORITHM_ID:
+        raise ValueError(f"{context} plan has an unexpected algorithm identity")
+    if (
+        domains != canonical_plan.domains
+        or counts != canonical_plan.domain_example_counts
+        or feature_count != canonical_plan.feature_count
+        or target_count != canonical_plan.target_count
+    ):
+        raise ValueError(f"{context} does not share the canonical prepared plan")
+
+
+def _snapshot_domain_tags_for_preflight(
+    value: object,
+    *,
+    active_tag_mask: int,
+) -> tuple[str, ...]:
+    if type(value) is not tuple:
+        raise TypeError("coefficient schema domain_tags must be an exact tuple")
+    if len(value) > len(SURFACE_DOMAIN_TAG_CATALOGUE):
+        raise ValueError("coefficient schema has too many domain tags")
+    for tag in value:
+        _bounded_text(
+            tag,
+            "coefficient schema domain tag",
+            max_bytes=MAX_FEATURE_METADATA_TEXT_BYTES,
+        )
+    if value != tuple(sorted(set(value))):
+        raise ValueError("coefficient schema domain tags must be sorted and unique")
+    expected = tuple(
+        tag
+        for tag_index, tag in enumerate(SURFACE_DOMAIN_TAG_CATALOGUE)
+        if active_tag_mask & (1 << tag_index)
+    )
+    if value != expected:
+        raise ValueError("coefficient schema tags do not match its active_tag_mask")
+    return value
+
+
+def _validate_execution_estimate_shape(
+    estimate: PreparedReferenceExecutionEstimate,
+    plan: PreparedNestedLodoPlan,
+) -> None:
+    active_feature_counts = estimate.active_feature_counts
+    if type(active_feature_counts) is not tuple:
+        raise TypeError("prepared active_feature_counts must be an exact tuple")
+    if len(active_feature_counts) != len(plan.training_subsets):
+        raise ValueError("prepared active_feature_counts have the wrong bounded length")
+    for width in active_feature_counts:
+        _exact_nonnegative_int(width, "prepared active feature count")
+        if not 1 <= width <= plan.feature_count:
+            raise ValueError("prepared active feature count is outside the plan")
+    for name in PreparedReferenceExecutionEstimate.__dataclass_fields__:
+        if name not in {"plan", "active_feature_counts"}:
+            _exact_nonnegative_int(getattr(estimate, name), name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,11 +293,26 @@ class PreparedAllDomainAssemblyEstimate:
             raise ValueError("prepared assembly exceeds the modeled work limit")
 
 
-def _active_tag_mask(statistics: PreparedDomainStatisticsBundle) -> int:
-    mask = 0
-    for domain in statistics.domain_statistics:
-        mask |= domain.active_tag_mask
-    return mask
+@dataclass(frozen=True, slots=True)
+class _PreparedAssemblyShapeSnapshot:
+    """Primitive-only facts admitted before the estimator performs arithmetic."""
+
+    plan: PreparedNestedLodoPlan
+    active_tag_mask: int
+    embedding_dimension: int
+    input_numeric_bytes: int
+    store_row_key_utf8_bytes: int
+    feature_shard_row_key_utf8_bytes: int
+    serialized_metadata_bytes: int
+    coefficient_cells: int
+    score_cells: int
+
+    def __post_init__(self) -> None:
+        if type(self.plan) is not PreparedNestedLodoPlan:
+            raise TypeError("assembly shape snapshot plan must be exact")
+        for name in self.__dataclass_fields__:
+            if name != "plan":
+                _exact_nonnegative_int(getattr(self, name), name)
 
 
 def _active_feature_count(plan: PreparedNestedLodoPlan, mask: int) -> int:
@@ -179,40 +320,20 @@ def _active_feature_count(plan: PreparedNestedLodoPlan, mask: int) -> int:
 
 
 def _estimate_assembly(
-    store: PreparedFeatureStore,
-    statistics: PreparedDomainStatisticsBundle,
-    raw_scores: PreparedRawScoreBundle,
+    snapshot: _PreparedAssemblyShapeSnapshot,
 ) -> PreparedAllDomainAssemblyEstimate:
     """Estimate the complete code-owned traversal without reading numeric leaves."""
 
-    plan = store.plan
+    plan = snapshot.plan
     n = plan.work.example_count
     d = plan.feature_count
     m = plan.target_count
     domain_count = len(plan.domains)
-    active_width = _active_feature_count(plan, _active_tag_mask(statistics))
+    active_width = _active_feature_count(plan, snapshot.active_tag_mask)
 
     statistics_scalars = domain_count * (d + m + d * (d + 1) // 2 + d * m)
-    coefficient_bytes = sum(
-        len(block.weights_payload) + len(block.intercepts_payload)
-        for block in raw_scores.coefficients.blocks
-    )
-    score_bytes = sum(len(block.scores_payload) for block in raw_scores.blocks)
-    input_numeric_bytes = (
-        len(store.feature_payload)
-        + len(store.target_payload)
-        + statistics_scalars * _F64_BYTES
-        + coefficient_bytes
-        + score_bytes
-    )
-    row_key_utf8_bytes = sum(
-        len(example_id.encode("utf-8")) + len(prompt_sha256)
-        for example_id, prompt_sha256 in zip(
-            store.example_ids,
-            store.prompt_sha256s,
-            strict=True,
-        )
-    )
+    input_numeric_bytes = snapshot.input_numeric_bytes
+    row_key_utf8_bytes = snapshot.store_row_key_utf8_bytes
     aggregate_scalars = d + m + d * (d + 1) // 2 + d * m
     aggregate_numeric_bytes = aggregate_scalars * _F64_BYTES
     solve_workspace_bytes = (
@@ -267,18 +388,7 @@ def _estimate_assembly(
         + calibration_object_bytes
     )
 
-    serialized_metadata_bytes = 2 * sum(
-        len(domain.encode("utf-8")) for domain in plan.domains
-    ) + sum(len(model_id.encode("utf-8")) for model_id in store.model_ids)
-    serialized_metadata_bytes += sum(
-        len(tag.encode("utf-8")) for tag in SURFACE_DOMAIN_TAG_CATALOGUE
-    )
-    if store.embedding_identity is not None:
-        serialized_metadata_bytes += sum(
-            len(getattr(store.embedding_identity, name).encode("utf-8"))
-            for name in ("provider", "model_id", "revision", "pooling")
-        )
-        serialized_metadata_bytes += len(store.embedding_identity.asset_manifest_sha256)
+    serialized_metadata_bytes = snapshot.serialized_metadata_bytes
     serialized_hash_bytes = (7 + 3 * domain_count + 2 * m) * 64
     calibration_source_fields = 8 * domain_count
     json_structure_count = 80 + 8 * m + calibration_source_fields
@@ -292,7 +402,8 @@ def _estimate_assembly(
     parser_and_staging_bytes = 3 * canonical_json_upper_bound_bytes
     modeled_bytes = (
         input_numeric_bytes
-        + 2 * row_key_utf8_bytes
+        + row_key_utf8_bytes
+        + snapshot.feature_shard_row_key_utf8_bytes
         + aggregate_numeric_bytes
         + solve_workspace_bytes
         + target_shard_bytes
@@ -302,14 +413,12 @@ def _estimate_assembly(
         + parser_and_staging_bytes
     )
 
-    coefficient_cells = coefficient_bytes // _F64_BYTES
-    score_cells = score_bytes // _F64_BYTES
     resnapshot_work_units = (
         2 * n * (d + m)
-        + n * store.embedding_dimension
+        + n * snapshot.embedding_dimension
         + 2 * domain_count * aggregate_scalars
-        + 2 * coefficient_cells
-        + 2 * score_cells
+        + 2 * snapshot.coefficient_cells
+        + 2 * snapshot.score_cells
         + n * d
     )
     aggregate_work_units = domain_count * aggregate_scalars
@@ -367,8 +476,7 @@ def _preflight_input_shape(
         feature_count=store.plan.feature_count,
         target_count=store.plan.target_count,
     )
-    if plan != store.plan:
-        raise ValueError("prepared plan is not its canonical reconstruction")
+    _validate_plan_layout(store.plan, plan, "prepared store")
     if not (
         4 <= len(plan.domains) <= MAX_PREPARED_DOMAINS
         and plan.work.example_count <= MAX_PREPARED_EXAMPLES
@@ -376,50 +484,104 @@ def _preflight_input_shape(
         and plan.target_count <= MAX_PREPARED_TARGETS
     ):
         raise ValueError("prepared assembly shape exceeds the reviewed graph boundary")
-    if store.algorithm_id != PREPARED_FEATURE_STORE_ALGORITHM_ID:
+    if type(store.algorithm_id) is not str or store.algorithm_id != (
+        PREPARED_FEATURE_STORE_ALGORITHM_ID
+    ):
         raise ValueError("prepared store has an unexpected algorithm identity")
-    if (
-        type(store.model_ids) is not tuple
-        or len(store.model_ids) != plan.target_count
-        or store.model_ids != tuple(sorted(set(store.model_ids)))
-        or any(type(model_id) is not str or not model_id.strip() for model_id in store.model_ids)
-    ):
-        raise ValueError("prepared store has a malformed model catalogue")
+    model_ids = _snapshot_model_ids_for_preflight(
+        store.model_ids,
+        expected_count=plan.target_count,
+        context="prepared store",
+    )
     row_count = plan.work.example_count
-    for name, values in (
-        ("store example_ids", store.example_ids),
-        ("store prompt_sha256s", store.prompt_sha256s),
-        ("store domain_indices", store.domain_indices),
-    ):
-        if type(values) is not tuple or len(values) != row_count:
-            raise ValueError(f"{name} have the wrong canonical bounded length")
+    example_ids = store.example_ids
+    prompt_sha256s = store.prompt_sha256s
+    domain_indices = store.domain_indices
+    if type(example_ids) is not tuple or len(example_ids) != row_count:
+        raise ValueError("store example_ids have the wrong canonical bounded length")
+    if type(prompt_sha256s) is not tuple or len(prompt_sha256s) != row_count:
+        raise ValueError("store prompt_sha256s have the wrong canonical bounded length")
+    if type(domain_indices) is not tuple or len(domain_indices) != row_count:
+        raise ValueError("store domain_indices have the wrong canonical bounded length")
+    store_row_key_utf8_bytes = _row_key_text_bytes(
+        example_ids,
+        prompt_sha256s,
+        require_canonical_order=True,
+    )
     if any(
         type(domain_index) is not int or not 0 <= domain_index < len(plan.domains)
-        for domain_index in store.domain_indices
+        for domain_index in domain_indices
     ):
         raise ValueError("store domain indices are outside the canonical plan")
+    embedding_dimension = _exact_nonnegative_int(
+        store.embedding_dimension,
+        "store embedding_dimension",
+    )
+    if plan.feature_count != _UNIVERSAL_SURFACE_DIMENSION + embedding_dimension:
+        raise ValueError("store embedding dimension does not match the prepared plan")
+    embedding_identity = _fresh_embedding_identity(store.embedding_identity)
+    if (embedding_dimension == 0) != (embedding_identity is None):
+        raise ValueError("store embedding identity and dimension disagree")
+    if embedding_dimension == 0:
+        if store.embedding_snapshot_sha256 is not None:
+            raise ValueError("surface-only store cannot declare an embedding snapshot")
+    else:
+        _sha256_hex(store.embedding_snapshot_sha256, "store embedding_snapshot_sha256")
+    _sha256_hex(store.source_fit_sha256, "store source_fit_sha256")
+    _sha256_hex(store.sha256, "store sha256")
 
-    if type(statistics.domain_statistics) is not tuple or len(statistics.domain_statistics) != len(
-        plan.domains
+    feature_payload = store.feature_payload
+    target_payload = store.target_payload
+    if type(feature_payload) is not bytes or type(target_payload) is not bytes:
+        raise TypeError("prepared store payloads must be immutable bytes")
+    feature_bytes = row_count * plan.feature_count * _F64_BYTES
+    target_bytes = row_count * plan.target_count * _F64_BYTES
+    if len(feature_payload) != feature_bytes or len(target_payload) != target_bytes:
+        raise ValueError("prepared store payloads have the wrong bounded lengths")
+    if feature_bytes + target_bytes > MAX_PREPARED_REFERENCE_NUMERIC_BYTES:
+        raise ValueError("prepared store exceeds the reference numeric-byte limit")
+
+    _validate_plan_layout(statistics.plan, plan, "prepared statistics")
+    if type(statistics.algorithm_id) is not str or statistics.algorithm_id != (
+        PREPARED_STATISTICS_BUNDLE_ALGORITHM_ID
     ):
+        raise ValueError("prepared statistics have an unexpected algorithm identity")
+    _snapshot_model_ids_for_preflight(
+        statistics.model_ids,
+        expected_count=plan.target_count,
+        context="prepared statistics",
+    )
+    statistics_embedding_dimension = _exact_nonnegative_int(
+        statistics.embedding_dimension,
+        "statistics embedding_dimension",
+    )
+    statistics_embedding_identity = _fresh_embedding_identity(statistics.embedding_identity)
+    if plan.feature_count != _UNIVERSAL_SURFACE_DIMENSION + statistics_embedding_dimension:
+        raise ValueError("statistics embedding dimension does not match the prepared plan")
+    if (statistics_embedding_dimension == 0) != (statistics_embedding_identity is None):
+        raise ValueError("statistics embedding identity and dimension disagree")
+    _sha256_hex(statistics.store_sha256, "statistics store_sha256")
+    _sha256_hex(statistics.sha256, "statistics sha256")
+    domain_statistics = statistics.domain_statistics
+    if type(domain_statistics) is not tuple or len(domain_statistics) != len(plan.domains):
         raise ValueError("statistics children have the wrong canonical bounded length")
-    if not all(type(child) is PreparedDomainStatistics for child in statistics.domain_statistics):
+    if not all(type(child) is PreparedDomainStatistics for child in domain_statistics):
         raise TypeError("statistics children must be exact PreparedDomainStatistics values")
-    if (
-        statistics.plan != plan
-        or statistics.algorithm_id != PREPARED_STATISTICS_BUNDLE_ALGORITHM_ID
-        or any(
-            child.algorithm_id != PREPARED_STATISTICS_ALGORITHM_ID
-            for child in statistics.domain_statistics
-        )
-    ):
-        raise ValueError("prepared statistics have an unexpected plan or algorithm identity")
     expected_xx = plan.feature_count * (plan.feature_count + 1) // 2
     expected_xy = plan.feature_count * plan.target_count
-    for domain_index, child in enumerate(statistics.domain_statistics):
+    active_tag_mask = 0
+    for domain_index, child in enumerate(domain_statistics):
         if (
-            child.domain_index != domain_index
+            type(child.algorithm_id) is not str
+            or child.algorithm_id != PREPARED_STATISTICS_ALGORITHM_ID
+            or type(child.domain_index) is not int
+            or child.domain_index != domain_index
+            or type(child.row_count) is not int
             or child.row_count != plan.domain_example_counts[domain_index]
+            or type(child.feature_count) is not int
+            or child.feature_count != plan.feature_count
+            or type(child.target_count) is not int
+            or child.target_count != plan.target_count
             or type(child.feature_means) is not tuple
             or len(child.feature_means) != plan.feature_count
             or type(child.target_means) is not tuple
@@ -432,6 +594,9 @@ def _preflight_input_shape(
             or not 0 <= child.active_tag_mask < 1 << len(SURFACE_DOMAIN_TAG_CATALOGUE)
         ):
             raise ValueError("statistics child has a malformed bounded shape")
+        _sha256_hex(child.content_sha256, "statistics child content_sha256")
+        _sha256_hex(child.sha256, "statistics child sha256")
+        active_tag_mask |= child.active_tag_mask
 
     coefficients = raw_scores.coefficients
     shards = raw_scores.feature_shards
@@ -441,19 +606,65 @@ def _preflight_input_shape(
         raise TypeError("raw-score feature shards must be an exact bundle")
     if type(coefficients.execution_estimate) is not PreparedReferenceExecutionEstimate:
         raise TypeError("prepared execution estimate must be exact")
+    _validate_plan_layout(raw_scores.plan, plan, "prepared raw scores")
+    _validate_plan_layout(coefficients.plan, plan, "prepared coefficients")
+    _validate_plan_layout(
+        coefficients.execution_estimate.plan,
+        plan,
+        "prepared execution estimate",
+    )
+    _validate_plan_layout(shards.plan, plan, "prepared feature shards")
+    _validate_execution_estimate_shape(coefficients.execution_estimate, plan)
+    _positive_binary64(coefficients.ridge, "coefficient bundle ridge")
     if (
-        raw_scores.plan != plan
-        or coefficients.plan != plan
-        or coefficients.execution_estimate.plan != plan
-        or shards.plan != plan
-    ):
-        raise ValueError("prepared raw-score parents do not share the canonical plan")
-    if (
-        coefficients.algorithm_id != PREPARED_COEFFICIENT_BUNDLE_ALGORITHM_ID
+        type(coefficients.algorithm_id) is not str
+        or coefficients.algorithm_id != PREPARED_COEFFICIENT_BUNDLE_ALGORITHM_ID
+        or type(shards.algorithm_id) is not str
         or shards.algorithm_id != PREPARED_FEATURE_SHARD_BUNDLE_ALGORITHM_ID
+        or type(raw_scores.algorithm_id) is not str
         or raw_scores.algorithm_id != PREPARED_RAW_SCORE_BUNDLE_ALGORITHM_ID
     ):
         raise ValueError("prepared raw-score parent has an unexpected algorithm identity")
+    _snapshot_model_ids_for_preflight(
+        coefficients.model_ids,
+        expected_count=plan.target_count,
+        context="prepared coefficients",
+    )
+    coefficient_embedding_dimension = _exact_nonnegative_int(
+        coefficients.embedding_dimension,
+        "coefficient embedding_dimension",
+    )
+    coefficient_embedding_identity = _fresh_embedding_identity(coefficients.embedding_identity)
+    if plan.feature_count != _UNIVERSAL_SURFACE_DIMENSION + coefficient_embedding_dimension:
+        raise ValueError("coefficient embedding dimension does not match the prepared plan")
+    if (coefficient_embedding_dimension == 0) != (coefficient_embedding_identity is None):
+        raise ValueError("coefficient embedding identity and dimension disagree")
+    _sha256_hex(coefficients.source_store_sha256, "coefficient source_store_sha256")
+    _sha256_hex(
+        coefficients.statistics_bundle_sha256,
+        "coefficient statistics_bundle_sha256",
+    )
+    _sha256_hex(coefficients.sha256, "coefficient bundle sha256")
+    domain_active_tag_masks = coefficients.domain_active_tag_masks
+    if type(domain_active_tag_masks) is not tuple or len(domain_active_tag_masks) != len(
+        plan.domains
+    ):
+        raise ValueError("coefficient domain tag masks do not match the plan")
+    for mask in domain_active_tag_masks:
+        value = _exact_nonnegative_int(mask, "coefficient domain active-tag mask")
+        if value >= 1 << len(SURFACE_DOMAIN_TAG_CATALOGUE):
+            raise ValueError("coefficient domain active-tag mask has an unknown bit")
+    shard_embedding_dimension = _exact_nonnegative_int(
+        shards.embedding_dimension,
+        "feature-shard embedding_dimension",
+    )
+    shard_embedding_identity = _fresh_embedding_identity(shards.embedding_identity)
+    if plan.feature_count != _UNIVERSAL_SURFACE_DIMENSION + shard_embedding_dimension:
+        raise ValueError("feature-shard embedding dimension does not match the prepared plan")
+    if (shard_embedding_dimension == 0) != (shard_embedding_identity is None):
+        raise ValueError("feature-shard embedding identity and dimension disagree")
+    _sha256_hex(shards.sha256, "feature-shard bundle sha256")
+    _sha256_hex(raw_scores.sha256, "raw-score bundle sha256")
     child_specs = (
         (
             coefficients.blocks,
@@ -469,71 +680,137 @@ def _preflight_input_shape(
             raise ValueError(f"{name} have the wrong canonical bounded length")
         if not all(type(child) is child_type for child in children):
             raise TypeError(f"{name} must contain exact project values")
-        if any(child.plan != plan for child in children):
-            raise ValueError(f"{name} do not share the canonical prepared plan")
+        for child in children:
+            _validate_plan_layout(child.plan, plan, name)
     if any(
-        block.algorithm_id != PREPARED_COEFFICIENT_BLOCK_ALGORITHM_ID
+        type(block.algorithm_id) is not str
+        or block.algorithm_id != PREPARED_COEFFICIENT_BLOCK_ALGORITHM_ID
+        or type(block.solver_id) is not str
         or block.solver_id != PREPARED_MOMENT_RIDGE_SOLVER_ID
         for block in coefficients.blocks
     ):
         raise ValueError("prepared coefficient block has an unexpected frozen identity")
+    coefficient_bytes = 0
     for block_index, block in enumerate(coefficients.blocks):
+        _positive_binary64(block.ridge, "coefficient block ridge")
+        schema = block.feature_schema
         if (
-            type(block.feature_schema) is not PromptFeatureSchema
-            or type(block.model_ids) is not tuple
-            or block.model_ids != store.model_ids
+            type(schema) is not PromptFeatureSchema
+            or type(schema.schema_version) is not int
+            or schema.schema_version != FEATURE_SCHEMA_VERSION
+            or type(schema.continuous_means) is not tuple
+            or len(schema.continuous_means) != _CONTINUOUS_COUNT
+            or type(schema.continuous_scales) is not tuple
+            or len(schema.continuous_scales) != _CONTINUOUS_COUNT
+            or type(schema.embedding_dimension) is not int
+            or schema.embedding_dimension < 0
             or type(block.active_tag_mask) is not int
             or not 0 <= block.active_tag_mask < 1 << len(SURFACE_DOMAIN_TAG_CATALOGUE)
         ):
             raise ValueError("prepared coefficient block has a malformed bounded shape")
-        expected_weight_bytes = plan.target_count * block.feature_schema.dimension * _F64_BYTES
+        domain_tags = _snapshot_domain_tags_for_preflight(
+            schema.domain_tags,
+            active_tag_mask=block.active_tag_mask,
+        )
+        _fresh_embedding_identity(schema.embedding_identity)
+        block_model_ids = _snapshot_model_ids_for_preflight(
+            block.model_ids,
+            expected_count=plan.target_count,
+            context="prepared coefficient block",
+        )
+        if block_model_ids != model_ids:
+            raise ValueError("prepared coefficient block model catalogue does not match the store")
+        schema_dimension = _TAG_OFFSET + len(domain_tags) + schema.embedding_dimension
+        if schema_dimension > plan.feature_count:
+            raise ValueError("prepared coefficient schema exceeds the prepared plan")
+        weights_payload = block.weights_payload
+        intercepts_payload = block.intercepts_payload
+        if type(weights_payload) is not bytes or type(intercepts_payload) is not bytes:
+            raise TypeError("prepared coefficient payloads must be immutable bytes")
+        expected_weight_bytes = plan.target_count * schema_dimension * _F64_BYTES
         if (
-            len(block.weights_payload) != expected_weight_bytes
-            or len(block.intercepts_payload) != plan.target_count * _F64_BYTES
+            len(weights_payload) != expected_weight_bytes
+            or len(intercepts_payload) != plan.target_count * _F64_BYTES
+            or type(block.subset_index) is not int
             or block.subset_index != block_index
         ):
             raise ValueError("prepared coefficient payload has the wrong exact length")
-    if any(shard.algorithm_id != PREPARED_FEATURE_SHARD_ALGORITHM_ID for shard in shards.shards):
+        _sha256_hex(block.subset_statistics_sha256, "subset_statistics_sha256")
+        _sha256_hex(block.included_content_sha256, "included_content_sha256")
+        _sha256_hex(block.sha256, "coefficient block sha256")
+        coefficient_bytes += len(weights_payload) + len(intercepts_payload)
+    if any(
+        type(shard.algorithm_id) is not str
+        or shard.algorithm_id != PREPARED_FEATURE_SHARD_ALGORITHM_ID
+        for shard in shards.shards
+    ):
         raise ValueError("prepared feature shard has an unexpected frozen identity")
+    feature_shard_row_key_utf8_bytes = 0
     for domain_index, shard in enumerate(shards.shards):
+        shard_example_ids = shard.example_ids
+        shard_prompt_sha256s = shard.prompt_sha256s
         if (
-            shard.domain_index != domain_index
+            type(shard.domain_index) is not int
+            or shard.domain_index != domain_index
+            or type(shard.row_count) is not int
             or shard.row_count != plan.domain_example_counts[domain_index]
-            or type(shard.example_ids) is not tuple
-            or len(shard.example_ids) != shard.row_count
-            or type(shard.prompt_sha256s) is not tuple
-            or len(shard.prompt_sha256s) != shard.row_count
+            or type(shard_example_ids) is not tuple
+            or len(shard_example_ids) != shard.row_count
+            or type(shard_prompt_sha256s) is not tuple
+            or len(shard_prompt_sha256s) != shard.row_count
         ):
             raise ValueError("prepared feature shard has a malformed bounded shape")
+        shard_dimension = _exact_nonnegative_int(
+            shard.embedding_dimension,
+            "feature-shard child embedding_dimension",
+        )
+        shard_identity = _fresh_embedding_identity(shard.embedding_identity)
+        if plan.feature_count != _UNIVERSAL_SURFACE_DIMENSION + shard_dimension:
+            raise ValueError("feature-shard child embedding dimension does not match the plan")
+        if (shard_dimension == 0) != (shard_identity is None):
+            raise ValueError("feature-shard child embedding identity and dimension disagree")
+        feature_shard_row_key_utf8_bytes += _row_key_text_bytes(
+            shard_example_ids,
+            shard_prompt_sha256s,
+            require_canonical_order=True,
+        )
+        if feature_shard_row_key_utf8_bytes > MAX_PREPARED_REFERENCE_TEXT_UTF8_BYTES:
+            raise ValueError("feature-shard row keys exceed the reference text-byte limit")
+        _sha256_hex(shard.feature_content_sha256, "feature-shard content_sha256")
+        _sha256_hex(shard.sha256, "feature-shard sha256")
     if any(
-        block.algorithm_id != PREPARED_RAW_SCORE_BLOCK_ALGORITHM_ID
+        type(block.algorithm_id) is not str
+        or block.algorithm_id != PREPARED_RAW_SCORE_BLOCK_ALGORITHM_ID
+        or type(block.scorer_id) is not str
         or block.scorer_id != PREPARED_RAW_SCORER_ID
         for block in raw_scores.blocks
     ):
         raise ValueError("prepared raw-score block has an unexpected frozen identity")
+    score_bytes = 0
     for block_index, block in enumerate(raw_scores.blocks):
         expected_score_bytes = (
             plan.score_blocks[block_index].row_count * plan.target_count * _F64_BYTES
         )
+        block_model_ids = _snapshot_model_ids_for_preflight(
+            block.model_ids,
+            expected_count=plan.target_count,
+            context="prepared raw-score block",
+        )
+        scores_payload = block.scores_payload
+        if type(scores_payload) is not bytes:
+            raise TypeError("prepared raw-score payloads must be immutable bytes")
         if (
-            block.block_index != block_index
-            or type(block.model_ids) is not tuple
-            or block.model_ids != store.model_ids
-            or len(block.scores_payload) != expected_score_bytes
+            type(block.block_index) is not int
+            or block.block_index != block_index
+            or block_model_ids != model_ids
+            or len(scores_payload) != expected_score_bytes
         ):
             raise ValueError("prepared raw-score block has a malformed bounded shape")
+        _sha256_hex(block.coefficient_block_sha256, "coefficient_block_sha256")
+        _sha256_hex(block.scored_feature_shard_sha256, "scored_feature_shard_sha256")
+        _sha256_hex(block.sha256, "raw-score block sha256")
+        score_bytes += len(scores_payload)
 
-    feature_bytes = plan.work.example_count * plan.feature_count * _F64_BYTES
-    target_bytes = plan.work.example_count * plan.target_count * _F64_BYTES
-    if (
-        type(store.feature_payload) is not bytes
-        or type(store.target_payload) is not bytes
-        or len(store.feature_payload) != feature_bytes
-        or len(store.target_payload) != target_bytes
-    ):
-        raise ValueError("prepared store payloads have the wrong bounded lengths")
-    if feature_bytes + target_bytes > MAX_PREPARED_REFERENCE_NUMERIC_BYTES:
-        raise ValueError("prepared store exceeds the reference numeric-byte limit")
     per_domain_scalars = (
         plan.feature_count
         + plan.target_count
@@ -542,15 +819,38 @@ def _preflight_input_shape(
     )
     if len(plan.domains) * per_domain_scalars > MAX_PREPARED_REFERENCE_STATISTIC_SCALARS:
         raise ValueError("prepared statistics exceed the reference scalar limit")
-    if any(
-        type(block.weights_payload) is not bytes or type(block.intercepts_payload) is not bytes
-        for block in coefficients.blocks
-    ):
-        raise TypeError("prepared coefficient payloads must be immutable bytes")
-    if any(type(block.scores_payload) is not bytes for block in raw_scores.blocks):
-        raise TypeError("prepared raw-score payloads must be immutable bytes")
-
-    estimate = _estimate_assembly(store, statistics, raw_scores)
+    statistics_scalars = len(plan.domains) * per_domain_scalars
+    input_numeric_bytes = (
+        feature_bytes
+        + target_bytes
+        + statistics_scalars * _F64_BYTES
+        + coefficient_bytes
+        + score_bytes
+    )
+    serialized_metadata_bytes = 2 * sum(
+        len(domain.encode("utf-8")) for domain in plan.domains
+    ) + sum(len(model_id.encode("utf-8")) for model_id in model_ids)
+    serialized_metadata_bytes += sum(
+        len(tag.encode("utf-8")) for tag in SURFACE_DOMAIN_TAG_CATALOGUE
+    )
+    if embedding_identity is not None:
+        serialized_metadata_bytes += sum(
+            len(getattr(embedding_identity, name).encode("utf-8"))
+            for name in ("provider", "model_id", "revision", "pooling")
+        )
+        serialized_metadata_bytes += len(embedding_identity.asset_manifest_sha256)
+    snapshot = _PreparedAssemblyShapeSnapshot(
+        plan=plan,
+        active_tag_mask=active_tag_mask,
+        embedding_dimension=embedding_dimension,
+        input_numeric_bytes=input_numeric_bytes,
+        store_row_key_utf8_bytes=store_row_key_utf8_bytes,
+        feature_shard_row_key_utf8_bytes=feature_shard_row_key_utf8_bytes,
+        serialized_metadata_bytes=serialized_metadata_bytes,
+        coefficient_cells=coefficient_bytes // _F64_BYTES,
+        score_cells=score_bytes // _F64_BYTES,
+    )
+    estimate = _estimate_assembly(snapshot)
     return plan, estimate
 
 
@@ -569,13 +869,27 @@ def _fresh_embedding_identity(identity: EmbeddingIdentity | None) -> EmbeddingId
         return None
     if type(identity) is not EmbeddingIdentity:
         raise TypeError("embedding identity must be exact")
+    text_fields = {
+        name: _bounded_text(
+            getattr(identity, name),
+            f"embedding {name}",
+            max_bytes=MAX_EMBEDDING_IDENTITY_TEXT_BYTES,
+        )
+        for name in ("provider", "model_id", "revision", "pooling")
+    }
+    if type(identity.normalize) is not bool:
+        raise TypeError("embedding normalize must be an exact boolean")
+    asset_manifest_sha256 = _sha256_hex(
+        identity.asset_manifest_sha256,
+        "embedding asset_manifest_sha256",
+    )
     return EmbeddingIdentity(
-        provider=identity.provider,
-        model_id=identity.model_id,
-        revision=identity.revision,
-        pooling=identity.pooling,
+        provider=text_fields["provider"],
+        model_id=text_fields["model_id"],
+        revision=text_fields["revision"],
+        pooling=text_fields["pooling"],
         normalize=identity.normalize,
-        asset_manifest_sha256=identity.asset_manifest_sha256,
+        asset_manifest_sha256=asset_manifest_sha256,
     )
 
 
