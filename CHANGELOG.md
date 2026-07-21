@@ -9,6 +9,12 @@ the public API is pre-1.0.
 
 ### Changed
 
+- Hardened prepared all-domain assembly and artifact persistence against
+  post-construction mutation. Phase-one admission now snapshots bounded primitive
+  metadata and immutable payload sizes before estimation, while artifact construction,
+  serialization, and save reject malformed nested schema/calibrator state before value
+  traversal or staging. Canonical JSON fields, bytes, hashes, algorithm identities, and
+  public signatures remain unchanged.
 - Re-audited the bilingual eight-boundary maintainer packet against implementation
   snapshot `a1d7bd7`, separating that snapshot from later documentation commits. The
   packet now scopes each mutation to the invariant it directly exercises, decomposes

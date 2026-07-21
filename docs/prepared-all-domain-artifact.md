@@ -92,8 +92,11 @@ not allowed to begin until every earlier phase succeeds.
    the exact three parent types and lowercase expected-digest syntax, canonically
    reconstructs the graph, validates frozen algorithm and solver/scorer identities,
    child counts, tuple shapes, byte payload lengths, tag masks, and configured graph
-   limits, and computes the complete assembly estimate. This phase uses lengths and
-   metadata; it does not walk numeric leaf values.
+   limits, and computes the complete assembly estimate. Text types and character caps
+   are checked before UTF-8 encoding, and payload types are checked before `len()`.
+   The estimator consumes only the resulting primitive shape snapshot, so it never
+   re-reads caller-mutable nested metadata. This phase uses lengths and metadata; it
+   does not walk numeric leaf values.
 2. **First trusted-pin comparison.** The cached source-fit, store, statistics-bundle,
    and raw-score-bundle SHA-256 values must match the four expected pins.
 3. **Complete canonical resnapshot.** Every admitted parent and bounded descendant is
@@ -232,12 +235,17 @@ The caller remains responsible for supplying an audited local offline provider.
 `build_predictor` does not download a model, authorize a provider, or prove that a
 provider implementation is network-free.
 
-`save()` validates the complete canonical document before creating exactly one random,
-exclusive same-directory stage. It writes and syncs that stage, verifies that the
-destination and stage did not change, replaces the destination once, and syncs the
-parent directory where supported. It deliberately creates no backup. Validation or
-staging failure leaves an existing destination unchanged under the tested ordinary
-OS/Python failure model.
+`to_dict()`, `to_json()`, and `save()` first construct a bounded fresh snapshot of the
+schema, model state, calibrators, and lineage. Exact tuple shapes are checked before
+numeric traversal, and the complete numeric-scalar budget is checked before any model
+or calibrator values are copied. Canonical JSON is emitted incrementally with running
+character and UTF-8 byte counts, so the 32 MiB cap is enforced before an oversized
+document can be retained. `save()` completes that
+validation before creating exactly one random, exclusive same-directory stage. It
+writes and syncs that stage, verifies that the destination and stage did not change,
+replaces the destination once, and syncs the parent directory where supported. It
+deliberately creates no backup. Validation or staging failure leaves an existing
+destination unchanged under the tested ordinary OS/Python failure model.
 
 `load()` requires `expected_artifact_sha256`. It rejects symlinks/reparse points and
 non-regular nodes, opens without following the final link where supported, bounds the
