@@ -14,7 +14,7 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import NoReturn
 
 import pytest
@@ -197,6 +197,212 @@ def _nested(payload: dict[str, object], path: tuple[str | int, ...]) -> object:
     return current
 
 
+class _PoisonIterable:
+    def __iter__(self) -> NoReturn:
+        raise AssertionError("bounded validation traversed a poisoned iterable")
+
+
+class _PoisonLength:
+    def __len__(self) -> NoReturn:
+        raise AssertionError("bounded validation measured a poisoned payload")
+
+
+class _PoisonDict(dict[str, object]):
+    def items(self) -> NoReturn:
+        raise AssertionError("bounded validation traversed poisoned mapping items")
+
+    def __iter__(self) -> NoReturn:
+        raise AssertionError("bounded validation traversed a poisoned mapping")
+
+
+class _PoisonList(list[str]):
+    def __iter__(self) -> NoReturn:
+        raise AssertionError("bounded validation traversed a poisoned list")
+
+
+def test_model_calibration_rejects_mutated_calibrator_before_traversal() -> None:
+    fixture = _fixture()
+    calibration = fixture.artifact.models["m1"].calibration
+    object.__setattr__(calibration.calibrator, "upper_bounds", _PoisonIterable())
+
+    with pytest.raises(TypeError, match="exact tuples"):
+        PreparedModelCalibration(
+            model_id=calibration.model_id,
+            sources=calibration.sources,
+            input_sha256=calibration.input_sha256,
+            calibrator=calibration.calibrator,
+        )
+
+
+@pytest.mark.parametrize("entry_point", ["to_dict", "to_json"])
+def test_artifact_reads_resnapshot_mutated_calibrator_before_serialization(
+    entry_point: str,
+) -> None:
+    artifact = _fixture().artifact
+    calibration = artifact.models["m1"].calibration
+    object.__setattr__(calibration.calibrator, "values", _PoisonIterable())
+
+    with pytest.raises(TypeError, match="exact tuples"):
+        getattr(artifact, entry_point)()
+
+
+def test_artifact_rejects_replaced_mapping_proxy_without_traversal() -> None:
+    artifact = _fixture().artifact
+    object.__setattr__(
+        artifact,
+        "models",
+        MappingProxyType(_PoisonDict(artifact.models)),
+    )
+
+    with pytest.raises(ValueError, match="mapping changed"):
+        artifact.to_json()
+
+
+def test_artifact_rejects_training_domain_list_subclass_without_traversal() -> None:
+    artifact = _fixture().artifact
+    object.__setattr__(
+        artifact,
+        "training_domains",
+        _PoisonList(artifact.training_domains),
+    )
+
+    with pytest.raises(TypeError, match="exact tuple"):
+        artifact.to_json()
+
+
+def test_artifact_to_json_rejects_mutated_schema_before_traversal() -> None:
+    artifact = _fixture().artifact
+    object.__setattr__(artifact.feature_schema, "continuous_means", _PoisonIterable())
+
+    with pytest.raises(ValueError, match="three-value tuple"):
+        artifact.to_json()
+
+
+def test_artifact_caps_mutated_schema_tag_before_schema_reconstruction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = _fixture().artifact
+    object.__setattr__(artifact.feature_schema, "domain_tags", ("x" * 4097,))
+
+    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("oversized schema tag reached schema reconstruction")
+
+    monkeypatch.setattr(type(artifact.feature_schema), "__post_init__", forbidden)
+    with pytest.raises(ValueError, match="UTF-8 byte limit"):
+        artifact.to_json()
+
+
+def test_artifact_caps_mutated_embedding_text_before_identity_reconstruction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = _fixture(embedded=True).artifact
+    assert artifact.feature_schema.embedding_identity is not None
+    object.__setattr__(
+        artifact.feature_schema.embedding_identity,
+        "provider",
+        "x" * 4097,
+    )
+
+    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("oversized identity reached identity reconstruction")
+
+    monkeypatch.setattr(EmbeddingIdentity, "__post_init__", forbidden)
+    with pytest.raises(ValueError, match="UTF-8 byte limit"):
+        artifact.to_json()
+
+
+def test_artifact_caps_mutated_training_domain_before_serialization() -> None:
+    artifact = _fixture().artifact
+    object.__setattr__(
+        artifact,
+        "training_domains",
+        ("x" * 4097, *artifact.training_domains[1:]),
+    )
+
+    with pytest.raises(ValueError, match="UTF-8 byte limit"):
+        artifact.to_json()
+
+
+def test_from_prepared_components_checks_lineage_before_coefficient_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+
+    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("invalid lineage reached coefficient extraction")
+
+    monkeypatch.setattr(PreparedFinalCoefficient, "weights_for_model_index", forbidden)
+    with pytest.raises(TypeError, match="lineage"):
+        PreparedBilinearPredictorArtifact.from_prepared_components(
+            fixture.coefficient,
+            {model_id: state.calibration for model_id, state in fixture.artifact.models.items()},
+            training_domains=fixture.plan.domains,
+            training_example_count=fixture.plan.work.example_count,
+            lineage=None,  # type: ignore[arg-type]
+        )
+
+
+def test_from_prepared_components_rejects_poisoned_payload_before_len() -> None:
+    fixture = _fixture()
+    object.__setattr__(fixture.coefficient, "weights_payload", _PoisonLength())
+
+    with pytest.raises(TypeError, match="immutable bytes"):
+        PreparedBilinearPredictorArtifact.from_prepared_components(
+            fixture.coefficient,
+            {model_id: state.calibration for model_id, state in fixture.artifact.models.items()},
+            training_domains=fixture.plan.domains,
+            training_example_count=fixture.plan.work.example_count,
+            lineage=fixture.artifact.lineage,
+        )
+
+
+def test_artifact_global_scalar_cap_rejects_before_model_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = _fixture().artifact
+
+    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("numeric overflow reached model-state copying")
+
+    monkeypatch.setattr(prepared_artifacts, "MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS", 7)
+    monkeypatch.setattr(PreparedModelCalibration, "__post_init__", forbidden)
+    with pytest.raises(ValueError, match="numeric scalar limit"):
+        PreparedBilinearPredictorArtifact(
+            feature_schema=artifact.feature_schema,
+            models=artifact.models,
+            training_domains=artifact.training_domains,
+            training_example_count=artifact.training_example_count,
+            ridge=artifact.ridge,
+            lineage=artifact.lineage,
+        )
+
+
+def test_component_factory_global_scalar_cap_rejects_before_model_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture()
+
+    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("factory numeric overflow reached model-state copying")
+
+    monkeypatch.setattr(prepared_artifacts, "MAX_PREPARED_ARTIFACT_NUMERIC_SCALARS", 7)
+    monkeypatch.setattr(PreparedFinalCoefficient, "__post_init__", forbidden)
+    monkeypatch.setattr(prepared_artifacts.PreparedModelState, "__post_init__", forbidden)
+    with pytest.raises(ValueError, match="numeric scalar limit"):
+        PreparedBilinearPredictorArtifact.from_prepared_components(
+            fixture.coefficient,
+            {model_id: state.calibration for model_id, state in fixture.artifact.models.items()},
+            training_domains=fixture.plan.domains,
+            training_example_count=fixture.plan.work.example_count,
+            lineage=fixture.artifact.lineage,
+        )
+
+
 @pytest.mark.parametrize(
     ("path", "required"),
     (
@@ -370,6 +576,7 @@ def test_model_cap_accepts_exact_and_rejects_one_over_before_state_decode(
     artifact = _fixture().artifact
     monkeypatch.setattr(prepared_artifacts, "MAX_PREPARED_ARTIFACT_MODELS", 2)
     assert PreparedBilinearPredictorArtifact.from_dict(artifact.to_dict()) == artifact
+    payload = artifact.to_dict()
 
     real_decode = prepared_artifacts._json_f64_tuple
     calls = 0
@@ -382,7 +589,7 @@ def test_model_cap_accepts_exact_and_rejects_one_over_before_state_decode(
     monkeypatch.setattr(prepared_artifacts, "_json_f64_tuple", count_decode)
     monkeypatch.setattr(prepared_artifacts, "MAX_PREPARED_ARTIFACT_MODELS", 1)
     with pytest.raises(ValueError, match="field-count limit"):
-        PreparedBilinearPredictorArtifact.from_dict(artifact.to_dict())
+        PreparedBilinearPredictorArtifact.from_dict(payload)
     assert calls == 0
 
 
@@ -746,6 +953,43 @@ def test_save_validation_and_staging_failures_preserve_destination(
     assert not tuple(tmp_path.glob(".artifact.json.stage.*.tmp"))
 
 
+def test_save_rejects_mutated_calibrator_before_stage_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = _fixture().artifact
+    destination = tmp_path / "artifact.json"
+    destination.write_bytes(b"old")
+    object.__setattr__(
+        artifact.models["m1"].calibration.calibrator,
+        "upper_bounds",
+        _PoisonIterable(),
+    )
+
+    def no_stage(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("mutated artifact reached stage creation")
+
+    monkeypatch.setattr(prepared_artifacts.tempfile, "mkstemp", no_stage)
+    with pytest.raises(TypeError, match="exact tuples"):
+        artifact.save(destination)
+    assert destination.read_bytes() == b"old"
+
+
+def test_canonical_serializer_streams_without_json_dumps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = _fixture().artifact
+    expected = artifact.to_json()
+
+    def forbidden(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("prepared artifact used unbounded json.dumps")
+
+    monkeypatch.setattr(prepared_artifacts.json, "dumps", forbidden)
+    assert artifact.to_json() == expected
+
+
 class _PoisonProvider:
     @property
     def dimension(self) -> NoReturn:
@@ -758,6 +1002,23 @@ class _PoisonProvider:
     def embed(self, prompts: object) -> NoReturn:
         del prompts
         raise AssertionError("surface artifact called provider embed")
+
+
+@pytest.mark.parametrize("mutation", ["weights", "calibrator"])
+def test_build_predictor_resnapshots_nested_state_before_provider_access(
+    mutation: str,
+) -> None:
+    artifact = _fixture(embedded=True).artifact
+    state = artifact.models["m1"]
+    if mutation == "weights":
+        object.__setattr__(state, "weights", _PoisonIterable())
+        expected = "weight width"
+    else:
+        object.__setattr__(state.calibration.calibrator, "values", _PoisonIterable())
+        expected = "exact tuples"
+
+    with pytest.raises((TypeError, ValueError), match=expected):
+        artifact.build_predictor(embedding_provider=_PoisonProvider())
 
 
 class _Provider:
